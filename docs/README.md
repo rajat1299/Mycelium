@@ -3,13 +3,16 @@
 Read these in order if you are new to the project:
 
 1. [Agent Runbook](/Users/rajattiwari/swarm/computer-oss/docs/agent-runbook.md)
-2. [Product Vision](/Users/rajattiwari/swarm/computer-oss/docs/01-product-vision.md)
-3. [Architecture](/Users/rajattiwari/swarm/computer-oss/docs/02-architecture.md)
-4. [System Design](/Users/rajattiwari/swarm/computer-oss/docs/03-system-design.md)
-5. [Technical Spec](/Users/rajattiwari/swarm/computer-oss/docs/04-technical-spec.md)
-6. [Reference Extraction Map](/Users/rajattiwari/swarm/computer-oss/docs/05-reference-extraction-map.md)
-7. [Frontend and UX](/Users/rajattiwari/swarm/computer-oss/docs/06-frontend-and-ux.md)
-8. [Architecture Design Record](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-v1-architecture-design.md)
+2. [Project Log](/Users/rajattiwari/swarm/computer-oss/docs/project-log.md)
+3. [Product Vision](/Users/rajattiwari/swarm/computer-oss/docs/01-product-vision.md)
+4. [Architecture](/Users/rajattiwari/swarm/computer-oss/docs/02-architecture.md)
+5. [System Design](/Users/rajattiwari/swarm/computer-oss/docs/03-system-design.md)
+6. [Technical Spec](/Users/rajattiwari/swarm/computer-oss/docs/04-technical-spec.md)
+7. [Reference Extraction Map](/Users/rajattiwari/swarm/computer-oss/docs/05-reference-extraction-map.md)
+8. [Frontend and UX](/Users/rajattiwari/swarm/computer-oss/docs/06-frontend-and-ux.md)
+9. [Execution Roadmap](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-execution-roadmap.md)
+10. [Milestone 2 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-milestone-2-orchestration-kernel-implementation.md)
+11. [Architecture Design Record](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-v1-architecture-design.md)
 
 ## How to use this docs set
 

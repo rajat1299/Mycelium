@@ -13,10 +13,11 @@ Mycelium is an open-source control plane for outcome-driven AI work. The current
 
 Read these next:
 
-1. [Local development](/Users/rajattiwari/swarm/computer-oss/docs/setup-local-dev.md)
-2. [Architecture](/Users/rajattiwari/swarm/computer-oss/docs/02-architecture.md)
-3. [System design](/Users/rajattiwari/swarm/computer-oss/docs/03-system-design.md)
-4. [Milestone 1 implementation plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-milestone-1-foundation-implementation.md)
+1. [Project Log](/Users/rajattiwari/swarm/computer-oss/docs/project-log.md)
+2. [Local development](/Users/rajattiwari/swarm/computer-oss/docs/setup-local-dev.md)
+3. [Architecture](/Users/rajattiwari/swarm/computer-oss/docs/02-architecture.md)
+4. [System design](/Users/rajattiwari/swarm/computer-oss/docs/03-system-design.md)
+5. [Execution Roadmap](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-execution-roadmap.md)
 
 ## Local setup
 
@@ -92,6 +93,8 @@ docker compose down -v
 - Do not commit secrets or local passwords. Use placeholders in tracked files and real values only in ignored env files.
 - Prefer additive docs updates when the setup, architecture, or workflow changes.
 - If you change the local startup flow, update both [setup-local-dev.md](/Users/rajattiwari/swarm/computer-oss/docs/setup-local-dev.md) and this runbook.
+- Append cross-milestone status updates to [project-log.md](/Users/rajattiwari/swarm/computer-oss/docs/project-log.md).
+- Update the active milestone plan only in its progress, deviation, and verification sections.
 
 ## Current review workflow
 
