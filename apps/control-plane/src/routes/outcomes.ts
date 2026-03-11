@@ -5,10 +5,12 @@ import {
   OutcomeListResponseSchema,
   OutcomeSchema
 } from "@computer-oss/protocol";
+import type { EventBus } from "../lib/event-bus";
 import type { Repositories } from "../lib/repositories";
 
 type OutcomeRouteOptions = {
   repositories: Repositories;
+  eventBus: EventBus;
 };
 
 function badRequest(message: string) {
@@ -31,6 +33,12 @@ export function registerOutcomeRoutes(
     const created = await options.repositories.outcomes.create({
       ...parsed.data,
       id: `outcome_${crypto.randomUUID()}`
+    });
+
+    options.eventBus.publish({
+      outcomeId: created.id,
+      type: "outcome.updated",
+      data: created
     });
 
     return reply.code(201).send(OutcomeSchema.parse(created));
@@ -88,11 +96,19 @@ export function registerOutcomeRoutes(
       return reply.code(404).send(badRequest("Outcome not found."));
     }
 
-    await options.repositories.outcomes.appendMessage({
+    const message = {
       ...parsed.data,
       id: `msg_${crypto.randomUUID()}`,
       outcomeId: params.id,
       createdAt: new Date().toISOString()
+    };
+
+    await options.repositories.outcomes.appendMessage(message);
+
+    options.eventBus.publish({
+      outcomeId: params.id,
+      type: "message.created",
+      data: message
     });
 
     return reply.code(202).send({ accepted: true });
