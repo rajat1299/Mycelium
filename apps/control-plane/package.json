@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "tsx watch src/server.ts",
+    "dev": "node --watch --env-file-if-exists=.env.local --import tsx src/server.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import type { DatabaseClient } from "../client";
-import { outcomeMessages, outcomes } from "../schema";
+import { outcomeMessages, outcomes, users, workspaces } from "../schema";
 
 type OutcomeRow = typeof outcomes.$inferSelect;
 type OutcomeSource = "web" | "slack" | "telegram";
@@ -46,10 +46,34 @@ function mapOutcomeRow(row: OutcomeRow): StoredOutcome {
   };
 }
 
+function workspaceName(id: string) {
+  return `Workspace ${id}`;
+}
+
+function userEmail(id: string) {
+  return `${id}@local.mycelium`;
+}
+
 export class OutcomeRepository {
   constructor(private readonly db: DatabaseClient) {}
 
   async create(input: CreateOutcomeInput): Promise<StoredOutcome> {
+    await this.db
+      .insert(workspaces)
+      .values({
+        id: input.workspaceId,
+        name: workspaceName(input.workspaceId)
+      })
+      .onConflictDoNothing();
+
+    await this.db
+      .insert(users)
+      .values({
+        id: input.userId,
+        email: userEmail(input.userId)
+      })
+      .onConflictDoNothing();
+
     const [created] = await this.db
       .insert(outcomes)
       .values({

@@ -5,7 +5,12 @@
   "packageManager": "pnpm@10.17.0",
   "scripts": {
     "build": "turbo run build",
+    "db:down": "docker compose down",
+    "db:push": "pnpm --filter @computer-oss/db db:push",
+    "db:up": "docker compose up -d",
     "dev": "turbo run dev --parallel",
+    "dev:control-plane": "pnpm --filter @computer-oss/control-plane dev",
+    "dev:web": "pnpm --filter @computer-oss/web dev",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck"
   },
