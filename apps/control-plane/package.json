@@ -1,22 +1,21 @@
 {
-  "name": "@computer-oss/protocol",
+  "name": "@computer-oss/control-plane",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
-  "exports": {
-    ".": {
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
-    }
-  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/server.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@computer-oss/db": "workspace:*",
+    "@computer-oss/protocol": "workspace:*",
+    "fastify": "^5.6.1",
     "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.5"
   }
 }
