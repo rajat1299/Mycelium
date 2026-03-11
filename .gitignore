@@ -1,2 +1,11 @@
 # Internal docs and planning (not for public repo)
 README-Internal.md
+node_modules/
+.turbo/
+dist/
+coverage/
+.next/
+.env
+.env.local
+.env.*.local
+*.tsbuildinfo
