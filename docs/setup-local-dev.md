@@ -25,14 +25,17 @@ This repository is currently shipping the Milestone 1 foundation slice:
 
 ```bash
 pnpm install
+cp .env.example .env
 cp apps/control-plane/.env.example apps/control-plane/.env.local
 cp apps/web/.env.example apps/web/.env.local
+# replace REPLACE_WITH_LOCAL_DB_PASSWORD in .env and apps/control-plane/.env.local
 pnpm db:up
 pnpm db:push
 ```
 
 `pnpm db:push` is the current schema bootstrap step for Milestone 1. We are using `drizzle-kit push` locally before committed SQL migrations land in a later milestone.
 `pnpm db:push` waits for the local Postgres port to accept connections before it runs the schema sync.
+The repository does not commit a database password. You must set your own local password in `.env` and `apps/control-plane/.env.local`.
 
 ## Start the stack
 
@@ -85,7 +88,7 @@ pnpm db:down
 
 If the control plane exits with a `DATABASE_URL` validation error, the app-local env file is missing. Copy `apps/control-plane/.env.example` to `apps/control-plane/.env.local`.
 
-If outcome creation fails with database relation errors, rerun `pnpm db:push`.
+If outcome creation fails with authentication or relation errors, verify the password in `.env` matches `apps/control-plane/.env.local`, then rerun `pnpm db:push`.
 
 If the web UI loads but shows no outcomes, verify `CONTROL_PLANE_URL` in `apps/web/.env.local` and check [http://127.0.0.1:4000/health](http://127.0.0.1:4000/health).
 

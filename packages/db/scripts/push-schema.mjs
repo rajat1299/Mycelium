@@ -3,7 +3,7 @@ import postgres from "postgres";
 
 const connectionString =
   process.env.DATABASE_URL ??
-  "postgres://postgres:postgres@127.0.0.1:54321/computer_oss";
+  "postgres://postgres:REPLACE_WITH_LOCAL_DB_PASSWORD@127.0.0.1:54321/computer_oss";
 const maxAttempts = 30;
 const delayMs = 1000;
 

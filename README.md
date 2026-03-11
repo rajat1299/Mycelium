@@ -25,8 +25,10 @@ What is **not** built yet:
 git clone https://github.com/rajat1299/Mycelium.git
 cd Mycelium
 pnpm install
+cp .env.example .env
 cp apps/control-plane/.env.example apps/control-plane/.env.local
 cp apps/web/.env.example apps/web/.env.local
+# replace REPLACE_WITH_LOCAL_DB_PASSWORD in .env and apps/control-plane/.env.local
 pnpm db:up
 pnpm db:push
 pnpm dev
@@ -56,6 +58,7 @@ The current flow is:
 ## Documentation
 
 - [Local development](./docs/setup-local-dev.md)
+- [Agent runbook](./docs/agent-runbook.md)
 - [Product vision](./docs/01-product-vision.md)
 - [Architecture](./docs/02-architecture.md)
 - [System design](./docs/03-system-design.md)
