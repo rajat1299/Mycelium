@@ -630,6 +630,7 @@ Do not hand the milestone back for merge until all of these are true:
 - `2026-03-12`: Task 2 added an injectable Docker runner to `LocalDockerProvider` so unit tests can verify container request translation without requiring a live Docker daemon. The provider also normalizes expected artifact paths before composing `/workspace/...` targets to prevent container-side path escape.
 - `2026-03-12`: Task 2 hardening enforces that a sandbox request's `step.runId` must match the parent `runId`, and timeout cleanup now force-removes the named Docker container instead of assuming `docker run --rm` is sufficient after the client process is killed.
 - `2026-03-12`: Review hardening for Task 2 added three more invariants that the initial batch missed: workspace leases now reserve their run before any async directory creation to prevent concurrent double-acquire, artifact paths are canonicalized before returning or persisting metadata so aliases collapse to one identity, and `expectedArtifactPath` must resolve under `artifacts/` because produced-artifact discovery is intentionally scoped to that mounted subtree in M3.
+- `2026-03-12`: Final Task 2 hardening filters caller-supplied `MYCELIUM_*` variables out of `request.environment` before composing the container environment. The sandbox provider is now authoritative for run, step, and artifact context instead of trusting external overrides.
 
 ## Verification Log
 
@@ -656,3 +657,7 @@ Do not hand the milestone back for merge until all of these are true:
   - `pnpm --filter @computer-oss/sandbox typecheck`
   - `pnpm --filter @computer-oss/artifacts test`
   - `pnpm --filter @computer-oss/artifacts typecheck`
+- `2026-03-12` Task 2 final env hardening:
+  - `pnpm --filter @computer-oss/sandbox test -- src/provider.test.ts`
+  - `pnpm --filter @computer-oss/sandbox test`
+  - `pnpm --filter @computer-oss/sandbox typecheck`

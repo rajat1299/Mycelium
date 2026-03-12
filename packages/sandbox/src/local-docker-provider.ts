@@ -203,6 +203,7 @@ function buildDockerArgs(request: DockerRunRequest): string[] {
 }
 
 function buildEnvironment(request: SandboxExecutionRequest): Record<string, string> {
+  const callerEnvironment = stripReservedEnvironment(request.environment);
   const environment: Record<string, string> = {
     MYCELIUM_OUTCOME_ID: request.context.outcomeId,
     MYCELIUM_OUTCOME_PROMPT: request.context.outcomePrompt,
@@ -229,8 +230,8 @@ function buildEnvironment(request: SandboxExecutionRequest): Record<string, stri
   }
 
   return {
-    ...environment,
-    ...request.environment
+    ...callerEnvironment,
+    ...environment
   };
 }
 
@@ -315,6 +316,18 @@ function normalizeWorkspaceRelativePath(relativePath: string | undefined): strin
 
 function createContainerName(runId: string, stepId: string, suffix: string): string {
   return `mycelium-${sanitizeSegment(runId)}-${sanitizeSegment(stepId)}-${sanitizeSegment(suffix)}`;
+}
+
+function stripReservedEnvironment(
+  environment: Record<string, string> | undefined
+): Record<string, string> {
+  if (!environment) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(environment).filter(([key]) => !key.startsWith("MYCELIUM_"))
+  );
 }
 
 function sanitizeSegment(value: string): string {

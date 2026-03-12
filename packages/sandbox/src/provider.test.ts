@@ -253,4 +253,69 @@ describe("LocalDockerProvider", () => {
 
     expect(runner.run).not.toHaveBeenCalled();
   });
+
+  it("prevents caller environment from overriding reserved Mycelium execution keys", async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), "mycelium-sandbox-provider-"));
+    roots.push(rootPath);
+
+    const manager = new WorkspaceManager({ rootPath });
+    const lease = await manager.acquire("run_123");
+
+    const runner = {
+      run: vi.fn(async () => ({
+        exitCode: 0,
+        stdout: "step complete",
+        stderr: "",
+        startedAt: "2026-03-12T10:00:00.000Z",
+        finishedAt: "2026-03-12T10:00:01.000Z",
+        durationMs: 1000
+      }))
+    };
+
+    const provider = new LocalDockerProvider({
+      image: "node:22-bookworm-slim",
+      runner,
+      randomSuffix: () => "seed123"
+    });
+
+    await provider.execute({
+      runId: "run_123",
+      context: {
+        outcomeId: "outcome_123",
+        outcomePrompt: "Draft the operator brief."
+      },
+      step: {
+        id: "step_123",
+        planNodeId: "plan_outcome_123:draft-brief",
+        title: "Draft brief",
+        kind: "task",
+        capability: "coding",
+        instruction: "Write the brief artifact.",
+        template: "draft_brief",
+        expectedArtifactPath: "artifacts/brief.md",
+        expectedArtifactKind: "brief",
+        status: "ready",
+        position: 1,
+        createdAt: "2026-03-12T10:00:00.000Z",
+        updatedAt: "2026-03-12T10:00:00.000Z",
+        runId: "run_123"
+      },
+      workspace: lease.paths,
+      environment: {
+        MYCELIUM_EXPECTED_ARTIFACT_PATH: "logs/result.md",
+        MYCELIUM_RUN_ID: "run_other",
+        TEST_MODE: "1"
+      }
+    });
+
+    expect(runner.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        environment: expect.objectContaining({
+          MYCELIUM_EXPECTED_ARTIFACT_PATH: "artifacts/brief.md",
+          MYCELIUM_RUN_ID: "run_123",
+          TEST_MODE: "1"
+        })
+      })
+    );
+  });
 });
