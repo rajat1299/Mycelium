@@ -3,7 +3,9 @@ import { z } from "zod";
 const EnvSchema = z.object({
   DATABASE_URL: z.string().min(1),
   HOST: z.string().default("0.0.0.0"),
-  PORT: z.coerce.number().int().positive().default(4000)
+  PORT: z.coerce.number().int().positive().default(4000),
+  WORKSPACE_ROOT: z.string().min(1).default(".mycelium/workspaces"),
+  SANDBOX_IMAGE: z.string().min(1).optional()
 });
 
 export type AppEnv = z.infer<typeof EnvSchema>;

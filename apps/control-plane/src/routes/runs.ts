@@ -6,11 +6,13 @@ import {
   RunStepSchema
 } from "@computer-oss/protocol";
 import type { EventBus } from "../lib/event-bus";
+import type { ExecutionService } from "../lib/execution-service";
 import type { Repositories } from "../lib/repositories";
 
 type RunRouteOptions = {
   repositories: Repositories;
   eventBus: EventBus;
+  executionService: ExecutionService;
 };
 
 function badRequest(message: string) {
@@ -32,7 +34,6 @@ async function buildRunDetail(
   repositories: Repositories,
   run: Awaited<ReturnType<Repositories["runs"]["getById"]>>
 ): Promise<ReturnType<typeof RunDetailSchema.parse> | null> {
-
   if (!run) {
     return null;
   }
@@ -154,6 +155,8 @@ export function registerRunRoutes(
         data: stepEventData
       });
     }
+
+    options.executionService.startRun(response.id);
 
     return reply.code(201).send(response);
   });

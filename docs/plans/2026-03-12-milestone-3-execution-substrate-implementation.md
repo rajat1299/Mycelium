@@ -634,6 +634,8 @@ Do not hand the milestone back for merge until all of these are true:
 - `2026-03-12`: Codex began Task 3 on `codex/m3-task3-execution-persistence` after merging Task 2 to `main`. This batch is limited to `packages/db` durability work, and it also carries the executable plan-node metadata into persisted plan/run rows so Task 4 does not have to build an execution service on top of lossy step records.
 - `2026-03-12`: Task 3 required one small implementation-scope deviation from the file list in the plan: `apps/control-plane/src/routes/plans.ts`, `apps/control-plane/src/lib/repositories.ts`, and the matching control-plane tests were updated so the live plan creation path actually passes executable node metadata into the newly expanded DB persistence layer. Without that, Task 3 would have shipped durable columns that the app never wrote.
 - `2026-03-12`: Review hardening for Task 3 tightened the remaining state-transition invariants in the persistence layer. `releaseReadyDependents()` now only flips a step to `ready` if the row is still `pending` at update time, which prevents duplicate join-step releases when sibling completions race. Workspace lease release is also idempotent now: the repository updates only active leases and preserves the first recorded `releasedAt` timestamp if cleanup runs twice.
+- `2026-03-12`: Codex began Task 4 on `codex/m3-task4-execution-service` after merging Task 3 to `main`. The batch stays centered on the control plane: background execution, artifact read APIs, and the SSE lifecycle that Task 5 will project into the operator console.
+- `2026-03-12`: Task 4 required a few small implementation-scope deviations from the listed file set. Shared protocol contracts were expanded with artifact and new event schemas, `tsconfig.base.json` gained resolver entries for the newer workspace packages, `apps/control-plane/src/server.ts` was updated so the real server composes the execution service instead of only DB repositories, and the existing web SSE parser/activity feed received a minimal compatibility patch so the widened event union does not break unrelated workspace typechecks before Task 5 lands.
 
 ## Verification Log
 
@@ -681,3 +683,15 @@ Do not hand the milestone back for merge until all of these are true:
   - `pnpm --filter @computer-oss/control-plane test -- test/plans.test.ts`
   - `pnpm --filter @computer-oss/control-plane test -- test/runs.test.ts`
   - `pnpm --filter @computer-oss/control-plane typecheck`
+- `2026-03-12` Task 4:
+  - `pnpm install`
+  - `pnpm --filter @computer-oss/control-plane test -- test/execution-service.test.ts`
+  - `pnpm --filter @computer-oss/control-plane test -- test/runs.test.ts`
+  - `pnpm --filter @computer-oss/control-plane test -- test/artifacts.test.ts`
+  - `pnpm --filter @computer-oss/control-plane test`
+  - `pnpm --filter @computer-oss/control-plane typecheck`
+  - `pnpm --filter @computer-oss/protocol test`
+  - `pnpm --filter @computer-oss/protocol typecheck`
+  - `pnpm test`
+  - `pnpm build`
+  - `pnpm typecheck`

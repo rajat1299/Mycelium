@@ -13,8 +13,11 @@
     "isolatedModules": true,
     "declaration": true,
     "paths": {
+      "@computer-oss/artifacts": ["packages/artifacts/src/index.ts"],
       "@computer-oss/protocol": ["packages/protocol/src/index.ts"],
-      "@computer-oss/db": ["packages/db/src/index.ts"]
+      "@computer-oss/db": ["packages/db/src/index.ts"],
+      "@computer-oss/orchestrator": ["packages/orchestrator/src/index.ts"],
+      "@computer-oss/sandbox": ["packages/sandbox/src/index.ts"]
     }
   }
 }

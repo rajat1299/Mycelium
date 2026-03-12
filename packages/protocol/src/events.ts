@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ArtifactSchema } from "./artifact";
 import { OutcomeSchema } from "./outcome";
 import { PlanSchema, RunSchema, RunStepSchema } from "./plan";
 
@@ -60,12 +61,42 @@ export const RunStepUpdatedEventSchema = z.object({
   data: RunStepSchema
 });
 
+export const RunUpdatedEventSchema = z.object({
+  outcomeId: z.string(),
+  type: z.literal("run.updated"),
+  data: RunSchema
+});
+
+export const RunLogDataSchema = z.object({
+  runId: z.string(),
+  stepId: z.string().optional(),
+  stepTitle: z.string().optional(),
+  level: z.enum(["info", "error"]),
+  message: z.string().min(1),
+  createdAt: z.string().datetime()
+});
+
+export const RunLogEventSchema = z.object({
+  outcomeId: z.string(),
+  type: z.literal("run.log"),
+  data: RunLogDataSchema
+});
+
+export const ArtifactCreatedEventSchema = z.object({
+  outcomeId: z.string(),
+  type: z.literal("artifact.created"),
+  data: ArtifactSchema
+});
+
 export const OutcomeStreamEventSchema = z.discriminatedUnion("type", [
   OutcomeUpdatedEventSchema,
   MessageCreatedEventSchema,
   PlanCreatedEventSchema,
   RunCreatedEventSchema,
-  RunStepUpdatedEventSchema
+  RunStepUpdatedEventSchema,
+  RunUpdatedEventSchema,
+  RunLogEventSchema,
+  ArtifactCreatedEventSchema
 ]);
 
 export type EventType = z.infer<typeof EventTypeSchema>;
@@ -76,4 +107,8 @@ export type MessageCreatedEvent = z.infer<typeof MessageCreatedEventSchema>;
 export type PlanCreatedEvent = z.infer<typeof PlanCreatedEventSchema>;
 export type RunCreatedEvent = z.infer<typeof RunCreatedEventSchema>;
 export type RunStepUpdatedEvent = z.infer<typeof RunStepUpdatedEventSchema>;
+export type RunUpdatedEvent = z.infer<typeof RunUpdatedEventSchema>;
+export type RunLogData = z.infer<typeof RunLogDataSchema>;
+export type RunLogEvent = z.infer<typeof RunLogEventSchema>;
+export type ArtifactCreatedEvent = z.infer<typeof ArtifactCreatedEventSchema>;
 export type OutcomeStreamEvent = z.infer<typeof OutcomeStreamEventSchema>;

@@ -23,6 +23,9 @@ importers:
 
   apps/control-plane:
     dependencies:
+      '@computer-oss/artifacts':
+        specifier: workspace:*
+        version: link:../../packages/artifacts
       '@computer-oss/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -32,6 +35,9 @@ importers:
       '@computer-oss/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@computer-oss/sandbox':
+        specifier: workspace:*
+        version: link:../../packages/sandbox
       fastify:
         specifier: ^5.6.1
         version: 5.8.2

@@ -1,12 +1,19 @@
 import type {
+  AcquireWorkspaceLeaseInput,
   AppendRunEventInput,
+  CreateArtifactInput,
   CreatePlanInput,
   CreateRunFromPlanInput,
+  ReleaseReadyDependentsInput,
+  ReleaseWorkspaceLeaseInput,
+  StoredArtifact,
   StoredPlan,
   StoredPlanEdge,
   StoredPlanNode,
   StoredRun,
   StoredRunStep,
+  StoredWorkspaceLease,
+  UpdateRunStatusInput,
   UpdateStepStatusInput
 } from "@computer-oss/db";
 import type {
@@ -50,15 +57,83 @@ export type RunStore = {
   getById(id: string): Promise<StoredRun | null>;
   getLatestByOutcome(outcomeId: string): Promise<StoredRun | null>;
   listSteps(runId: string): Promise<StoredRunStep[]>;
+  listReadySteps(runId: string): Promise<StoredRunStep[]>;
   appendEvent(input: AppendRunEventInput): Promise<void>;
+  updateStatus(input: UpdateRunStatusInput): Promise<StoredRun | null>;
   updateStepStatus(input: UpdateStepStatusInput): Promise<StoredRunStep | null>;
+  releaseReadyDependents(
+    input: ReleaseReadyDependentsInput
+  ): Promise<StoredRunStep[]>;
+};
+
+export type ArtifactStore = {
+  create(input: CreateArtifactInput): Promise<StoredArtifact>;
+  listByRun(runId: string): Promise<StoredArtifact[]>;
+  listByOutcome(outcomeId: string): Promise<StoredArtifact[]>;
+};
+
+export type WorkspaceLeaseStore = {
+  acquire(input: AcquireWorkspaceLeaseInput): Promise<StoredWorkspaceLease>;
+  getActiveByRun(runId: string): Promise<StoredWorkspaceLease | null>;
+  release(input: ReleaseWorkspaceLeaseInput): Promise<StoredWorkspaceLease | null>;
 };
 
 export type Repositories = {
   outcomes: OutcomeStore;
   plans: PlanStore;
   runs: RunStore;
+  artifacts: ArtifactStore;
+  workspaceLeases: WorkspaceLeaseStore;
 };
+
+type InMemoryState = ReturnType<typeof createInMemoryRepositoriesState>;
+type InMemoryDataState = {
+  runStepsByRunId: Map<string, StoredRunStep[]>;
+};
+
+function compareRuns(left: StoredRun, right: StoredRun) {
+  const createdDelta =
+    new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+
+  if (createdDelta !== 0) {
+    return createdDelta;
+  }
+
+  const updatedDelta =
+    new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime();
+
+  if (updatedDelta !== 0) {
+    return updatedDelta;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
+function compareArtifacts(left: StoredArtifact, right: StoredArtifact) {
+  const createdDelta =
+    new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+
+  if (createdDelta !== 0) {
+    return createdDelta;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
+function getStoredRunStep(
+  state: InMemoryDataState,
+  stepId: string
+): { runId: string; step: StoredRunStep } | null {
+  for (const [runId, steps] of state.runStepsByRunId.entries()) {
+    const step = steps.find((candidate) => candidate.id === stepId);
+
+    if (step) {
+      return { runId, step };
+    }
+  }
+
+  return null;
+}
 
 function createInMemoryRepositoriesState() {
   const outcomes = new Map<string, Outcome>();
@@ -67,7 +142,21 @@ function createInMemoryRepositoriesState() {
   const planEdgesByPlanId = new Map<string, StoredPlanEdge[]>();
   const runsById = new Map<string, StoredRun>();
   const runStepsByRunId = new Map<string, StoredRunStep[]>();
+  const artifacts = new Map<string, StoredArtifact>();
+  const workspaceLeasesByRunId = new Map<string, StoredWorkspaceLease>();
   const runEvents: AppendRunEventInput[] = [];
+
+  const state = {
+    outcomes,
+    plansByOutcomeId,
+    planNodesByPlanId,
+    planEdgesByPlanId,
+    runsById,
+    runStepsByRunId,
+    artifacts,
+    workspaceLeasesByRunId,
+    runEvents
+  };
 
   const outcomesStore: OutcomeStore = {
     async create(input) {
@@ -240,23 +329,7 @@ function createInMemoryRepositoriesState() {
       return (
         Array.from(runsById.values())
           .filter((run) => run.outcomeId === outcomeId)
-          .sort((left, right) => {
-            const createdDelta =
-              new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
-
-            if (createdDelta !== 0) {
-              return createdDelta;
-            }
-
-            const updatedDelta =
-              new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime();
-
-            if (updatedDelta !== 0) {
-              return updatedDelta;
-            }
-
-            return left.id.localeCompare(right.id);
-          })
+          .sort(compareRuns)
           .at(-1) ?? null
       );
     },
@@ -265,38 +338,249 @@ function createInMemoryRepositoriesState() {
         (left, right) => left.position - right.position
       );
     },
+    async listReadySteps(runId) {
+      return [...(runStepsByRunId.get(runId) ?? [])]
+        .filter((step) => step.status === "ready")
+        .sort((left, right) => left.position - right.position);
+    },
     async appendEvent(input) {
       runEvents.push(input);
     },
-    async updateStepStatus(input) {
-      for (const steps of runStepsByRunId.values()) {
-        const step = steps.find((candidate) => candidate.id === input.stepId);
+    async updateStatus(input) {
+      const run = runsById.get(input.runId);
 
-        if (!step) {
+      if (!run) {
+        return null;
+      }
+
+      const updatedRun: StoredRun = {
+        ...run,
+        status: input.status,
+        updatedAt: input.updatedAt
+      };
+
+      runsById.set(updatedRun.id, updatedRun);
+      return updatedRun;
+    },
+    async updateStepStatus(input) {
+      const located = getStoredRunStep(state, input.stepId);
+
+      if (!located) {
+        return null;
+      }
+
+      const updatedStep: StoredRunStep = {
+        ...located.step,
+        status: input.status,
+        updatedAt: input.updatedAt
+      };
+      const updatedSteps =
+        runStepsByRunId.get(located.runId)?.map((candidate) =>
+          candidate.id === input.stepId ? updatedStep : candidate
+        ) ?? [];
+
+      runStepsByRunId.set(located.runId, updatedSteps);
+      return updatedStep;
+    },
+    async releaseReadyDependents(input) {
+      const run = runsById.get(input.runId);
+
+      if (!run) {
+        throw new Error(`Run ${input.runId} does not exist.`);
+      }
+
+      const runSteps = [...(runStepsByRunId.get(input.runId) ?? [])];
+      const completedStep = runSteps.find((step) => step.id === input.completedStepId);
+
+      if (!completedStep) {
+        throw new Error(
+          `Step ${input.completedStepId} does not belong to run ${input.runId}.`
+        );
+      }
+
+      const planEdges = planEdgesByPlanId.get(run.planId) ?? [];
+      const dependentNodeIds = planEdges
+        .filter((edge) => edge.from === completedStep.planNodeId)
+        .map((edge) => edge.to);
+      const releasedSteps: StoredRunStep[] = [];
+
+      for (const dependentNodeId of dependentNodeIds) {
+        const dependentStep = runSteps.find(
+          (step) => step.planNodeId === dependentNodeId
+        );
+
+        if (!dependentStep || dependentStep.status !== "pending") {
           continue;
         }
 
-        const updatedStep = {
-          ...step,
-          status: input.status,
-          updatedAt: input.updatedAt
-        };
-        const updatedSteps = steps.map((candidate) =>
-          candidate.id === input.stepId ? updatedStep : candidate
+        const parentNodeIds = planEdges
+          .filter((edge) => edge.to === dependentNodeId)
+          .map((edge) => edge.from);
+        const allParentsCompleted = parentNodeIds.every((parentNodeId) =>
+          runSteps.some(
+            (step) =>
+              step.planNodeId === parentNodeId && step.status === "completed"
+          )
         );
 
-        runStepsByRunId.set(updatedStep.runId, updatedSteps);
-        return updatedStep;
+        if (!allParentsCompleted) {
+          continue;
+        }
+
+        const updatedStep: StoredRunStep = {
+          ...dependentStep,
+          status: "ready",
+          updatedAt: input.updatedAt
+        };
+        const updatedRunSteps = runStepsByRunId.get(input.runId)?.map((step) =>
+          step.id === dependentStep.id && step.status === "pending"
+            ? updatedStep
+            : step
+        );
+
+        if (!updatedRunSteps) {
+          continue;
+        }
+
+        const persistedStep = updatedRunSteps.find(
+          (step) => step.id === dependentStep.id
+        );
+
+        if (!persistedStep || persistedStep.status !== "ready") {
+          continue;
+        }
+
+        runStepsByRunId.set(input.runId, updatedRunSteps);
+        const staleStepIndex = runSteps.findIndex((step) => step.id === dependentStep.id);
+
+        if (staleStepIndex >= 0) {
+          runSteps[staleStepIndex] = persistedStep;
+        }
+
+        releasedSteps.push(persistedStep);
       }
 
-      return null;
+      return releasedSteps.sort((left, right) => left.position - right.position);
+    }
+  };
+
+  const artifactsStore: ArtifactStore = {
+    async create(input) {
+      const run = input.runId ? runsById.get(input.runId) : null;
+
+      if (input.runId && !run) {
+        throw new Error(`Run ${input.runId} does not exist.`);
+      }
+
+      if (run && run.outcomeId !== input.outcomeId) {
+        throw new Error(
+          `Run ${input.runId} belongs to ${run.outcomeId}, not ${input.outcomeId}.`
+        );
+      }
+
+      if (input.stepId) {
+        if (!input.runId) {
+          throw new Error("Artifact step scope requires a runId.");
+        }
+
+        const located = getStoredRunStep(state, input.stepId);
+
+        if (!located) {
+          throw new Error(`Step ${input.stepId} does not exist.`);
+        }
+
+        if (located.runId !== input.runId) {
+          throw new Error(
+            `Step ${input.stepId} belongs to ${located.runId}, not ${input.runId}.`
+          );
+        }
+      }
+
+      const artifact: StoredArtifact = {
+        id: input.id,
+        outcomeId: input.outcomeId,
+        runId: input.runId ?? null,
+        stepId: input.stepId ?? null,
+        kind: input.kind,
+        relativePath: input.relativePath,
+        size: input.size,
+        metadata: input.metadata,
+        createdAt: input.createdAt
+      };
+
+      artifacts.set(artifact.id, artifact);
+      return artifact;
+    },
+    async listByRun(runId) {
+      return Array.from(artifacts.values())
+        .filter((artifact) => artifact.runId === runId)
+        .sort(compareArtifacts);
+    },
+    async listByOutcome(outcomeId) {
+      return Array.from(artifacts.values())
+        .filter((artifact) => artifact.outcomeId === outcomeId)
+        .sort(compareArtifacts);
+    }
+  };
+
+  const workspaceLeasesStore: WorkspaceLeaseStore = {
+    async acquire(input) {
+      const run = runsById.get(input.runId);
+
+      if (!run) {
+        throw new Error(`Run ${input.runId} does not exist.`);
+      }
+
+      const existing = workspaceLeasesByRunId.get(input.runId);
+
+      if (existing && existing.releasedAt === null) {
+        throw new Error(`Active workspace lease already exists for run ${input.runId}.`);
+      }
+
+      const lease: StoredWorkspaceLease = {
+        runId: input.runId,
+        rootPath: input.rootPath,
+        inputPath: input.inputPath,
+        artifactsPath: input.artifactsPath,
+        logsPath: input.logsPath,
+        acquiredAt: input.acquiredAt,
+        releasedAt: null
+      };
+
+      workspaceLeasesByRunId.set(input.runId, lease);
+      return lease;
+    },
+    async getActiveByRun(runId) {
+      const lease = workspaceLeasesByRunId.get(runId);
+      return lease?.releasedAt === null ? lease : null;
+    },
+    async release(input) {
+      const lease = workspaceLeasesByRunId.get(input.runId);
+
+      if (!lease) {
+        return null;
+      }
+
+      if (lease.releasedAt !== null) {
+        return lease;
+      }
+
+      const updatedLease: StoredWorkspaceLease = {
+        ...lease,
+        releasedAt: input.releasedAt
+      };
+
+      workspaceLeasesByRunId.set(input.runId, updatedLease);
+      return updatedLease;
     }
   };
 
   return {
     outcomesStore,
     plansStore,
-    runsStore
+    runsStore,
+    artifactsStore,
+    workspaceLeasesStore
   };
 }
 
@@ -306,7 +590,9 @@ export function createInMemoryRepositories(): Repositories {
   return {
     outcomes: state.outcomesStore,
     plans: state.plansStore,
-    runs: state.runsStore
+    runs: state.runsStore,
+    artifacts: state.artifactsStore,
+    workspaceLeases: state.workspaceLeasesStore
   };
 }
 
@@ -314,9 +600,11 @@ export async function createDatabaseRepositories(
   connectionString: string
 ): Promise<Repositories> {
   const {
+    ArtifactRepository,
     OutcomeRepository,
     PlanRepository,
     RunRepository,
+    WorkspaceLeaseRepository,
     createDatabaseClient
   } = await import("@computer-oss/db");
   const db = createDatabaseClient(connectionString);
@@ -324,6 +612,8 @@ export async function createDatabaseRepositories(
   return {
     outcomes: new OutcomeRepository(db),
     plans: new PlanRepository(db),
-    runs: new RunRepository(db)
+    runs: new RunRepository(db),
+    artifacts: new ArtifactRepository(db),
+    workspaceLeases: new WorkspaceLeaseRepository(db)
   };
 }
