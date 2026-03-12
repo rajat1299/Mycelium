@@ -1,4 +1,5 @@
 import {
+  integer,
   jsonb,
   pgEnum,
   pgTable,
@@ -25,8 +26,36 @@ export const approvalStatusValues = [
   "cancelled"
 ] as const;
 
+export const planStatusValues = ["draft"] as const;
+
+export const runStatusValues = [
+  "draft",
+  "queued",
+  "planning",
+  "waiting_for_worker",
+  "running",
+  "blocked",
+  "completed",
+  "failed",
+  "cancelled"
+] as const;
+
+export const stepStatusValues = [
+  "pending",
+  "ready",
+  "claimed",
+  "running",
+  "blocked",
+  "completed",
+  "failed",
+  "cancelled"
+] as const;
+
 export const outcomeStatusEnum = pgEnum("outcome_status", outcomeStatusValues);
 export const approvalStatusEnum = pgEnum("approval_status", approvalStatusValues);
+export const planStatusEnum = pgEnum("plan_status", planStatusValues);
+export const runStatusEnum = pgEnum("run_status", runStatusValues);
+export const stepStatusEnum = pgEnum("step_status", stepStatusValues);
 
 export const workspaces = pgTable("workspaces", {
   id: text("id").primaryKey(),
@@ -97,4 +126,79 @@ export const routerPolicies = pgTable("router_policies", {
   policy: jsonb("policy").notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+});
+
+export const outcomePlans = pgTable("outcome_plans", {
+  id: text("id").primaryKey(),
+  outcomeId: text("outcome_id")
+    .notNull()
+    .references(() => outcomes.id)
+    .unique(),
+  status: planStatusEnum("status").notNull().default("draft"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+});
+
+export const planNodes = pgTable("plan_nodes", {
+  id: text("id").primaryKey(),
+  planId: text("plan_id")
+    .notNull()
+    .references(() => outcomePlans.id),
+  kind: text("kind").notNull(),
+  title: text("title").notNull(),
+  capability: text("capability").notNull(),
+  position: integer("position").notNull()
+});
+
+export const planEdges = pgTable("plan_edges", {
+  id: text("id").primaryKey(),
+  planId: text("plan_id")
+    .notNull()
+    .references(() => outcomePlans.id),
+  from: text("from_node_id")
+    .notNull()
+    .references(() => planNodes.id),
+  to: text("to_node_id")
+    .notNull()
+    .references(() => planNodes.id)
+});
+
+export const outcomeRuns = pgTable("outcome_runs", {
+  id: text("id").primaryKey(),
+  outcomeId: text("outcome_id")
+    .notNull()
+    .references(() => outcomes.id),
+  planId: text("plan_id")
+    .notNull()
+    .references(() => outcomePlans.id),
+  status: runStatusEnum("status").notNull().default("draft"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+});
+
+export const runSteps = pgTable("run_steps", {
+  id: text("id").primaryKey(),
+  runId: text("run_id")
+    .notNull()
+    .references(() => outcomeRuns.id),
+  planNodeId: text("plan_node_id")
+    .notNull()
+    .references(() => planNodes.id),
+  title: text("title").notNull(),
+  kind: text("kind").notNull(),
+  capability: text("capability").notNull(),
+  status: stepStatusEnum("status").notNull().default("pending"),
+  position: integer("position").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+});
+
+export const runEvents = pgTable("run_events", {
+  id: text("id").primaryKey(),
+  runId: text("run_id")
+    .notNull()
+    .references(() => outcomeRuns.id),
+  eventType: text("event_type").notNull(),
+  payload: jsonb("payload").notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
 });
