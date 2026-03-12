@@ -88,4 +88,58 @@ describe("WorkspaceLeaseRepository", () => {
 
     await expect(repository.getActiveByRun("run_123")).resolves.toBeNull();
   });
+
+  it("preserves the first release timestamp when cleanup runs twice", async () => {
+    const { db, state } = createRepositoryTestDatabase();
+    state.outcomeRuns.push({
+      id: "run_123",
+      outcomeId: "outcome_123",
+      planId: "plan_outcome_123",
+      status: "queued",
+      createdAt: new Date("2026-03-12T00:05:00.000Z"),
+      updatedAt: new Date("2026-03-12T00:05:00.000Z")
+    });
+
+    const repository = new WorkspaceLeaseRepository(db as never);
+
+    await repository.acquire({
+      runId: "run_123",
+      rootPath: "/tmp/mycelium/run_123",
+      inputPath: "/tmp/mycelium/run_123/input",
+      artifactsPath: "/tmp/mycelium/run_123/artifacts",
+      logsPath: "/tmp/mycelium/run_123/logs",
+      acquiredAt: "2026-03-12T00:05:10.000Z"
+    });
+
+    await expect(
+      repository.release({
+        runId: "run_123",
+        releasedAt: "2026-03-12T00:06:00.000Z"
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        runId: "run_123",
+        releasedAt: "2026-03-12T00:06:00.000Z"
+      })
+    );
+
+    await expect(
+      repository.release({
+        runId: "run_123",
+        releasedAt: "2026-03-12T00:07:00.000Z"
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        runId: "run_123",
+        releasedAt: "2026-03-12T00:06:00.000Z"
+      })
+    );
+
+    expect(state.workspaceLeases).toEqual([
+      expect.objectContaining({
+        runId: "run_123",
+        releasedAt: new Date("2026-03-12T00:06:00.000Z")
+      })
+    ]);
+  });
 });

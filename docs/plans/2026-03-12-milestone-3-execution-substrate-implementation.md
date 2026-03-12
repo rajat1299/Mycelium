@@ -633,6 +633,7 @@ Do not hand the milestone back for merge until all of these are true:
 - `2026-03-12`: Final Task 2 hardening filters caller-supplied `MYCELIUM_*` variables out of `request.environment` before composing the container environment. The sandbox provider is now authoritative for run, step, and artifact context instead of trusting external overrides.
 - `2026-03-12`: Codex began Task 3 on `codex/m3-task3-execution-persistence` after merging Task 2 to `main`. This batch is limited to `packages/db` durability work, and it also carries the executable plan-node metadata into persisted plan/run rows so Task 4 does not have to build an execution service on top of lossy step records.
 - `2026-03-12`: Task 3 required one small implementation-scope deviation from the file list in the plan: `apps/control-plane/src/routes/plans.ts`, `apps/control-plane/src/lib/repositories.ts`, and the matching control-plane tests were updated so the live plan creation path actually passes executable node metadata into the newly expanded DB persistence layer. Without that, Task 3 would have shipped durable columns that the app never wrote.
+- `2026-03-12`: Review hardening for Task 3 tightened the remaining state-transition invariants in the persistence layer. `releaseReadyDependents()` now only flips a step to `ready` if the row is still `pending` at update time, which prevents duplicate join-step releases when sibling completions race. Workspace lease release is also idempotent now: the repository updates only active leases and preserves the first recorded `releasedAt` timestamp if cleanup runs twice.
 
 ## Verification Log
 
@@ -669,6 +670,13 @@ Do not hand the milestone back for merge until all of these are true:
   - `pnpm --filter @computer-oss/db test -- src/repositories/artifacts.test.ts`
   - `pnpm --filter @computer-oss/db test -- src/repositories/workspace-leases.test.ts`
   - `pnpm --filter @computer-oss/db test`
+  - `pnpm --filter @computer-oss/db typecheck`
+  - `pnpm --filter @computer-oss/control-plane test -- test/plans.test.ts`
+  - `pnpm --filter @computer-oss/control-plane test -- test/runs.test.ts`
+  - `pnpm --filter @computer-oss/control-plane typecheck`
+- `2026-03-12` Task 3 review hardening:
+  - `pnpm --filter @computer-oss/db test -- src/repositories/runs.test.ts`
+  - `pnpm --filter @computer-oss/db test -- src/repositories/workspace-leases.test.ts`
   - `pnpm --filter @computer-oss/db typecheck`
   - `pnpm --filter @computer-oss/control-plane test -- test/plans.test.ts`
   - `pnpm --filter @computer-oss/control-plane test -- test/runs.test.ts`

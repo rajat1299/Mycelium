@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { DatabaseClient } from "../client";
 import { outcomeRuns, workspaceLeases } from "../schema";
 
@@ -96,9 +96,21 @@ export class WorkspaceLeaseRepository {
       .set({
         releasedAt: new Date(input.releasedAt)
       })
-      .where(eq(workspaceLeases.runId, input.runId))
+      .where(
+        and(
+          eq(workspaceLeases.runId, input.runId),
+          isNull(workspaceLeases.releasedAt)
+        )
+      )
       .returning();
 
-    return updated ? mapWorkspaceLeaseRow(updated) : null;
+    if (updated) {
+      return mapWorkspaceLeaseRow(updated);
+    }
+
+    const rows = await this.db.select().from(workspaceLeases);
+    const existing = rows.find((row) => row.runId === input.runId);
+
+    return existing ? mapWorkspaceLeaseRow(existing) : null;
   }
 }

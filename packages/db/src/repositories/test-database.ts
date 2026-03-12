@@ -55,6 +55,16 @@ export type TestDatabaseOptions = {
   failOnInsertTables?: string[];
 };
 
+type QueryChunk = {
+  name?: string;
+  value?: unknown;
+  queryChunks?: QueryChunk[];
+};
+
+type ParsedPredicate =
+  | { type: "eq"; column: string; value: unknown }
+  | { type: "isNull"; column: string };
+
 export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) {
   const inserted: Array<{ table: string; values: TableRecord | TableRecord[] }> = [];
   const failOnInsertTables = new Set(options.failOnInsertTables ?? []);
@@ -125,17 +135,55 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
     }
   }
 
-  function parseEqExpression(expression: {
-    queryChunks?: Array<{ name?: string; value?: unknown }>;
-  }) {
-    const column = expression.queryChunks?.[1]?.name;
-    const value = expression.queryChunks?.[3]?.value;
+  function isStringChunkValue(
+    value: unknown,
+    expected: string
+  ): value is string[] {
+    return Array.isArray(value) && value.includes(expected);
+  }
 
-    if (typeof column !== "string") {
-      throw new Error("Expected an eq() expression with a column name.");
+  function parsePredicates(expression: { queryChunks?: QueryChunk[] }): ParsedPredicate[] {
+    const chunks = expression.queryChunks ?? [];
+
+    if (
+      chunks.length === 3 &&
+      chunks[1]?.queryChunks &&
+      isStringChunkValue(chunks[0]?.value, "(") &&
+      isStringChunkValue(chunks[2]?.value, ")")
+    ) {
+      return parsePredicates(chunks[1]);
     }
 
-    return { column, value };
+    if (
+      chunks.length === 3 &&
+      chunks[0]?.queryChunks &&
+      chunks[2]?.queryChunks &&
+      isStringChunkValue(chunks[1]?.value, " and ")
+    ) {
+      return [...parsePredicates(chunks[0]), ...parsePredicates(chunks[2])];
+    }
+
+    const column = chunks[1]?.name;
+
+    if (typeof column !== "string") {
+      throw new Error("Expected a supported predicate with a column name.");
+    }
+
+    if (chunks.length >= 4 && "value" in (chunks[3] ?? {})) {
+      return [
+        {
+          type: "eq",
+          column,
+          value: chunks[3]?.value
+        }
+      ];
+    }
+
+    if (chunks.length >= 3 && isStringChunkValue(chunks[2]?.value, " is null")) {
+      return [{ type: "isNull", column }];
+    }
+
+    throw new Error("Expected an eq(), isNull(), or and() predicate.");
   }
 
   function readColumnValue(row: TableRecord, column: string) {
@@ -148,6 +196,16 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
     );
 
     return row[camelColumn];
+  }
+
+  function rowMatchesPredicate(row: TableRecord, predicate: ParsedPredicate) {
+    const value = readColumnValue(row, predicate.column);
+
+    if (predicate.type === "eq") {
+      return value === predicate.value;
+    }
+
+    return value === null || value === undefined;
   }
 
   function primaryKeyFor(tableName: string, row: TableRecord) {
@@ -221,9 +279,11 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
         set(values: TableRecord) {
           return {
             where(expression: { queryChunks?: Array<{ name?: string; value?: unknown }> }) {
-              const { column, value } = parseEqExpression(expression);
+              const predicates = parsePredicates(expression);
               const rows = getRowsForTable(tableName);
-              const row = rows.find((entry) => readColumnValue(entry, column) === value);
+              const row = rows.find((entry) =>
+                predicates.every((predicate) => rowMatchesPredicate(entry, predicate))
+              );
 
               if (!row) {
                 return {

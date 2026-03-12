@@ -237,4 +237,102 @@ describe("RunRepository", () => {
       })
     ]);
   });
+
+  it("does not re-release a join step that another sibling already released", async () => {
+    const { db, state } = createRepositoryTestDatabase();
+    const plans = new PlanRepository(db as never);
+    const runs = new RunRepository(db as never);
+
+    await plans.create(buildExecutablePlanInput());
+    await runs.createFromPlan({
+      id: "run_123",
+      outcomeId: "outcome_123",
+      planId: "plan_outcome_123",
+      createdAt: "2026-03-12T00:05:00.000Z",
+      updatedAt: "2026-03-12T00:05:00.000Z"
+    });
+
+    const steps = await runs.listSteps("run_123");
+    const analyze = steps.find((step) => step.planNodeId.endsWith("analyze-outcome"));
+    const brief = steps.find((step) => step.planNodeId.endsWith("draft-brief"));
+    const summary = steps.find((step) =>
+      step.planNodeId.endsWith("draft-operator-summary")
+    );
+
+    if (!analyze || !brief || !summary) {
+      throw new Error("Expected seeded fork/join steps.");
+    }
+
+    await runs.updateStepStatus({
+      stepId: analyze.id,
+      status: "completed",
+      updatedAt: "2026-03-12T00:06:00.000Z"
+    });
+    await runs.releaseReadyDependents({
+      runId: "run_123",
+      completedStepId: analyze.id,
+      updatedAt: "2026-03-12T00:06:00.000Z"
+    });
+
+    await runs.updateStepStatus({
+      stepId: brief.id,
+      status: "completed",
+      updatedAt: "2026-03-12T00:07:00.000Z"
+    });
+    await runs.updateStepStatus({
+      stepId: summary.id,
+      status: "completed",
+      updatedAt: "2026-03-12T00:08:00.000Z"
+    });
+
+    const originalUpdate = (db as { update: typeof db.update }).update.bind(db);
+    let simulatedConcurrentRelease = false;
+
+    (db as { update: typeof db.update }).update = ((table) => {
+      const updateBuilder = originalUpdate(table);
+
+      return {
+        set(values) {
+          const setBuilder = updateBuilder.set(values);
+
+          return {
+            where(expression) {
+              if (!simulatedConcurrentRelease) {
+                simulatedConcurrentRelease = true;
+                const synthesisRow = state.runSteps.find(
+                  (row) =>
+                    row.planNodeId === "plan_outcome_123:synthesize-result"
+                );
+
+                if (synthesisRow) {
+                  synthesisRow.status = "ready";
+                  synthesisRow.updatedAt = new Date("2026-03-12T00:07:59.000Z");
+                }
+              }
+
+              return setBuilder.where(expression);
+            }
+          };
+        }
+      };
+    }) as typeof db.update;
+
+    await expect(
+      runs.releaseReadyDependents({
+        runId: "run_123",
+        completedStepId: summary.id,
+        updatedAt: "2026-03-12T00:08:00.000Z"
+      })
+    ).resolves.toEqual([]);
+
+    await expect(runs.listSteps("run_123")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          planNodeId: "plan_outcome_123:synthesize-result",
+          status: "ready",
+          updatedAt: "2026-03-12T00:07:59.000Z"
+        })
+      ])
+    );
+  });
 });

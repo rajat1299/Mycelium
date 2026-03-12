@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { DatabaseClient } from "../client";
 import {
   outcomePlans,
@@ -339,7 +339,7 @@ export class RunRepository {
             status: "ready",
             updatedAt: new Date(input.updatedAt)
           })
-          .where(eq(runSteps.id, dependentStep.id))
+          .where(and(eq(runSteps.id, dependentStep.id), eq(runSteps.status, "pending")))
           .returning();
 
         if (updated) {
