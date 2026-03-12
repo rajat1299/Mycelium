@@ -49,4 +49,25 @@ describe("WorkspaceManager", () => {
     const secondLease = await manager.acquire("run_123");
     expect(secondLease.paths).toEqual(firstLease.paths);
   });
+
+  it("rejects a concurrent second acquisition for the same run", async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), "mycelium-workspaces-"));
+    roots.push(rootPath);
+
+    const manager = new WorkspaceManager({ rootPath });
+
+    const [first, second] = await Promise.allSettled([
+      manager.acquire("run_123"),
+      manager.acquire("run_123")
+    ]);
+
+    expect([first.status, second.status].sort()).toEqual(["fulfilled", "rejected"]);
+
+    const rejection = [first, second].find((result) => result.status === "rejected");
+    expect(rejection).toMatchObject({
+      reason: expect.objectContaining({
+        message: "Workspace already leased for run run_123"
+      })
+    });
+  });
 });

@@ -58,4 +58,24 @@ describe("LocalArtifactStore", () => {
       "Artifact path must stay within the configured root"
     );
   });
+
+  it("canonicalizes equivalent relative paths to a single artifact identity", async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), "mycelium-artifacts-"));
+    roots.push(rootPath);
+
+    const store = new LocalArtifactStore({ rootPath });
+
+    const stored = await store.put({
+      relativePath: "runs/run_123/../brief.md",
+      body: "# Draft brief\n"
+    });
+
+    expect(stored.relativePath).toBe("runs/brief.md");
+    await expect(store.read("runs/brief.md")).resolves.toEqual(Buffer.from("# Draft brief\n"));
+    await expect(store.list("runs")).resolves.toEqual([
+      expect.objectContaining({
+        relativePath: "runs/brief.md"
+      })
+    ]);
+  });
 });

@@ -306,6 +306,10 @@ function normalizeWorkspaceRelativePath(relativePath: string | undefined): strin
     throw new Error("Expected artifact path must stay within the workspace");
   }
 
+  if (normalized === "artifacts" || !normalized.startsWith("artifacts/")) {
+    throw new Error("Expected artifact path must stay within /workspace/artifacts");
+  }
+
   return normalized;
 }
 

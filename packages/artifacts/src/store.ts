@@ -1,5 +1,5 @@
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { dirname, isAbsolute, posix, relative, resolve } from "node:path";
 
 export interface LocalArtifactStoreOptions {
   rootPath: string;
@@ -100,8 +100,13 @@ function normalizeRelativePath(relativePath: string): string {
     throw new Error("Artifact path must stay within the configured root");
   }
 
-  const normalized = relativePath.replace(/\\/g, "/");
-  if (normalized === ".." || normalized.startsWith("../")) {
+  const normalized = posix.normalize(relativePath.replace(/\\/g, "/"));
+  if (
+    normalized.length === 0 ||
+    normalized === "." ||
+    normalized === ".." ||
+    normalized.startsWith("../")
+  ) {
     throw new Error("Artifact path must stay within the configured root");
   }
 

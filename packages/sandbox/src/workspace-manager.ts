@@ -34,15 +34,20 @@ export class WorkspaceManager {
       throw new Error(`Workspace already leased for run ${runId}`);
     }
 
+    this.leases.add(runId);
+
     const paths = this.getPaths(runId);
 
-    await Promise.all([
-      mkdir(paths.inputPath, { recursive: true }),
-      mkdir(paths.artifactsPath, { recursive: true }),
-      mkdir(paths.logsPath, { recursive: true })
-    ]);
-
-    this.leases.add(runId);
+    try {
+      await Promise.all([
+        mkdir(paths.inputPath, { recursive: true }),
+        mkdir(paths.artifactsPath, { recursive: true }),
+        mkdir(paths.logsPath, { recursive: true })
+      ]);
+    } catch (error) {
+      this.leases.delete(runId);
+      throw error;
+    }
 
     return {
       runId,

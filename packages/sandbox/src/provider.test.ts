@@ -170,6 +170,48 @@ describe("LocalDockerProvider", () => {
     expect(runner.run).not.toHaveBeenCalled();
   });
 
+  it("rejects expected artifact paths outside the artifacts mount", async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), "mycelium-sandbox-provider-"));
+    roots.push(rootPath);
+
+    const manager = new WorkspaceManager({ rootPath });
+    const lease = await manager.acquire("run_123");
+    const runner = {
+      run: vi.fn()
+    };
+
+    const provider = new LocalDockerProvider({ runner });
+
+    await expect(
+      provider.execute({
+        runId: "run_123",
+        context: {
+          outcomeId: "outcome_123",
+          outcomePrompt: "Draft the operator brief."
+        },
+        step: {
+          id: "step_123",
+          planNodeId: "plan_outcome_123:draft-brief",
+          title: "Draft brief",
+          kind: "task",
+          capability: "coding",
+          instruction: "Write the brief artifact.",
+          template: "draft_brief",
+          expectedArtifactPath: "logs/result.md",
+          expectedArtifactKind: "brief",
+          status: "ready",
+          position: 1,
+          createdAt: "2026-03-12T10:00:00.000Z",
+          updatedAt: "2026-03-12T10:00:00.000Z",
+          runId: "run_123"
+        },
+        workspace: lease.paths
+      })
+    ).rejects.toThrow("Expected artifact path must stay within /workspace/artifacts");
+
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
   it("rejects steps that do not belong to the requested run", async () => {
     const rootPath = await mkdtemp(join(tmpdir(), "mycelium-sandbox-provider-"));
     roots.push(rootPath);
