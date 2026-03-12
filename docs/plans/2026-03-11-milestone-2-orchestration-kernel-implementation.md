@@ -530,3 +530,9 @@ Before calling the milestone complete:
 ## Implementation notes
 
 Append milestone-local notes here as work progresses.
+
+- `2026-03-11`: Started Milestone 2 execution on branch `codex/m2-orchestration-kernel` in a global worktree after reading the runbook, project log, roadmap, and milestone references. Baseline worktree verification passed with `pnpm install` and `pnpm test`.
+- `2026-03-11`: Completed Tasks 1-3. Added `packages/orchestrator` with run-state and plan-graph contracts, created deterministic draft-plan generation, and extended `packages/db` with plan/run persistence plus repositories.
+- `2026-03-11`: Persisted explicit `position` fields on `plan_nodes` and `run_steps` so later plan visualization and run timelines can render stable ordering without relying on insertion order.
+- `2026-03-11`: Initial run-step readiness is derived from the persisted plan graph: root nodes start as `ready`, while dependent nodes start as `pending`.
+- `2026-03-11`: Review fixes for batch 1 added plan-scoped deterministic node and edge ids, cycle rejection in graph validation, transaction-wrapped plan/run creation, and an explicit single-plan-per-outcome invariant in both schema and repository logic.
