@@ -25,6 +25,12 @@ export type CreateOutcomeInput = {
   source: OutcomeSource;
 };
 
+export type UpdateOutcomeStatusInput = {
+  id: string;
+  status: OutcomeStatus;
+  updatedAt: string;
+};
+
 export type AppendOutcomeMessageInput = {
   id: string;
   outcomeId: string;
@@ -101,6 +107,21 @@ export class OutcomeRepository {
       .where(eq(outcomes.workspaceId, workspaceId));
 
     return rows.map(mapOutcomeRow);
+  }
+
+  async updateStatus(
+    input: UpdateOutcomeStatusInput
+  ): Promise<StoredOutcome | null> {
+    const [updated] = await this.db
+      .update(outcomes)
+      .set({
+        status: input.status,
+        updatedAt: new Date(input.updatedAt)
+      })
+      .where(eq(outcomes.id, input.id))
+      .returning();
+
+    return updated ? mapOutcomeRow(updated) : null;
   }
 
   async appendMessage(input: AppendOutcomeMessageInput): Promise<void> {

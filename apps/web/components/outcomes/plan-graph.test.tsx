@@ -1,12 +1,22 @@
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlanGraph } from "./plan-graph";
 import { RunTimeline } from "./run-timeline";
 
+const eventStream = vi.hoisted(() => ({
+  handler: null as ((event: any) => void) | null
+}));
+
 vi.mock("../../lib/events", () => ({
-  subscribeToOutcomeEvents: () => () => {}
+  subscribeToOutcomeEvents: (_outcomeId: string, handler: (event: unknown) => void) => {
+    eventStream.handler = handler as (event: any) => void;
+
+    return () => {
+      eventStream.handler = null;
+    };
+  }
 }));
 
 afterEach(() => {
@@ -132,5 +142,66 @@ describe("RunTimeline", () => {
     expect(
       screen.getByText("Start a run to watch step state appear here.")
     ).toBeInTheDocument();
+  });
+
+  it("keeps the selected run pinned when another run is created for the same outcome", () => {
+    render(
+      <RunTimeline
+        outcomeId="outcome_123"
+        initialRun={{
+          id: "run_123",
+          outcomeId: "outcome_123",
+          planId: "plan_outcome_123",
+          status: "queued",
+          createdAt: "2026-03-11T00:05:00.000Z",
+          updatedAt: "2026-03-11T00:05:00.000Z",
+          steps: [
+            {
+              id: "step_1",
+              runId: "run_123",
+              planNodeId: "node_analyze",
+              title: "Analyze outcome",
+              kind: "root",
+              capability: "reasoning",
+              status: "ready",
+              position: 0,
+              createdAt: "2026-03-11T00:05:00.000Z",
+              updatedAt: "2026-03-11T00:05:00.000Z"
+            },
+            {
+              id: "step_2",
+              runId: "run_123",
+              planNodeId: "node_execute",
+              title: "Execute outcome",
+              kind: "task",
+              capability: "coding",
+              status: "pending",
+              position: 1,
+              createdAt: "2026-03-11T00:05:00.000Z",
+              updatedAt: "2026-03-11T00:05:00.000Z"
+            }
+          ]
+        }}
+      />
+    );
+
+    act(() => {
+      eventStream.handler?.({
+        outcomeId: "outcome_123",
+        type: "run.created",
+        data: {
+          id: "run_999",
+          outcomeId: "outcome_123",
+          planId: "plan_outcome_123",
+          status: "queued",
+          createdAt: "2026-03-11T00:06:00.000Z",
+          updatedAt: "2026-03-11T00:06:00.000Z"
+        }
+      });
+    });
+
+    expect(screen.getByText("Analyze outcome")).toBeInTheDocument();
+    expect(screen.getByText("Execute outcome")).toBeInTheDocument();
+    expect(screen.getByText("2 steps")).toBeInTheDocument();
   });
 });

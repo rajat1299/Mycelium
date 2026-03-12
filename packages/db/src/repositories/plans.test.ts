@@ -463,6 +463,37 @@ describe("plan and run repositories", () => {
     ]);
   });
 
+  it("returns the latest run for an outcome", async () => {
+    const { db } = createRepositoryTestDatabase();
+    const planRepository = new PlanRepository(db as never);
+    const runRepository = new RunRepository(db as never);
+
+    await planRepository.create(buildPlanInput({ id: "plan_123", outcomeId: "outcome_123" }));
+
+    await runRepository.createFromPlan({
+      id: "run_older",
+      outcomeId: "outcome_123",
+      planId: "plan_123",
+      createdAt: "2026-03-11T00:05:00.000Z",
+      updatedAt: "2026-03-11T00:05:00.000Z"
+    });
+
+    await runRepository.createFromPlan({
+      id: "run_newer",
+      outcomeId: "outcome_123",
+      planId: "plan_123",
+      createdAt: "2026-03-11T00:06:00.000Z",
+      updatedAt: "2026-03-11T00:06:00.000Z"
+    });
+
+    await expect(runRepository.getLatestByOutcome("outcome_123")).resolves.toEqual(
+      expect.objectContaining({
+        id: "run_newer",
+        outcomeId: "outcome_123"
+      })
+    );
+  });
+
   it("rolls back the parent run when step insertion fails", async () => {
     const { db, state } = createRepositoryTestDatabase({
       failOnInsertTables: ["run_steps"]

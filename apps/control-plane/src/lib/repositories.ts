@@ -12,7 +12,8 @@ import type {
 import type {
   CreateOutcomeMessageRequest,
   CreateOutcomeRequest,
-  Outcome
+  Outcome,
+  OutcomeStatus
 } from "@computer-oss/protocol";
 
 export type CreateStoredOutcomeInput = CreateOutcomeRequest & { id: string };
@@ -23,10 +24,17 @@ export type AppendOutcomeMessageInput = CreateOutcomeMessageRequest & {
   createdAt: string;
 };
 
+export type UpdateOutcomeStatusInput = {
+  id: string;
+  status: OutcomeStatus;
+  updatedAt: string;
+};
+
 export type OutcomeStore = {
   create(input: CreateStoredOutcomeInput): Promise<Outcome>;
   getById(id: string): Promise<Outcome | null>;
   listByWorkspace(workspaceId: string): Promise<Outcome[]>;
+  updateStatus(input: UpdateOutcomeStatusInput): Promise<Outcome | null>;
   appendMessage(input: AppendOutcomeMessageInput): Promise<void>;
 };
 
@@ -40,6 +48,7 @@ export type PlanStore = {
 export type RunStore = {
   createFromPlan(input: CreateRunFromPlanInput): Promise<StoredRun>;
   getById(id: string): Promise<StoredRun | null>;
+  getLatestByOutcome(outcomeId: string): Promise<StoredRun | null>;
   listSteps(runId: string): Promise<StoredRunStep[]>;
   appendEvent(input: AppendRunEventInput): Promise<void>;
   updateStepStatus(input: UpdateStepStatusInput): Promise<StoredRunStep | null>;
@@ -80,6 +89,22 @@ function createInMemoryRepositoriesState() {
       return Array.from(outcomes.values()).filter(
         (outcome) => outcome.workspaceId === workspaceId
       );
+    },
+    async updateStatus(input) {
+      const current = outcomes.get(input.id);
+
+      if (!current) {
+        return null;
+      }
+
+      const updated: Outcome = {
+        ...current,
+        status: input.status,
+        updatedAt: input.updatedAt
+      };
+
+      outcomes.set(updated.id, updated);
+      return updated;
     },
     async appendMessage(_input) {
       return;
@@ -194,6 +219,30 @@ function createInMemoryRepositoriesState() {
     },
     async getById(id) {
       return runsById.get(id) ?? null;
+    },
+    async getLatestByOutcome(outcomeId) {
+      return (
+        Array.from(runsById.values())
+          .filter((run) => run.outcomeId === outcomeId)
+          .sort((left, right) => {
+            const createdDelta =
+              new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+
+            if (createdDelta !== 0) {
+              return createdDelta;
+            }
+
+            const updatedDelta =
+              new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime();
+
+            if (updatedDelta !== 0) {
+              return updatedDelta;
+            }
+
+            return left.id.localeCompare(right.id);
+          })
+          .at(-1) ?? null
+      );
     },
     async listSteps(runId) {
       return [...(runStepsByRunId.get(runId) ?? [])].sort(

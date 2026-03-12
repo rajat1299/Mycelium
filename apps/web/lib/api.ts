@@ -138,6 +138,25 @@ export async function getRun(runId: string) {
   }
 }
 
+export async function getLatestRun(outcomeId: string) {
+  try {
+    const response = await fetch(
+      `${getControlPlaneBaseUrl()}/api/outcomes/${outcomeId}/runs/latest`,
+      {
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return parseJson(response, (value) => RunDetailSchema.parse(value));
+  } catch {
+    return null;
+  }
+}
+
 export async function createRun(outcomeId: string, input: CreateRunRequest) {
   const payload = CreateRunRequestSchema.parse(input);
   const response = await fetch(
