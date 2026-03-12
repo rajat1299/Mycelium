@@ -49,7 +49,11 @@ describe("run routes", () => {
         status: "ready"
       }),
       expect.objectContaining({
-        title: "Execute outcome",
+        title: "Draft brief",
+        status: "pending"
+      }),
+      expect.objectContaining({
+        title: "Draft operator summary",
         status: "pending"
       }),
       expect.objectContaining({

@@ -100,6 +100,37 @@ describe("plan graph", () => {
     );
   });
 
+  it("rejects duplicate node ids", () => {
+    const result = validatePlanGraph({
+      id: "plan_123",
+      outcomeId: "outcome_123",
+      status: "draft",
+      createdAt: "2026-03-11T00:00:00.000Z",
+      updatedAt: "2026-03-11T00:00:00.000Z",
+      nodes: [
+        {
+          id: "node_root",
+          kind: "root",
+          title: "Analyze outcome",
+          capability: "reasoning"
+        },
+        {
+          id: "node_root",
+          kind: "task",
+          title: "Duplicate analyze outcome",
+          capability: "document"
+        }
+      ],
+      edges: []
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error("Expected the validation result to fail.");
+    }
+    expect(result.errors).toContain("Plan graph contains duplicate node id node_root.");
+  });
+
   it("rejects cyclic graphs", () => {
     const result = validatePlanGraph({
       id: "plan_123",

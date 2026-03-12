@@ -73,6 +73,20 @@ describe("scheduler", () => {
     expect(listNewlyReadySteps(plan, steps, "step_brief")).toEqual([]);
   });
 
+  it("ignores ready steps whose planNodeId is not present in the plan", () => {
+    const plan = buildForkJoinPlan();
+    const steps = [
+      ...buildStepStates(),
+      {
+        id: "step_unknown",
+        planNodeId: "plan_outcome_123:unknown-node",
+        status: "ready" as const
+      }
+    ];
+
+    expect(listReadySteps(plan, steps).map((step) => step.id)).toEqual(["step_analyze"]);
+  });
+
   it("unlocks synthesis after both worker branches complete and detects terminal completion", () => {
     const plan = buildForkJoinPlan();
     const readyForJoin = buildStepStates().map((step) =>

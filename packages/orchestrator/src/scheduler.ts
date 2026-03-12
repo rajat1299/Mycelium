@@ -43,9 +43,14 @@ function createStepMap(steps: SchedulerStepState[]) {
 
 function dependenciesCompleted(
   planNodeId: string,
+  planNodeIds: Set<string>,
   parentsByNodeId: Map<string, string[]>,
   stepsByPlanNodeId: Map<string, SchedulerStepState>
 ) {
+  if (!planNodeIds.has(planNodeId)) {
+    return false;
+  }
+
   return (parentsByNodeId.get(planNodeId) ?? []).every(
     (parentNodeId) => stepsByPlanNodeId.get(parentNodeId)?.status === "completed"
   );
@@ -55,13 +60,19 @@ export function listReadySteps(
   plan: PlanGraph,
   steps: SchedulerStepState[]
 ): SchedulerStepState[] {
+  const planNodeIds = new Set(plan.nodes.map((node) => node.id));
   const parentsByNodeId = createParentNodeMap(plan);
   const stepsByPlanNodeId = createStepMap(steps);
 
   return steps.filter(
     (step) =>
       step.status === "ready" &&
-      dependenciesCompleted(step.planNodeId, parentsByNodeId, stepsByPlanNodeId)
+      dependenciesCompleted(
+        step.planNodeId,
+        planNodeIds,
+        parentsByNodeId,
+        stepsByPlanNodeId
+      )
   );
 }
 
@@ -70,9 +81,14 @@ export function listNewlyReadySteps(
   steps: SchedulerStepState[],
   completedStepId: string
 ): SchedulerStepState[] {
+  const planNodeIds = new Set(plan.nodes.map((node) => node.id));
   const completedStep = steps.find((step) => step.id === completedStepId);
 
-  if (!completedStep || completedStep.status !== "completed") {
+  if (
+    !completedStep ||
+    completedStep.status !== "completed" ||
+    !planNodeIds.has(completedStep.planNodeId)
+  ) {
     return [];
   }
 
@@ -88,7 +104,12 @@ export function listNewlyReadySteps(
         return false;
       }
 
-      return dependenciesCompleted(step.planNodeId, parentsByNodeId, stepsByPlanNodeId);
+      return dependenciesCompleted(
+        step.planNodeId,
+        planNodeIds,
+        parentsByNodeId,
+        stepsByPlanNodeId
+      );
     });
 }
 

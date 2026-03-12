@@ -80,8 +80,18 @@ export function validatePlanGraph(input: unknown): PlanGraphValidationResult {
 
   const plan = parsed.data;
   const errors: string[] = [];
+  const seenNodeIds = new Set<string>();
   const nodesById = new Map(plan.nodes.map((node) => [node.id, node]));
   const rootNodes = plan.nodes.filter((node) => node.kind === "root");
+
+  for (const node of plan.nodes) {
+    if (seenNodeIds.has(node.id)) {
+      errors.push(`Plan graph contains duplicate node id ${node.id}.`);
+      continue;
+    }
+
+    seenNodeIds.add(node.id);
+  }
 
   if (rootNodes.length !== 1) {
     errors.push("Plan graph must contain exactly one root node.");

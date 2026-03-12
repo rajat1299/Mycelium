@@ -34,7 +34,8 @@ describe("plan routes", () => {
     expect(createdPlan.outcomeId).toBe(outcome.id);
     expect(createdPlan.nodes.map((node) => node.title)).toEqual([
       "Analyze outcome",
-      "Execute outcome",
+      "Draft brief",
+      "Draft operator summary",
       "Synthesize result"
     ]);
 
