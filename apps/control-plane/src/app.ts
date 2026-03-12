@@ -7,6 +7,8 @@ import {
 import { registerHealthRoutes } from "./routes/health";
 import { registerOutcomeEventRoutes } from "./routes/outcome-events";
 import { registerOutcomeRoutes } from "./routes/outcomes";
+import { registerPlanRoutes } from "./routes/plans";
+import { registerRunRoutes } from "./routes/runs";
 
 type BuildAppOptions = {
   repositories?: Repositories;
@@ -20,6 +22,8 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   registerHealthRoutes(app);
   registerOutcomeRoutes(app, { repositories, eventBus });
+  registerPlanRoutes(app, { repositories, eventBus });
+  registerRunRoutes(app, { repositories, eventBus });
   registerOutcomeEventRoutes(app, { repositories, eventBus });
 
   return app;

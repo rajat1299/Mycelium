@@ -26,6 +26,9 @@ importers:
       '@computer-oss/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@computer-oss/orchestrator':
+        specifier: workspace:*
+        version: link:../../packages/orchestrator
       '@computer-oss/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
