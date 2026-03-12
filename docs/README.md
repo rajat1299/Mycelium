@@ -12,7 +12,9 @@ Read these in order if you are new to the project:
 8. [Frontend and UX](/Users/rajattiwari/swarm/computer-oss/docs/06-frontend-and-ux.md)
 9. [Execution Roadmap](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-execution-roadmap.md)
 10. [Milestone 2 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-milestone-2-orchestration-kernel-implementation.md)
-11. [Architecture Design Record](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-v1-architecture-design.md)
+11. [Milestone 3 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-12-milestone-3-execution-substrate-design.md)
+12. [Milestone 3 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-12-milestone-3-execution-substrate-implementation.md)
+13. [Architecture Design Record](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-v1-architecture-design.md)
 
 ## How to use this docs set
 
@@ -24,4 +26,4 @@ Read these in order if you are new to the project:
 
 ## Current status
 
-The Milestone 1 foundation slice is implemented. Use the runbook and local setup guide first, then use the design docs to scope the next chunk of work.
+Milestone 2 is integrated on `main`. Use the runbook and local setup guide first, then use the Milestone 3 design and plan docs to start the next execution slice.

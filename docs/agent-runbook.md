@@ -4,12 +4,13 @@ Use this file as the first stop for any Codex agent working on Mycelium.
 
 ## What this repository is
 
-Mycelium is an open-source control plane for outcome-driven AI work. The currently implemented slice is `Milestone 1: Foundation`:
+Mycelium is an open-source control plane for outcome-driven AI work. The current integrated slice is `Milestone 2: Orchestration Kernel`:
 
 - `apps/control-plane`: Fastify API and SSE runtime
 - `apps/web`: Next.js operator console
 - `packages/protocol`: shared contracts
 - `packages/db`: Drizzle schema and repositories
+- `packages/orchestrator`: plan graph, planner, and run-state primitives
 
 Read these next:
 
@@ -18,6 +19,8 @@ Read these next:
 3. [Architecture](/Users/rajattiwari/swarm/computer-oss/docs/02-architecture.md)
 4. [System design](/Users/rajattiwari/swarm/computer-oss/docs/03-system-design.md)
 5. [Execution Roadmap](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-execution-roadmap.md)
+6. [Milestone 3 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-12-milestone-3-execution-substrate-design.md)
+7. [Milestone 3 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-12-milestone-3-execution-substrate-implementation.md)
 
 ## Local setup
 

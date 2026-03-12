@@ -75,7 +75,7 @@ Primary references:
 
 ### M2 Orchestration Kernel
 
-Status: `Planned`
+Status: `Complete`
 
 Goal:
 
@@ -112,7 +112,7 @@ Status: `Planned`
 
 Goal:
 
-Introduce a minimal worker execution layer that can take queued steps and run them in a local or in-process execution provider.
+Introduce the first real execution substrate so Mycelium can prove dependency-aware scheduling, parallel worker execution, and synthesis with a local Docker sandbox provider.
 
 Primary references:
 
@@ -122,17 +122,19 @@ Primary references:
 
 Deliverables:
 
-- `packages/sandbox` or equivalent local execution provider
-- workspace and branch lease management
-- step claim/start/finish path
-- artifact writing path
-- first end-to-end queued-step execution
+- `packages/sandbox` with a local Docker provider
+- `packages/artifacts` with a local filesystem-backed artifact store
+- workspace lease management
+- scheduler-driven step claim/start/finish path
+- realtime run logs and artifact events
+- first end-to-end fork/join execution path
 
 Ship gate:
 
-- a queued run can execute at least one real step end-to-end
+- a queued run can execute a fork/join plan end-to-end
+- independent ready steps run in parallel in isolated local containers
 - step lifecycle transitions are durable
-- artifacts can be attached to a run/step
+- artifacts can be attached to a run/step and shown in the UI
 
 ### M4 Routing and BYO Keys
 
