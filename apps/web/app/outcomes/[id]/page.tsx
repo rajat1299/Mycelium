@@ -16,6 +16,20 @@ import {
 
 export const dynamic = "force-dynamic";
 
+async function resolveRunForOutcome(outcomeId: string, requestedRunId?: string) {
+  if (!requestedRunId) {
+    return getLatestRun(outcomeId);
+  }
+
+  const requestedRun = await getRun(requestedRunId);
+
+  if (requestedRun?.outcomeId === outcomeId) {
+    return requestedRun;
+  }
+
+  return getLatestRun(outcomeId);
+}
+
 export default async function OutcomeDetailPage({
   params,
   searchParams
@@ -30,7 +44,7 @@ export default async function OutcomeDetailPage({
   const [outcome, plan, run] = await Promise.all([
     getOutcome(id),
     getPlan(id),
-    selectedRunId ? getRun(selectedRunId) : getLatestRun(id)
+    resolveRunForOutcome(id, selectedRunId)
   ]);
 
   if (!outcome) {
@@ -105,7 +119,7 @@ export default async function OutcomeDetailPage({
           <RunTimeline
             outcomeId={outcome.id}
             initialRun={run}
-            selectedRunId={selectedRunId ?? run?.id ?? null}
+            selectedRunId={run?.id ?? null}
           />
           <OutcomeActivity outcome={outcome} />
         </div>
