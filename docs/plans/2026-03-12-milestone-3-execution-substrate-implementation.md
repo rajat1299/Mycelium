@@ -631,6 +631,8 @@ Do not hand the milestone back for merge until all of these are true:
 - `2026-03-12`: Task 2 hardening enforces that a sandbox request's `step.runId` must match the parent `runId`, and timeout cleanup now force-removes the named Docker container instead of assuming `docker run --rm` is sufficient after the client process is killed.
 - `2026-03-12`: Review hardening for Task 2 added three more invariants that the initial batch missed: workspace leases now reserve their run before any async directory creation to prevent concurrent double-acquire, artifact paths are canonicalized before returning or persisting metadata so aliases collapse to one identity, and `expectedArtifactPath` must resolve under `artifacts/` because produced-artifact discovery is intentionally scoped to that mounted subtree in M3.
 - `2026-03-12`: Final Task 2 hardening filters caller-supplied `MYCELIUM_*` variables out of `request.environment` before composing the container environment. The sandbox provider is now authoritative for run, step, and artifact context instead of trusting external overrides.
+- `2026-03-12`: Codex began Task 3 on `codex/m3-task3-execution-persistence` after merging Task 2 to `main`. This batch is limited to `packages/db` durability work, and it also carries the executable plan-node metadata into persisted plan/run rows so Task 4 does not have to build an execution service on top of lossy step records.
+- `2026-03-12`: Task 3 required one small implementation-scope deviation from the file list in the plan: `apps/control-plane/src/routes/plans.ts`, `apps/control-plane/src/lib/repositories.ts`, and the matching control-plane tests were updated so the live plan creation path actually passes executable node metadata into the newly expanded DB persistence layer. Without that, Task 3 would have shipped durable columns that the app never wrote.
 
 ## Verification Log
 
@@ -661,3 +663,13 @@ Do not hand the milestone back for merge until all of these are true:
   - `pnpm --filter @computer-oss/sandbox test -- src/provider.test.ts`
   - `pnpm --filter @computer-oss/sandbox test`
   - `pnpm --filter @computer-oss/sandbox typecheck`
+- `2026-03-12` Task 3:
+  - `pnpm install`
+  - `pnpm --filter @computer-oss/db test -- src/repositories/runs.test.ts`
+  - `pnpm --filter @computer-oss/db test -- src/repositories/artifacts.test.ts`
+  - `pnpm --filter @computer-oss/db test -- src/repositories/workspace-leases.test.ts`
+  - `pnpm --filter @computer-oss/db test`
+  - `pnpm --filter @computer-oss/db typecheck`
+  - `pnpm --filter @computer-oss/control-plane test -- test/plans.test.ts`
+  - `pnpm --filter @computer-oss/control-plane test -- test/runs.test.ts`
+  - `pnpm --filter @computer-oss/control-plane typecheck`

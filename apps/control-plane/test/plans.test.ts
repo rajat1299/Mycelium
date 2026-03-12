@@ -38,6 +38,24 @@ describe("plan routes", () => {
       "Draft operator summary",
       "Synthesize result"
     ]);
+    expect(createdPlan.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: "Analyze outcome",
+          instruction: "Inspect the outcome prompt and capture execution notes.",
+          template: "analyze_outcome",
+          expectedArtifactPath: "artifacts/analyze-outcome.md",
+          expectedArtifactKind: "analysis"
+        }),
+        expect.objectContaining({
+          title: "Synthesize result",
+          instruction: "Combine the brief and operator summary into the final result.",
+          template: "synthesize_result",
+          expectedArtifactPath: "artifacts/final-result.md",
+          expectedArtifactKind: "result"
+        })
+      ])
+    );
 
     const readPlan = await app.inject({
       method: "GET",

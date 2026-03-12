@@ -46,19 +46,35 @@ describe("run routes", () => {
     expect(run.steps).toEqual([
       expect.objectContaining({
         title: "Analyze outcome",
-        status: "ready"
+        status: "ready",
+        instruction: "Inspect the outcome prompt and capture execution notes.",
+        template: "analyze_outcome",
+        expectedArtifactPath: "artifacts/analyze-outcome.md",
+        expectedArtifactKind: "analysis"
       }),
       expect.objectContaining({
         title: "Draft brief",
-        status: "pending"
+        status: "pending",
+        instruction: "Write a concise execution brief using the analysis artifact.",
+        template: "draft_brief",
+        expectedArtifactPath: "artifacts/brief.md",
+        expectedArtifactKind: "brief"
       }),
       expect.objectContaining({
         title: "Draft operator summary",
-        status: "pending"
+        status: "pending",
+        instruction: "Write the operator-facing summary from the analysis artifact.",
+        template: "draft_operator_summary",
+        expectedArtifactPath: "artifacts/operator-summary.md",
+        expectedArtifactKind: "operator_summary"
       }),
       expect.objectContaining({
         title: "Synthesize result",
-        status: "pending"
+        status: "pending",
+        instruction: "Combine the brief and operator summary into the final result.",
+        template: "synthesize_result",
+        expectedArtifactPath: "artifacts/final-result.md",
+        expectedArtifactKind: "result"
       })
     ]);
 

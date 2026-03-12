@@ -101,8 +101,11 @@ export const artifacts = pgTable("artifacts", {
   outcomeId: text("outcome_id")
     .notNull()
     .references(() => outcomes.id),
+  runId: text("run_id").references(() => outcomeRuns.id),
+  stepId: text("step_id").references(() => runSteps.id),
   kind: text("kind").notNull(),
-  path: text("path"),
+  relativePath: text("relative_path").notNull(),
+  size: integer("size").notNull(),
   metadata: jsonb("metadata").notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
 });
@@ -147,6 +150,10 @@ export const planNodes = pgTable("plan_nodes", {
   kind: text("kind").notNull(),
   title: text("title").notNull(),
   capability: text("capability").notNull(),
+  instruction: text("instruction"),
+  template: text("template"),
+  expectedArtifactPath: text("expected_artifact_path"),
+  expectedArtifactKind: text("expected_artifact_kind"),
   position: integer("position").notNull()
 });
 
@@ -187,6 +194,10 @@ export const runSteps = pgTable("run_steps", {
   title: text("title").notNull(),
   kind: text("kind").notNull(),
   capability: text("capability").notNull(),
+  instruction: text("instruction"),
+  template: text("template"),
+  expectedArtifactPath: text("expected_artifact_path"),
+  expectedArtifactKind: text("expected_artifact_kind"),
   status: stepStatusEnum("status").notNull().default("pending"),
   position: integer("position").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -201,4 +212,16 @@ export const runEvents = pgTable("run_events", {
   eventType: text("event_type").notNull(),
   payload: jsonb("payload").notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+});
+
+export const workspaceLeases = pgTable("workspace_leases", {
+  runId: text("run_id")
+    .primaryKey()
+    .references(() => outcomeRuns.id),
+  rootPath: text("root_path").notNull(),
+  inputPath: text("input_path").notNull(),
+  artifactsPath: text("artifacts_path").notNull(),
+  logsPath: text("logs_path").notNull(),
+  acquiredAt: timestamp("acquired_at", { withTimezone: true }).notNull().defaultNow(),
+  releasedAt: timestamp("released_at", { withTimezone: true })
 });

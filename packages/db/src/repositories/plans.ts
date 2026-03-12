@@ -19,6 +19,10 @@ export type StoredPlanNode = {
   kind: string;
   title: string;
   capability: string;
+  instruction?: string;
+  template?: string;
+  expectedArtifactPath?: string;
+  expectedArtifactKind?: string;
   position: number;
 };
 
@@ -35,7 +39,19 @@ export type CreatePlanInput = {
   status: PlanRow["status"];
   createdAt: string;
   updatedAt: string;
-  nodes: Array<Pick<StoredPlanNode, "id" | "kind" | "title" | "capability">>;
+  nodes: Array<
+    Pick<
+      StoredPlanNode,
+      | "id"
+      | "kind"
+      | "title"
+      | "capability"
+      | "instruction"
+      | "template"
+      | "expectedArtifactPath"
+      | "expectedArtifactKind"
+    >
+  >;
   edges: Array<Pick<StoredPlanEdge, "id" | "from" | "to">>;
 };
 
@@ -56,6 +72,14 @@ function mapPlanNodeRow(row: PlanNodeRow): StoredPlanNode {
     kind: row.kind,
     title: row.title,
     capability: row.capability,
+    ...(row.instruction ? { instruction: row.instruction } : {}),
+    ...(row.template ? { template: row.template } : {}),
+    ...(row.expectedArtifactPath
+      ? { expectedArtifactPath: row.expectedArtifactPath }
+      : {}),
+    ...(row.expectedArtifactKind
+      ? { expectedArtifactKind: row.expectedArtifactKind }
+      : {}),
     position: row.position
   };
 }
@@ -109,6 +133,14 @@ export class PlanRepository {
             kind: node.kind,
             title: node.title,
             capability: node.capability,
+            ...(node.instruction ? { instruction: node.instruction } : {}),
+            ...(node.template ? { template: node.template } : {}),
+            ...(node.expectedArtifactPath
+              ? { expectedArtifactPath: node.expectedArtifactPath }
+              : {}),
+            ...(node.expectedArtifactKind
+              ? { expectedArtifactKind: node.expectedArtifactKind }
+              : {}),
             position: index
           }))
         );

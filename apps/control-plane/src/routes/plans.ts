@@ -82,7 +82,11 @@ export function registerPlanRoutes(
           id: node.id,
           kind: node.kind,
           title: node.title,
-          capability: node.capability
+          capability: node.capability,
+          instruction: node.instruction,
+          template: node.template,
+          expectedArtifactPath: node.expectedArtifactPath,
+          expectedArtifactKind: node.expectedArtifactKind
         })),
         edges: draftPlan.edges
       });

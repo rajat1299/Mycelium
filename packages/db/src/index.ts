@@ -3,3 +3,5 @@ export * from "./client";
 export * from "./repositories/outcomes";
 export * from "./repositories/plans";
 export * from "./repositories/runs";
+export * from "./repositories/artifacts";
+export * from "./repositories/workspace-leases";

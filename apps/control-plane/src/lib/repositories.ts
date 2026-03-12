@@ -141,6 +141,14 @@ function createInMemoryRepositoriesState() {
         kind: node.kind,
         title: node.title,
         capability: node.capability,
+        ...(node.instruction ? { instruction: node.instruction } : {}),
+        ...(node.template ? { template: node.template } : {}),
+        ...(node.expectedArtifactPath
+          ? { expectedArtifactPath: node.expectedArtifactPath }
+          : {}),
+        ...(node.expectedArtifactKind
+          ? { expectedArtifactKind: node.expectedArtifactKind }
+          : {}),
         position: index
       }));
       const edges = input.edges.map((edge) => ({
@@ -206,6 +214,14 @@ function createInMemoryRepositoriesState() {
         title: node.title,
         kind: node.kind,
         capability: node.capability,
+        ...(node.instruction ? { instruction: node.instruction } : {}),
+        ...(node.template ? { template: node.template } : {}),
+        ...(node.expectedArtifactPath
+          ? { expectedArtifactPath: node.expectedArtifactPath }
+          : {}),
+        ...(node.expectedArtifactKind
+          ? { expectedArtifactKind: node.expectedArtifactKind }
+          : {}),
         status: targetNodeIds.has(node.id) ? "pending" : "ready",
         position: node.position,
         createdAt: input.createdAt,
