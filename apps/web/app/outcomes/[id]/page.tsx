@@ -5,7 +5,14 @@ import { OutcomeActivity } from "../../../components/outcomes/outcome-activity";
 import { PlanActions } from "../../../components/outcomes/plan-actions";
 import { PlanGraph } from "../../../components/outcomes/plan-graph";
 import { RunTimeline } from "../../../components/outcomes/run-timeline";
-import { createPlan, createRun, getOutcome, getPlan, getRun } from "../../../lib/api";
+import {
+  createPlan,
+  createRun,
+  getLatestRun,
+  getOutcome,
+  getPlan,
+  getRun
+} from "../../../lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +30,7 @@ export default async function OutcomeDetailPage({
   const [outcome, plan, run] = await Promise.all([
     getOutcome(id),
     getPlan(id),
-    selectedRunId ? getRun(selectedRunId) : Promise.resolve(null)
+    selectedRunId ? getRun(selectedRunId) : getLatestRun(id)
   ]);
 
   if (!outcome) {
@@ -95,7 +102,11 @@ export default async function OutcomeDetailPage({
         </div>
 
         <div className="space-y-8">
-          <RunTimeline outcomeId={outcome.id} initialRun={run} />
+          <RunTimeline
+            outcomeId={outcome.id}
+            initialRun={run}
+            selectedRunId={selectedRunId ?? run?.id ?? null}
+          />
           <OutcomeActivity outcome={outcome} />
         </div>
       </section>

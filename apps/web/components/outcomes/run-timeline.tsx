@@ -8,6 +8,7 @@ import { Badge } from "../ui/badge";
 type RunTimelineProps = {
   outcomeId: string;
   initialRun: RunDetail | null;
+  selectedRunId?: string | null;
 };
 
 function sortSteps(steps: RunStep[]) {
@@ -38,33 +39,67 @@ function statusVariant(status: string) {
   }
 }
 
-export function RunTimeline({ outcomeId, initialRun }: RunTimelineProps) {
-  const [run, setRun] = useState<RunDetail | null>(initialRun);
+type RunTimelineState = {
+  pinnedRunId: string | null;
+  run: RunDetail | null;
+};
+
+export function RunTimeline({
+  outcomeId,
+  initialRun,
+  selectedRunId = null
+}: RunTimelineProps) {
+  const [state, setState] = useState<RunTimelineState>({
+    pinnedRunId: selectedRunId ?? initialRun?.id ?? null,
+    run: initialRun
+  });
+  const run = state.run;
 
   useEffect(() => {
-    setRun(initialRun);
-  }, [initialRun]);
+    setState({
+      pinnedRunId: selectedRunId ?? initialRun?.id ?? null,
+      run: initialRun
+    });
+  }, [initialRun, selectedRunId]);
 
   useEffect(() => {
     return subscribeToOutcomeEvents(outcomeId, (event) => {
       startTransition(() => {
         if (event.type === "run.created") {
-          setRun((current) => ({
-            ...event.data,
-            steps:
-              current && current.id === event.data.id ? sortSteps(current.steps) : []
-          }));
+          setState((current) => {
+            if (current.pinnedRunId && current.pinnedRunId !== event.data.id) {
+              return current;
+            }
+
+            return {
+              pinnedRunId: event.data.id,
+              run: {
+                ...event.data,
+                steps:
+                  current.run && current.run.id === event.data.id
+                    ? sortSteps(current.run.steps)
+                    : []
+              }
+            };
+          });
         }
 
         if (event.type === "run.step.updated") {
-          setRun((current) => {
-            if (!current || current.id !== event.data.runId) {
+          setState((current) => {
+            if (
+              !current.run ||
+              current.pinnedRunId !== event.data.runId ||
+              current.run.id !== event.data.runId
+            ) {
               return current;
             }
 
             return {
               ...current,
-              steps: upsertStep(current.steps, event.data)
+              run: {
+                ...current.run,
+                steps: upsertStep(current.run.steps, event.data)
+              }
             };
           });
         }

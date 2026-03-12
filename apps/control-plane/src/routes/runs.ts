@@ -25,6 +25,14 @@ async function buildRunResponse(
 ): Promise<ReturnType<typeof RunDetailSchema.parse> | null> {
   const run = await repositories.runs.getById(runId);
 
+  return buildRunDetail(repositories, run);
+}
+
+async function buildRunDetail(
+  repositories: Repositories,
+  run: Awaited<ReturnType<Repositories["runs"]["getById"]>>
+): Promise<ReturnType<typeof RunDetailSchema.parse> | null> {
+
   if (!run) {
     return null;
   }
@@ -84,11 +92,27 @@ export function registerRunRoutes(
       throw error;
     }
 
+    const updatedOutcome = await options.repositories.outcomes.updateStatus({
+      id: outcome.id,
+      status: "queued",
+      updatedAt: now
+    });
+
+    if (!updatedOutcome) {
+      return reply.code(500).send(badRequest("Failed to update outcome status."));
+    }
+
     const response = await buildRunResponse(options.repositories, run.id);
 
     if (!response) {
       return reply.code(500).send(badRequest("Failed to read persisted run."));
     }
+
+    options.eventBus.publish({
+      outcomeId: outcome.id,
+      type: "outcome.updated",
+      data: updatedOutcome
+    });
 
     const runEventData = RunSchema.parse({
       id: response.id,
@@ -132,6 +156,29 @@ export function registerRunRoutes(
     }
 
     return reply.code(201).send(response);
+  });
+
+  app.get("/api/outcomes/:id/runs/latest", async (request, reply) => {
+    const params = request.params as { id?: string };
+
+    if (!params.id) {
+      return reply.code(400).send(badRequest("Outcome id is required."));
+    }
+
+    const outcome = await options.repositories.outcomes.getById(params.id);
+
+    if (!outcome) {
+      return reply.code(404).send(badRequest("Outcome not found."));
+    }
+
+    const run = await options.repositories.runs.getLatestByOutcome(params.id);
+    const response = await buildRunDetail(options.repositories, run);
+
+    if (!response) {
+      return reply.code(404).send(badRequest("Run not found."));
+    }
+
+    return reply.code(200).send(response);
   });
 
   app.get("/api/runs/:runId", async (request, reply) => {

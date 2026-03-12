@@ -82,6 +82,22 @@ function mapRunStepRow(row: RunStepRow): StoredRunStep {
   };
 }
 
+function compareRunRows(left: RunRow, right: RunRow) {
+  const createdDelta = left.createdAt.getTime() - right.createdAt.getTime();
+
+  if (createdDelta !== 0) {
+    return createdDelta;
+  }
+
+  const updatedDelta = left.updatedAt.getTime() - right.updatedAt.getTime();
+
+  if (updatedDelta !== 0) {
+    return updatedDelta;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
 export class RunRepository {
   constructor(private readonly db: DatabaseClient) {}
 
@@ -153,6 +169,16 @@ export class RunRepository {
   async getById(id: string): Promise<StoredRun | null> {
     const rows = await this.db.select().from(outcomeRuns);
     const found = rows.find((row) => row.id === id);
+    return found ? mapRunRow(found) : null;
+  }
+
+  async getLatestByOutcome(outcomeId: string): Promise<StoredRun | null> {
+    const rows = await this.db.select().from(outcomeRuns);
+    const found = rows
+      .filter((row) => row.outcomeId === outcomeId)
+      .sort(compareRunRows)
+      .at(-1);
+
     return found ? mapRunRow(found) : null;
   }
 

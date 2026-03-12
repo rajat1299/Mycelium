@@ -95,4 +95,58 @@ describe("OutcomeRepository", () => {
       }
     ]);
   });
+
+  it("updates outcome status and timestamp", async () => {
+    const updatedAt = new Date("2026-03-11T00:15:00.000Z");
+    const db = {
+      update(table: typeof outcomes) {
+        expect(table).toBe(outcomes);
+
+        return {
+          set(values: Record<string, unknown>) {
+            expect(values).toEqual({
+              status: "queued",
+              updatedAt
+            });
+
+            return {
+              where() {
+                return {
+                  async returning() {
+                    return [
+                      {
+                        id: "outcome_123",
+                        workspaceId: "ws_default",
+                        userId: "user_default",
+                        prompt: "Draft a smoke-path memo",
+                        source: "web",
+                        status: "queued",
+                        createdAt: new Date("2026-03-11T00:00:00.000Z"),
+                        updatedAt
+                      }
+                    ];
+                  }
+                };
+              }
+            };
+          }
+        };
+      }
+    };
+
+    const repository = new OutcomeRepository(db as never);
+    const outcome = await repository.updateStatus({
+      id: "outcome_123",
+      status: "queued",
+      updatedAt: updatedAt.toISOString()
+    });
+
+    expect(outcome).toEqual(
+      expect.objectContaining({
+        id: "outcome_123",
+        status: "queued",
+        updatedAt: "2026-03-11T00:15:00.000Z"
+      })
+    );
+  });
 });
