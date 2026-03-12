@@ -1,8 +1,12 @@
 import {
+  CreateRunRequestSchema,
   CreateOutcomeRequestSchema,
   OutcomeListResponseSchema,
   OutcomeSchema,
+  PlanSchema,
+  RunDetailSchema,
   type CreateOutcomeRequest,
+  type CreateRunRequest,
   type Outcome
 } from "@computer-oss/protocol";
 
@@ -81,6 +85,78 @@ export async function createOutcome(input: CreateOutcomeRequest): Promise<Outcom
   }
 
   return parseJson(response, (value) => OutcomeSchema.parse(value));
+}
+
+export async function getPlan(outcomeId: string) {
+  try {
+    const response = await fetch(
+      `${getControlPlaneBaseUrl()}/api/outcomes/${outcomeId}/plan`,
+      {
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return parseJson(response, (value) => PlanSchema.parse(value));
+  } catch {
+    return null;
+  }
+}
+
+export async function createPlan(outcomeId: string) {
+  const response = await fetch(
+    `${getControlPlaneBaseUrl()}/api/outcomes/${outcomeId}/plan`,
+    {
+      method: "POST",
+      cache: "no-store"
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to create draft plan.");
+  }
+
+  return parseJson(response, (value) => PlanSchema.parse(value));
+}
+
+export async function getRun(runId: string) {
+  try {
+    const response = await fetch(`${getControlPlaneBaseUrl()}/api/runs/${runId}`, {
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return parseJson(response, (value) => RunDetailSchema.parse(value));
+  } catch {
+    return null;
+  }
+}
+
+export async function createRun(outcomeId: string, input: CreateRunRequest) {
+  const payload = CreateRunRequestSchema.parse(input);
+  const response = await fetch(
+    `${getControlPlaneBaseUrl()}/api/outcomes/${outcomeId}/runs`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      cache: "no-store"
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to create run.");
+  }
+
+  return parseJson(response, (value) => RunDetailSchema.parse(value));
 }
 
 export function getControlPlaneEventUrl(outcomeId: string) {
