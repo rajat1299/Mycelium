@@ -1,24 +1,60 @@
+import { revalidatePath } from "next/cache";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { OutcomeActivity } from "../../../components/outcomes/outcome-activity";
-import { getOutcome } from "../../../lib/api";
+import { PlanActions } from "../../../components/outcomes/plan-actions";
+import { PlanGraph } from "../../../components/outcomes/plan-graph";
+import { RunTimeline } from "../../../components/outcomes/run-timeline";
+import { createPlan, createRun, getOutcome, getPlan, getRun } from "../../../lib/api";
 
 export const dynamic = "force-dynamic";
 
 export default async function OutcomeDetailPage({
-  params
+  params,
+  searchParams
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ runId?: string | string[] }>;
 }) {
-  const { id } = await params;
-  const outcome = await getOutcome(id);
+  const [{ id }, resolvedSearchParams] = await Promise.all([params, searchParams]);
+  const runIdParam = resolvedSearchParams.runId;
+  const selectedRunId =
+    typeof runIdParam === "string" ? runIdParam : runIdParam?.[0];
+  const [outcome, plan, run] = await Promise.all([
+    getOutcome(id),
+    getPlan(id),
+    selectedRunId ? getRun(selectedRunId) : Promise.resolve(null)
+  ]);
 
   if (!outcome) {
     notFound();
   }
 
+  async function createPlanAction() {
+    "use server";
+
+    await createPlan(id);
+    revalidatePath(`/outcomes/${id}`);
+    redirect(`/outcomes/${id}`);
+  }
+
+  async function startRunAction(formData: FormData) {
+    "use server";
+
+    const planId = String(formData.get("planId") ?? "").trim();
+
+    if (!planId) {
+      return;
+    }
+
+    const createdRun = await createRun(id, { planId });
+
+    revalidatePath(`/outcomes/${id}`);
+    redirect(`/outcomes/${id}?runId=${createdRun.id}`);
+  }
+
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 py-10">
+    <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-6 py-10">
       <div className="flex items-center justify-between gap-4">
         <div className="space-y-3">
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
@@ -41,14 +77,27 @@ export default async function OutcomeDetailPage({
         </Link>
       </div>
 
-      <section className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
-        <article className="rounded-3xl border border-panel-line bg-panel p-6 shadow-panel">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
-            Current brief
-          </p>
-          <p className="mt-4 text-base leading-7 text-ink">{outcome.prompt}</p>
-        </article>
-        <OutcomeActivity outcome={outcome} />
+      <section className="grid gap-8 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="space-y-8">
+          <article className="rounded-3xl border border-panel-line bg-panel p-6 shadow-panel">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
+              Current brief
+            </p>
+            <p className="mt-4 text-base leading-7 text-ink">{outcome.prompt}</p>
+          </article>
+          <PlanActions
+            planId={plan?.id ?? null}
+            hasRun={Boolean(run)}
+            createPlanAction={createPlanAction}
+            startRunAction={startRunAction}
+          />
+          <PlanGraph outcomeId={outcome.id} initialPlan={plan} />
+        </div>
+
+        <div className="space-y-8">
+          <RunTimeline outcomeId={outcome.id} initialRun={run} />
+          <OutcomeActivity outcome={outcome} />
+        </div>
       </section>
     </main>
   );

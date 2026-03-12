@@ -153,6 +153,8 @@ Mycelium is the assembled thing. Not a framework. A product you run with one com
 git clone https://github.com/rajat1299/Mycelium.git
 cd mycelium
 cp .env.example .env
+cp apps/control-plane/.env.example apps/control-plane/.env.local
+cp apps/web/.env.example apps/web/.env.local
 ```
 
 Open `.env` and add your API keys:
@@ -166,10 +168,13 @@ GOOGLE_AI_API_KEY=...
 You only need keys for the providers you want to use. One key is enough to get started.
 
 ```bash
-docker compose up
+pnpm install
+pnpm db:up
+pnpm db:push
+pnpm dev
 ```
 
-Open `http://localhost:4400`. The web console walks you through onboarding — set your router policy (or accept the defaults) and describe your first outcome.
+Open `http://127.0.0.1:3000`. The current Milestone 2 slice lets you create an outcome, generate a deterministic draft plan, start a run from that plan, and watch the run timeline materialize in the operator console.
 
 ### Messaging (optional)
 
@@ -177,26 +182,30 @@ Mycelium supports Slack and Telegram out of the box. See the [messaging setup gu
 
 ### API
 
-Everything available in the web console is available via API:
+The currently shipped local API surface for the Milestone 2 slice is:
 
 ```bash
 # Create an outcome
-curl -X POST http://localhost:4400/api/outcomes \
-  -H "Authorization: Bearer $MYCELIUM_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Research top 5 AI dev tools competitors and write a report"}'
+curl -X POST http://127.0.0.1:4000/api/outcomes \
+  -H "content-type: application/json" \
+  -d '{"workspaceId":"ws_default","userId":"user_default","prompt":"Research the top 5 AI dev tool competitors and write a launch brief","source":"web"}'
 
-# Get the plan graph
-curl http://localhost:4400/api/outcomes/:id/graph
+# Generate the persisted draft plan
+curl -X POST http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/plan
 
-# Stream progress
-wscat -c ws://localhost:4400/ws/outcomes/:id
+# Read the plan graph
+curl http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/plan
 
-# Approve a side effect
-curl -X POST http://localhost:4400/api/approvals/:id/approve
+# Start a run from that plan
+curl -X POST http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/runs \
+  -H "content-type: application/json" \
+  -d '{"planId":"plan_<OUTCOME_ID>"}'
+
+# Stream live plan/run events over SSE
+curl -N http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/events
 ```
 
-Full API docs at `http://localhost:4400/api/docs`. Realtime events available over WebSocket.
+The operator console consumes the same control-plane endpoints and the same outcome-scoped SSE stream.
 
 ---
 
@@ -226,7 +235,7 @@ mycelium/
 
 ### Stack
 
-- **Control plane:** TypeScript/Node.js, HTTP + WebSocket
+- **Control plane:** TypeScript/Node.js, HTTP + SSE
 - **Database:** PostgreSQL for all control-plane state
 - **Blob store:** Local filesystem by default, behind an object-store abstraction for later hosted deployments
 - **Sandboxes:** Docker containers per worker, fully isolated
@@ -244,7 +253,7 @@ mycelium/
 - [ ] Policy-driven multi-model routing with deterministic fallback
 - [ ] Approval system for side effects
 - [ ] Web command center with live run monitoring
-- [ ] REST + WebSocket API
+- [ ] REST + SSE API
 - [ ] Slack and Telegram adapters
 - [ ] Scheduled and recurring runs
 - [ ] Artifact store with previews and downloads

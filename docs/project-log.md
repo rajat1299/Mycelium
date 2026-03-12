@@ -50,7 +50,7 @@ Do not rewrite older entries except to correct factual mistakes.
 
 - Date: `2026-03-11`
 - Default branch: `main`
-- Current integrated runtime baseline: `85a56b2`
+- Current integrated runtime baseline: `6daba0d`
 - Completed milestone: `M1 Foundation`
 - Next planned milestone: `M2 Orchestration Kernel`
 - Current mode:
@@ -70,6 +70,7 @@ Do not rewrite older entries except to correct factual mistakes.
 - `2026-03-11`: Use a separate project log plus milestone-local updates. Do not rely on inline edits to milestone plans as the only tracking mechanism.
 - `2026-03-11`: Keep this chat window as review/planning/management space. Implementation agents should work in separate windows and hand off via docs plus commits.
 - `2026-03-11`: Use placeholder env values in tracked files and keep real local secrets only in ignored env files.
+- `2026-03-11`: Keep GitHub remote branches limited to `main`. Use local `codex/*` worktree branches for execution chunks, merge only verified work, and delete any temporary remote feature branches immediately after integration.
 
 ## Activity log
 
@@ -79,3 +80,6 @@ Do not rewrite older entries except to correct factual mistakes.
 - `2026-03-11` | `Codex` | `codex/m2-orchestration-kernel` | Started Milestone 2 execution in an isolated global worktree and began the first implementation batch for orchestration contracts, plan/run persistence, and deterministic draft planning. | Baseline verified in the worktree with `pnpm install` and `pnpm test` before code changes.
 - `2026-03-11` | `Codex` | `codex/m2-orchestration-kernel` | Completed the first Milestone 2 implementation batch: added `packages/orchestrator`, added durable plan/run tables and repositories, and implemented deterministic draft-plan generation. | Verified with package-level TDD checks plus workspace `pnpm test`, `pnpm typecheck`, `pnpm build`, and a lockfile refresh via `pnpm install`.
 - `2026-03-11` | `Codex` | `codex/m2-orchestration-kernel` | Applied review-driven fixes to Milestone 2 batch 1: namespaced planner node/edge ids, added graph cycle rejection, wrapped plan/run creation in transactions, and enforced one-plan-per-outcome explicitly. | Re-verified with targeted TDD checks plus workspace `pnpm test`, `pnpm typecheck`, and `pnpm build`.
+- `2026-03-11` | `Codex` | `codex/m2-task4-api-ui` | Completed Milestone 2 Task 4 on a fresh local worktree branch: added typed plan/run protocol contracts, added control-plane plan/run routes, and expanded the outcome event stream with `plan.created`, `run.created`, and `run.step.updated`. | Verified with protocol and control-plane package tests, typechecks, builds, and a full workspace `pnpm test`, `pnpm typecheck`, `pnpm build`.
+- `2026-03-11` | `Codex` | `codex/m2-task4-api-ui` | Completed Milestone 2 Task 5: added operator-console plan actions, draft-plan graph rendering, run timeline rendering, SSE-driven UI updates, and local Spell-inspired badge/button/spinner primitives for the orchestration panels. | Verified with new web component tests plus a full workspace `pnpm test`, `pnpm typecheck`, and `pnpm build`.
+- `2026-03-11` | `Codex` | `codex/m2-task4-api-ui` | Updated the README, local-dev guide, milestone notes, and project log for the plan/run workflow. | Final workspace verification passed. Docker smoke execution was not run here because the Docker daemon was unavailable in the execution environment.

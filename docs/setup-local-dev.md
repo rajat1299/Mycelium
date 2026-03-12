@@ -1,10 +1,11 @@
 # Local Development
 
-This repository is currently shipping the Milestone 1 foundation slice:
+This repository is currently shipping the Milestone 2 orchestration-kernel slice:
 
 - Postgres-backed outcome storage
-- Fastify control plane with outcome CRUD and SSE
-- Next.js command center for create, list, and detail views
+- Fastify control plane with outcome, draft-plan, and run APIs
+- Outcome-scoped SSE for outcome, plan, run, and step lifecycle updates
+- Next.js operator console for create, list, detail, draft-plan, and run timeline views
 
 ## Prerequisites
 
@@ -19,7 +20,9 @@ This repository is currently shipping the Milestone 1 foundation slice:
 3. Start the control plane.
 4. Start the web app.
 5. Create an outcome from the web UI.
-6. Confirm it appears in the list and that the detail view receives an SSE update.
+6. Generate a draft plan from the outcome detail page.
+7. Start a run from the persisted plan.
+8. Confirm the draft plan, run timeline, and live activity panels update without a manual refresh.
 
 ## First-time setup
 
@@ -55,7 +58,9 @@ Expected local services:
 2. Submit a new outcome from the home page.
 3. Confirm the new outcome appears in the list.
 4. Open the outcome detail page.
-5. In a second terminal, append a message through the control plane:
+5. Click `Generate draft plan` and confirm the three-node orchestration graph renders.
+6. Click `Start run` and confirm the run timeline shows `Analyze outcome`, `Execute outcome`, and `Synthesize result`.
+7. In a second terminal, append a message through the control plane:
 
 ```bash
 curl -X POST http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/messages \
@@ -63,13 +68,24 @@ curl -X POST http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/messages \
   -d '{"role":"assistant","content":"Smoke path event from the control plane."}'
 ```
 
-6. Confirm the detail page adds a new activity entry without a refresh.
+8. Confirm the detail page adds a new activity entry without a refresh.
+9. Optional API verification for the same outcome:
+
+```bash
+curl -X POST http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/plan
+curl http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/plan
+curl -X POST http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/runs \
+  -H 'content-type: application/json' \
+  -d '{"planId":"plan_<OUTCOME_ID>"}'
+curl -N http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/events
+```
 
 ## Verification commands
 
 ```bash
 pnpm test
 pnpm typecheck
+pnpm build
 curl http://127.0.0.1:4000/health
 ```
 

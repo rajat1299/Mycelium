@@ -1,6 +1,9 @@
 import {
   MessageCreatedDataSchema,
   OutcomeSchema,
+  PlanSchema,
+  RunSchema,
+  RunStepSchema,
   type OutcomeStreamEvent
 } from "@computer-oss/protocol";
 
@@ -33,8 +36,44 @@ export function subscribeToOutcomeEvents(
     });
   };
 
+  const handlePlanCreated = (event: Event) => {
+    const message = event as MessageEvent<string>;
+
+    onEvent({
+      outcomeId,
+      type: "plan.created",
+      data: PlanSchema.parse(JSON.parse(message.data))
+    });
+  };
+
+  const handleRunCreated = (event: Event) => {
+    const message = event as MessageEvent<string>;
+
+    onEvent({
+      outcomeId,
+      type: "run.created",
+      data: RunSchema.parse(JSON.parse(message.data))
+    });
+  };
+
+  const handleRunStepUpdated = (event: Event) => {
+    const message = event as MessageEvent<string>;
+
+    onEvent({
+      outcomeId,
+      type: "run.step.updated",
+      data: RunStepSchema.parse(JSON.parse(message.data))
+    });
+  };
+
   source.addEventListener("outcome.updated", handleOutcomeUpdated as EventListener);
   source.addEventListener("message.created", handleMessageCreated as EventListener);
+  source.addEventListener("plan.created", handlePlanCreated as EventListener);
+  source.addEventListener("run.created", handleRunCreated as EventListener);
+  source.addEventListener(
+    "run.step.updated",
+    handleRunStepUpdated as EventListener
+  );
 
   return () => {
     source.removeEventListener(
@@ -44,6 +83,12 @@ export function subscribeToOutcomeEvents(
     source.removeEventListener(
       "message.created",
       handleMessageCreated as EventListener
+    );
+    source.removeEventListener("plan.created", handlePlanCreated as EventListener);
+    source.removeEventListener("run.created", handleRunCreated as EventListener);
+    source.removeEventListener(
+      "run.step.updated",
+      handleRunStepUpdated as EventListener
     );
     source.close();
   };

@@ -36,6 +36,19 @@ h3 {
   box-sizing: border-box;
 }
 
+@keyframes spell-bars {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scaleY(0.45);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
 a {
   color: inherit;
   text-decoration: none;
