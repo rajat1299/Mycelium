@@ -625,6 +625,10 @@ Do not hand the milestone back for merge until all of these are true:
 - `2026-03-12`: Codex began Task 1 on `codex/m3-task1-executable-plans` after loading the required reading, reviewing the Task 1 reference notes, and verifying a clean worktree baseline with `pnpm install` and `pnpm test`. No blocker was found in the plan; the first batch remains limited to executable plan contracts, fork/join deterministic planning, and pure scheduler helpers.
 - `2026-03-12`: Task 1 keeps the new executable node fields additive in the shared schemas for now. The deterministic planner emits `instruction`, `template`, `expectedArtifactPath`, and `expectedArtifactKind` immediately, but the protocol and plan-graph schemas still accept older persisted nodes until later M3 tasks extend durable storage.
 - `2026-03-12`: Review hardening for Task 1 added two invariants that the initial batch missed: plan graphs now reject duplicate node IDs, and scheduler helpers ignore step rows whose `planNodeId` is not owned by the current plan. The control-plane route tests were also updated so the branch stays integration-safe with the new fork/join planner shape.
+- `2026-03-12`: Codex began Task 2 on `codex/m3-task2-sandbox-artifacts` after reloading the M3 implementation plan and the Terragon/OpenClaw sandbox references. This batch stays limited to `packages/sandbox` and `packages/artifacts`, with TDD coverage first for deterministic workspace allocation, lease exclusivity, safe artifact root resolution, and Docker execution request translation.
+- `2026-03-12`: Task 2 keeps the sandbox boundary package-local instead of importing `RunStep` directly from `@computer-oss/protocol`. The provider now accepts a narrow execution-step contract so the package stays standalone and future control-plane code can map durable run-step rows into it explicitly.
+- `2026-03-12`: Task 2 added an injectable Docker runner to `LocalDockerProvider` so unit tests can verify container request translation without requiring a live Docker daemon. The provider also normalizes expected artifact paths before composing `/workspace/...` targets to prevent container-side path escape.
+- `2026-03-12`: Task 2 hardening enforces that a sandbox request's `step.runId` must match the parent `runId`, and timeout cleanup now force-removes the named Docker container instead of assuming `docker run --rm` is sufficient after the client process is killed.
 
 ## Verification Log
 
@@ -638,3 +642,9 @@ Do not hand the milestone back for merge until all of these are true:
   - `pnpm test`
   - `pnpm typecheck`
   - `pnpm build`
+- `2026-03-12` Task 2:
+  - `pnpm install`
+  - `pnpm --filter @computer-oss/sandbox test`
+  - `pnpm --filter @computer-oss/sandbox typecheck`
+  - `pnpm --filter @computer-oss/artifacts test`
+  - `pnpm --filter @computer-oss/artifacts typecheck`
