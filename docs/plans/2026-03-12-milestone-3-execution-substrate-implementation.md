@@ -622,7 +622,12 @@ Do not hand the milestone back for merge until all of these are true:
 ## Implementation Notes
 
 - `2026-03-12`: Initial manager-authored plan created. M3 is explicitly locked to a local Docker sandbox provider. Do not widen scope into remote daemons, provider routing, or BYO-key work in this milestone.
+- `2026-03-12`: Codex began Task 1 on `codex/m3-task1-executable-plans` after loading the required reading, reviewing the Task 1 reference notes, and verifying a clean worktree baseline with `pnpm install` and `pnpm test`. No blocker was found in the plan; the first batch remains limited to executable plan contracts, fork/join deterministic planning, and pure scheduler helpers.
+- `2026-03-12`: Task 1 keeps the new executable node fields additive in the shared schemas for now. The deterministic planner emits `instruction`, `template`, `expectedArtifactPath`, and `expectedArtifactKind` immediately, but the protocol and plan-graph schemas still accept older persisted nodes until later M3 tasks extend durable storage.
 
 ## Verification Log
 
-- Pending.
+- `2026-03-12` Task 1:
+  - `pnpm --filter @computer-oss/protocol test`
+  - `pnpm --filter @computer-oss/orchestrator test`
+  - `pnpm --filter @computer-oss/orchestrator typecheck`

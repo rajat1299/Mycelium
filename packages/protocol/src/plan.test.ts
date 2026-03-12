@@ -7,7 +7,7 @@ import {
 } from "./index";
 
 describe("plan and run protocols", () => {
-  it("accepts a valid draft plan payload", () => {
+  it("accepts a valid executable draft plan payload", () => {
     const parsed = PlanSchema.safeParse({
       id: "plan_outcome_123",
       outcomeId: "outcome_123",
@@ -20,26 +20,52 @@ describe("plan and run protocols", () => {
           kind: "root",
           title: "Analyze outcome",
           capability: "reasoning",
+          instruction: "Inspect the outcome prompt and produce execution notes.",
+          template: "analyze_outcome",
+          expectedArtifactPath: "artifacts/analyze-outcome.md",
+          expectedArtifactKind: "analysis",
           position: 0
         },
         {
-          id: "plan_outcome_123:execute-outcome",
+          id: "plan_outcome_123:draft-brief",
           kind: "task",
-          title: "Execute outcome",
+          title: "Draft brief",
           capability: "coding",
+          instruction: "Write the execution brief for the requested outcome.",
+          template: "draft_brief",
+          expectedArtifactPath: "artifacts/brief.md",
+          expectedArtifactKind: "brief",
           position: 1
         }
       ],
       edges: [
         {
-          id: "plan_outcome_123:edge-analyze-execute",
+          id: "plan_outcome_123:edge-analyze-brief",
           from: "plan_outcome_123:analyze-outcome",
-          to: "plan_outcome_123:execute-outcome"
+          to: "plan_outcome_123:draft-brief"
         }
       ]
     });
 
-    expect(parsed.success).toBe(true);
+    expect(parsed).toEqual({
+      success: true,
+      data: expect.objectContaining({
+        nodes: [
+          expect.objectContaining({
+            instruction: "Inspect the outcome prompt and produce execution notes.",
+            template: "analyze_outcome",
+            expectedArtifactPath: "artifacts/analyze-outcome.md",
+            expectedArtifactKind: "analysis"
+          }),
+          expect.objectContaining({
+            instruction: "Write the execution brief for the requested outcome.",
+            template: "draft_brief",
+            expectedArtifactPath: "artifacts/brief.md",
+            expectedArtifactKind: "brief"
+          })
+        ]
+      })
+    });
   });
 
   it("accepts run detail and expanded outcome stream events", () => {
@@ -58,6 +84,10 @@ describe("plan and run protocols", () => {
           title: "Analyze outcome",
           kind: "root",
           capability: "reasoning",
+          instruction: "Inspect the outcome prompt and produce execution notes.",
+          template: "analyze_outcome",
+          expectedArtifactPath: "artifacts/analyze-outcome.md",
+          expectedArtifactKind: "analysis",
           status: "ready",
           position: 0,
           createdAt: "2026-03-11T00:05:00.000Z",
@@ -66,7 +96,14 @@ describe("plan and run protocols", () => {
       ]
     });
 
-    expect(run.steps).toHaveLength(1);
+    expect(run.steps).toEqual([
+      expect.objectContaining({
+        instruction: "Inspect the outcome prompt and produce execution notes.",
+        template: "analyze_outcome",
+        expectedArtifactPath: "artifacts/analyze-outcome.md",
+        expectedArtifactKind: "analysis"
+      })
+    ]);
     expect(EventTypeSchema.parse("plan.created")).toBe("plan.created");
     expect(EventTypeSchema.parse("run.created")).toBe("run.created");
     expect(EventTypeSchema.parse("run.step.updated")).toBe("run.step.updated");

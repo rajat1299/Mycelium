@@ -16,11 +16,29 @@ export const PlanNodeCapabilitySchema = z.enum([
   "fallback"
 ]);
 
+export const PlanNodeTemplateSchema = z.enum([
+  "analyze_outcome",
+  "draft_brief",
+  "draft_operator_summary",
+  "synthesize_result"
+]);
+
+export const ArtifactKindSchema = z.enum([
+  "analysis",
+  "brief",
+  "operator_summary",
+  "result"
+]);
+
 export const PlanNodeSchema = z.object({
   id: z.string(),
   kind: PlanNodeKindSchema,
   title: z.string().min(1),
-  capability: PlanNodeCapabilitySchema
+  capability: PlanNodeCapabilitySchema,
+  instruction: z.string().min(1).optional(),
+  template: PlanNodeTemplateSchema.optional(),
+  expectedArtifactPath: z.string().min(1).optional(),
+  expectedArtifactKind: ArtifactKindSchema.optional()
 });
 
 export const PlanEdgeSchema = z.object({
@@ -43,6 +61,8 @@ export type PlanStatus = z.infer<typeof PlanStatusSchema>;
 export type PlanNode = z.infer<typeof PlanNodeSchema>;
 export type PlanEdge = z.infer<typeof PlanEdgeSchema>;
 export type PlanGraph = z.infer<typeof PlanGraphSchema>;
+export type PlanNodeTemplate = z.infer<typeof PlanNodeTemplateSchema>;
+export type ArtifactKind = z.infer<typeof ArtifactKindSchema>;
 
 export type PlanGraphValidationResult =
   | { ok: true }
