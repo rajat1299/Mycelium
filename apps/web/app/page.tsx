@@ -41,7 +41,7 @@ export default async function HomePage() {
       <header className="grid gap-4 border-b border-panel-line pb-8 lg:grid-cols-[1.3fr_0.9fr] lg:items-end">
         <div className="space-y-3">
           <p className="text-xs font-semibold uppercase tracking-[0.32em] text-accent">
-            Computer OSS
+            Mycelium
           </p>
           <h1 className="max-w-3xl font-serif text-4xl tracking-tight text-ink sm:text-5xl">
             Command center for long-running AI work.

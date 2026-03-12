@@ -536,3 +536,13 @@ Append milestone-local notes here as work progresses.
 - `2026-03-11`: Persisted explicit `position` fields on `plan_nodes` and `run_steps` so later plan visualization and run timelines can render stable ordering without relying on insertion order.
 - `2026-03-11`: Initial run-step readiness is derived from the persisted plan graph: root nodes start as `ready`, while dependent nodes start as `pending`.
 - `2026-03-11`: Review fixes for batch 1 added plan-scoped deterministic node and edge ids, cycle rejection in graph validation, transaction-wrapped plan/run creation, and an explicit single-plan-per-outcome invariant in both schema and repository logic.
+- `2026-03-11`: Completed Task 4 on branch `codex/m2-task4-api-ui`. Added shared plan/run protocol contracts, added `POST /api/outcomes/:id/plan`, `GET /api/outcomes/:id/plan`, `POST /api/outcomes/:id/runs`, and `GET /api/runs/:runId`, and expanded the outcome SSE stream with `plan.created`, `run.created`, and `run.step.updated`.
+- `2026-03-11`: Completed Task 5 on branch `codex/m2-task4-api-ui`. The outcome detail page now exposes `Generate draft plan` and `Start run` actions, renders the persisted draft-plan graph, renders the selected run timeline, and updates the operator panels and live activity feed from the outcome SSE stream.
+- `2026-03-11`: Used local Spell-inspired UI primitives only where they improved the operator workflow directly: status badges, action buttons, and loading spinners. The rest of the console stayed aligned with the existing visual system.
+
+## Verification notes
+
+- `2026-03-11`: Task 4 verified with `pnpm --filter @computer-oss/protocol test`, `pnpm --filter @computer-oss/protocol typecheck`, `pnpm --filter @computer-oss/protocol build`, `pnpm --filter @computer-oss/control-plane test`, `pnpm --filter @computer-oss/control-plane typecheck`, and `pnpm --filter @computer-oss/control-plane build`.
+- `2026-03-11`: Task 5 verified with `pnpm --filter @computer-oss/web test -- plan-graph`, `pnpm --filter @computer-oss/web typecheck`, and the full web package `pnpm --filter @computer-oss/web test`, `pnpm --filter @computer-oss/web build`.
+- `2026-03-11`: Final integrated verification on branch `codex/m2-task4-api-ui` passed with `pnpm test`, `pnpm typecheck`, and `pnpm build`.
+- `2026-03-11`: Docker-backed manual smoke verification was not run in this environment because the Docker daemon was unavailable.
