@@ -13,6 +13,7 @@ import type {
   StoredRun,
   StoredRunStep,
   StoredWorkspaceLease,
+  UpdateRunLifecycleStatusInput,
   UpdateRunStatusInput,
   UpdateStepStatusInput
 } from "@computer-oss/db";
@@ -59,6 +60,9 @@ export type RunStore = {
   listSteps(runId: string): Promise<StoredRunStep[]>;
   listReadySteps(runId: string): Promise<StoredRunStep[]>;
   appendEvent(input: AppendRunEventInput): Promise<void>;
+  updateLifecycleStatus(
+    input: UpdateRunLifecycleStatusInput
+  ): Promise<{ run: StoredRun; outcome: Outcome } | null>;
   updateStatus(input: UpdateRunStatusInput): Promise<StoredRun | null>;
   updateStepStatus(input: UpdateStepStatusInput): Promise<StoredRunStep | null>;
   releaseReadyDependents(
@@ -345,6 +349,33 @@ function createInMemoryRepositoriesState() {
     },
     async appendEvent(input) {
       runEvents.push(input);
+    },
+    async updateLifecycleStatus(input) {
+      const run = runsById.get(input.runId);
+      const outcome = outcomes.get(input.outcomeId);
+
+      if (!run || !outcome) {
+        return null;
+      }
+
+      const updatedRun: StoredRun = {
+        ...run,
+        status: input.runStatus,
+        updatedAt: input.updatedAt
+      };
+      const updatedOutcome: Outcome = {
+        ...outcome,
+        status: input.outcomeStatus,
+        updatedAt: input.updatedAt
+      };
+
+      runsById.set(updatedRun.id, updatedRun);
+      outcomes.set(updatedOutcome.id, updatedOutcome);
+
+      return {
+        run: updatedRun,
+        outcome: updatedOutcome
+      };
     },
     async updateStatus(input) {
       const run = runsById.get(input.runId);

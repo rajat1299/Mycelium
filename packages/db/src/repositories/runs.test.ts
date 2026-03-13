@@ -146,6 +146,104 @@ describe("RunRepository", () => {
     ]);
   });
 
+  it("updates run and outcome lifecycle state atomically", async () => {
+    const { db, state } = createRepositoryTestDatabase();
+    const plans = new PlanRepository(db as never);
+    const runs = new RunRepository(db as never);
+
+    state.outcomes.push({
+      id: "outcome_123",
+      workspaceId: "ws_123",
+      userId: "user_123",
+      prompt: "Ship the launch brief and summary.",
+      source: "web",
+      status: "queued",
+      createdAt: new Date("2026-03-12T00:00:00.000Z"),
+      updatedAt: new Date("2026-03-12T00:00:00.000Z")
+    });
+
+    await plans.create(buildExecutablePlanInput());
+    await runs.createFromPlan({
+      id: "run_123",
+      outcomeId: "outcome_123",
+      planId: "plan_outcome_123",
+      createdAt: "2026-03-12T00:05:00.000Z",
+      updatedAt: "2026-03-12T00:05:00.000Z"
+    });
+
+    await expect(
+      runs.updateLifecycleStatus({
+        runId: "run_123",
+        outcomeId: "outcome_123",
+        runStatus: "running",
+        outcomeStatus: "running",
+        updatedAt: "2026-03-12T00:06:00.000Z"
+      })
+    ).resolves.toEqual({
+      run: expect.objectContaining({
+        id: "run_123",
+        status: "running",
+        updatedAt: "2026-03-12T00:06:00.000Z"
+      }),
+      outcome: expect.objectContaining({
+        id: "outcome_123",
+        status: "running",
+        updatedAt: "2026-03-12T00:06:00.000Z"
+      })
+    });
+  });
+
+  it("rolls back run lifecycle updates when the paired outcome update fails", async () => {
+    const { db, state } = createRepositoryTestDatabase({
+      failOnUpdateTables: ["outcomes"]
+    });
+    const plans = new PlanRepository(db as never);
+    const runs = new RunRepository(db as never);
+
+    state.outcomes.push({
+      id: "outcome_123",
+      workspaceId: "ws_123",
+      userId: "user_123",
+      prompt: "Ship the launch brief and summary.",
+      source: "web",
+      status: "queued",
+      createdAt: new Date("2026-03-12T00:00:00.000Z"),
+      updatedAt: new Date("2026-03-12T00:00:00.000Z")
+    });
+
+    await plans.create(buildExecutablePlanInput());
+    await runs.createFromPlan({
+      id: "run_123",
+      outcomeId: "outcome_123",
+      planId: "plan_outcome_123",
+      createdAt: "2026-03-12T00:05:00.000Z",
+      updatedAt: "2026-03-12T00:05:00.000Z"
+    });
+
+    await expect(
+      runs.updateLifecycleStatus({
+        runId: "run_123",
+        outcomeId: "outcome_123",
+        runStatus: "running",
+        outcomeStatus: "running",
+        updatedAt: "2026-03-12T00:06:00.000Z"
+      })
+    ).rejects.toThrow("Simulated outcomes update failure.");
+
+    expect(state.outcomeRuns).toEqual([
+      expect.objectContaining({
+        id: "run_123",
+        status: "queued"
+      })
+    ]);
+    expect(state.outcomes).toEqual([
+      expect.objectContaining({
+        id: "outcome_123",
+        status: "queued"
+      })
+    ]);
+  });
+
   it("marks a step completed and makes newly unblocked dependents ready", async () => {
     const { db, state } = createRepositoryTestDatabase();
     const plans = new PlanRepository(db as never);

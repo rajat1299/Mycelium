@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { RunDetailSchema } from "@computer-oss/protocol";
 import { createInMemoryRepositories } from "../src/lib/repositories";
 import {
@@ -49,6 +49,38 @@ async function createTrackingWorkspaceManager() {
     async cleanup() {
       await rm(rootPath, { recursive: true, force: true });
     }
+  };
+}
+
+function createBackgroundTransitionFailureRepositories() {
+  const repositories = createInMemoryRepositories();
+  const error = new Error("background lifecycle transition failed");
+
+  return {
+    repositories: {
+      ...repositories,
+      outcomes: {
+        ...repositories.outcomes,
+        async updateStatus(
+          input: Parameters<typeof repositories.outcomes.updateStatus>[0]
+        ) {
+          if (input.status !== "queued") {
+            throw error;
+          }
+
+          return repositories.outcomes.updateStatus(input);
+        }
+      },
+      runs: {
+        ...repositories.runs,
+        async updateLifecycleStatus(
+          _input: Parameters<typeof repositories.runs.updateLifecycleStatus>[0]
+        ) {
+          throw error;
+        }
+      }
+    } as never,
+    error
   };
 }
 
@@ -307,6 +339,76 @@ describe("execution service", () => {
     } finally {
       await harness.cleanup();
       await workspaceManager.cleanup();
+    }
+  });
+
+  it("surfaces unexpected background execution crashes through waitForRun", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { repositories, error } = createBackgroundTransitionFailureRepositories();
+    const harness = await createExecutionHarness({
+      repositories
+    });
+
+    try {
+      const { app, services } = harness;
+      const { outcome, plan } = await createOutcomeAndPlan(app);
+      const createRun = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome.id}/runs`,
+        payload: {
+          planId: plan.id
+        }
+      });
+      const createdRun = RunDetailSchema.parse(createRun.json());
+
+      await expect(services.executionService.waitForRun(createdRun.id)).rejects.toThrow(
+        error.message
+      );
+    } finally {
+      consoleErrorSpy.mockRestore();
+      await harness.cleanup();
+    }
+  });
+
+  it("keeps run and outcome lifecycle state aligned when a background transition crashes", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { repositories, error } = createBackgroundTransitionFailureRepositories();
+    const harness = await createExecutionHarness({
+      repositories
+    });
+
+    try {
+      const { app, services } = harness;
+      const { outcome, plan } = await createOutcomeAndPlan(app);
+      const createRun = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome.id}/runs`,
+        payload: {
+          planId: plan.id
+        }
+      });
+      const createdRun = RunDetailSchema.parse(createRun.json());
+
+      await expect(services.executionService.waitForRun(createdRun.id)).rejects.toThrow(
+        error.message
+      );
+      await expect(services.repositories.runs.getById(createdRun.id)).resolves.toEqual(
+        expect.objectContaining({
+          id: createdRun.id,
+          status: "queued"
+        })
+      );
+      await expect(
+        services.repositories.outcomes.getById(outcome.id)
+      ).resolves.toEqual(
+        expect.objectContaining({
+          id: outcome.id,
+          status: "queued"
+        })
+      );
+    } finally {
+      consoleErrorSpy.mockRestore();
+      await harness.cleanup();
     }
   });
 });

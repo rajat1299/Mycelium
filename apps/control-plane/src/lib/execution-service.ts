@@ -33,6 +33,7 @@ export function createExecutionService(
   options: ExecutionServiceOptions
 ): ExecutionService {
   const inFlightRuns = new Map<string, Promise<void>>();
+  const settledRuns = new Map<string, Promise<void>>();
   const now = options.now ?? (() => new Date());
 
   return {
@@ -41,6 +42,8 @@ export function createExecutionService(
         return;
       }
 
+      settledRuns.delete(runId);
+
       const execution = executeRun({
         runId,
         repositories: options.repositories,
@@ -48,16 +51,23 @@ export function createExecutionService(
         sandboxProvider: options.sandboxProvider,
         workspaceManager: options.workspaceManager,
         now
-      }).catch((error) => {
-        reportUnhandledExecutionError(runId, error);
-      }).finally(() => {
-        inFlightRuns.delete(runId);
       });
 
       inFlightRuns.set(runId, execution);
+      void execution.then(
+        () => {
+          inFlightRuns.delete(runId);
+          rememberSettledRun(settledRuns, runId, execution);
+        },
+        (error) => {
+          inFlightRuns.delete(runId);
+          rememberSettledRun(settledRuns, runId, execution);
+          reportUnhandledExecutionError(runId, error);
+        }
+      );
     },
     async waitForRun(runId) {
-      await (inFlightRuns.get(runId) ?? Promise.resolve());
+      await (inFlightRuns.get(runId) ?? settledRuns.get(runId) ?? Promise.resolve());
     }
   };
 }
@@ -426,26 +436,20 @@ async function updateLifecycleStatus(
     outcomeStatus: "running" | "completed" | "failed";
   }
 ) {
-  const timestamp = options.now().toISOString();
-  const [updatedRun, updatedOutcome] = await Promise.all([
-    options.repositories.runs.updateStatus({
-      runId: input.runId,
-      status: input.runStatus,
-      updatedAt: timestamp
-    }),
-    options.repositories.outcomes.updateStatus({
-      id: input.outcomeId,
-      status: input.outcomeStatus,
-      updatedAt: timestamp
-    })
-  ]);
+  const updatedLifecycle = await options.repositories.runs.updateLifecycleStatus({
+    runId: input.runId,
+    outcomeId: input.outcomeId,
+    runStatus: input.runStatus,
+    outcomeStatus: input.outcomeStatus,
+    updatedAt: options.now().toISOString()
+  });
 
-  if (!updatedRun || !updatedOutcome) {
+  if (!updatedLifecycle) {
     throw new Error("Failed to update run or outcome lifecycle state.");
   }
 
-  await emitRunUpdated(options, input.outcomeId, updatedRun);
-  await emitOutcomeUpdated(options, updatedOutcome);
+  await emitRunUpdated(options, input.outcomeId, updatedLifecycle.run);
+  await emitOutcomeUpdated(options, updatedLifecycle.outcome);
 }
 
 async function emitOutcomeUpdated(
@@ -631,4 +635,22 @@ function toErrorMessage(error: unknown) {
 
 function reportUnhandledExecutionError(runId: string, error: unknown) {
   console.error(`[execution-service] run ${runId} crashed`, error);
+}
+
+function rememberSettledRun(
+  settledRuns: Map<string, Promise<void>>,
+  runId: string,
+  execution: Promise<void>
+) {
+  settledRuns.set(runId, execution);
+
+  while (settledRuns.size > 100) {
+    const oldestRunId = settledRuns.keys().next().value;
+
+    if (typeof oldestRunId !== "string") {
+      return;
+    }
+
+    settledRuns.delete(oldestRunId);
+  }
 }
