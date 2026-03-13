@@ -1,5 +1,6 @@
 import {
   artifacts,
+  outcomes,
   outcomePlans,
   outcomeRuns,
   planEdges,
@@ -12,6 +13,7 @@ import {
 export type TableRecord = Record<string, unknown>;
 
 type SupportedTable =
+  | typeof outcomes
   | typeof outcomePlans
   | typeof planNodes
   | typeof planEdges
@@ -22,6 +24,7 @@ type SupportedTable =
   | typeof workspaceLeases;
 
 export type RepositoryTestState = {
+  outcomes: TableRecord[];
   outcomePlans: TableRecord[];
   planNodes: TableRecord[];
   planEdges: TableRecord[];
@@ -53,6 +56,7 @@ export type RepositoryTestDb = {
 
 export type TestDatabaseOptions = {
   failOnInsertTables?: string[];
+  failOnUpdateTables?: string[];
 };
 
 type QueryChunk = {
@@ -68,8 +72,10 @@ type ParsedPredicate =
 export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) {
   const inserted: Array<{ table: string; values: TableRecord | TableRecord[] }> = [];
   const failOnInsertTables = new Set(options.failOnInsertTables ?? []);
+  const failOnUpdateTables = new Set(options.failOnUpdateTables ?? []);
 
   const state: RepositoryTestState = {
+    outcomes: [],
     outcomePlans: [],
     planNodes: [],
     planEdges: [],
@@ -81,6 +87,10 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
   };
 
   function getTableName(table: SupportedTable) {
+    if (table === outcomes) {
+      return "outcomes";
+    }
+
     if (table === outcomePlans) {
       return "outcome_plans";
     }
@@ -114,6 +124,8 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
 
   function getRowsForTable(name: string): TableRecord[] {
     switch (name) {
+      case "outcomes":
+        return state.outcomes;
       case "outcome_plans":
         return state.outcomePlans;
       case "plan_nodes":
@@ -293,6 +305,10 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
                 };
               }
 
+              if (failOnUpdateTables.has(tableName)) {
+                throw new Error(`Simulated ${tableName} update failure.`);
+              }
+
               Object.assign(row, values);
 
               return {
@@ -318,6 +334,7 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
         inserted.push(...snapshot.inserted);
 
         state.outcomePlans = snapshot.state.outcomePlans;
+        state.outcomes = snapshot.state.outcomes;
         state.planNodes = snapshot.state.planNodes;
         state.planEdges = snapshot.state.planEdges;
         state.outcomeRuns = snapshot.state.outcomeRuns;

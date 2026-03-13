@@ -1,11 +1,11 @@
 import { buildApp } from "./app";
 import { loadEnv } from "./lib/env";
-import { createDatabaseRepositories } from "./lib/repositories";
+import { createServiceContainer } from "./lib/service-container";
 
 async function start() {
   const env = loadEnv();
-  const repositories = await createDatabaseRepositories(env.DATABASE_URL);
-  const app = buildApp({ repositories });
+  const services = await createServiceContainer(env);
+  const app = buildApp({ services });
 
   await app.listen({
     host: env.HOST,

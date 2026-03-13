@@ -1,7 +1,7 @@
 "use client";
 
 import { startTransition, useEffect, useState } from "react";
-import type { Outcome } from "@computer-oss/protocol";
+import type { Outcome, OutcomeStreamEvent } from "@computer-oss/protocol";
 import { subscribeToOutcomeEvents } from "../../lib/events";
 import type { ActivityEntry } from "../../lib/types";
 
@@ -19,6 +19,83 @@ function initialEntry(outcome: Outcome): ActivityEntry {
   };
 }
 
+function createEntryFromEvent(event: OutcomeStreamEvent): ActivityEntry {
+  switch (event.type) {
+    case "outcome.updated":
+      return {
+        id: `${event.outcomeId}:${event.type}:${event.data.updatedAt}`,
+        title: "Outcome updated",
+        body: `Status is now ${event.data.status}`,
+        timestamp: event.data.updatedAt,
+        tone: "default"
+      };
+    case "message.created":
+      return {
+        id: event.data.id,
+        title: `${event.data.role} message`,
+        body: event.data.content,
+        timestamp: event.data.createdAt,
+        tone: "accent"
+      };
+    case "plan.created":
+      return {
+        id: `${event.data.id}:created`,
+        title: "Draft plan created",
+        body: `${event.data.nodes.length} nodes across ${event.data.edges.length} dependencies are now visible to the operator console.`,
+        timestamp: event.data.updatedAt,
+        tone: "accent"
+      };
+    case "run.created":
+      return {
+        id: `${event.data.id}:created`,
+        title: "Run queued",
+        body: `Run ${event.data.id} was created from ${event.data.planId}.`,
+        timestamp: event.data.createdAt,
+        tone: "warning"
+      };
+    case "run.updated":
+      return {
+        id: `${event.data.id}:${event.data.updatedAt}`,
+        title: `Run ${event.data.status}`,
+        body: `Run ${event.data.id} is now ${event.data.status}.`,
+        timestamp: event.data.updatedAt,
+        tone:
+          event.data.status === "completed"
+            ? "success"
+            : event.data.status === "failed"
+              ? "warning"
+              : "default"
+      };
+    case "run.log":
+      return {
+        id: `${event.data.runId}:log:${event.data.createdAt}:${event.data.message}`,
+        title: event.data.stepTitle ? `${event.data.stepTitle} log` : "Run log",
+        body: event.data.message,
+        timestamp: event.data.createdAt,
+        tone: event.data.level === "error" ? "warning" : "default"
+      };
+    case "artifact.created":
+      return {
+        id: `${event.data.id}:created`,
+        title: "Artifact created",
+        body: `${event.data.relativePath} was persisted for the run.`,
+        timestamp: event.data.createdAt,
+        tone: "success"
+      };
+    case "run.step.updated":
+      return {
+        id: `${event.data.id}:${event.data.updatedAt}`,
+        title: `Step ${event.data.status}`,
+        body: `${event.data.title} is now ${event.data.status}.`,
+        timestamp: event.data.updatedAt,
+        tone:
+          event.data.status === "ready" || event.data.status === "completed"
+            ? "success"
+            : "warning"
+      };
+  }
+}
+
 export function OutcomeActivity({ outcome }: OutcomeActivityProps) {
   const [entries, setEntries] = useState<ActivityEntry[]>([initialEntry(outcome)]);
 
@@ -28,50 +105,7 @@ export function OutcomeActivity({ outcome }: OutcomeActivityProps) {
     return subscribeToOutcomeEvents(outcome.id, (event) => {
       startTransition(() => {
         setEntries((current) => {
-          const nextEntry =
-            event.type === "outcome.updated"
-              ? {
-                  id: `${event.outcomeId}:${event.type}:${event.data.updatedAt}`,
-                  title: "Outcome updated",
-                  body: `Status is now ${event.data.status}`,
-                  timestamp: event.data.updatedAt,
-                  tone: "default" as const
-                }
-              : event.type === "message.created"
-                ? {
-                    id: event.data.id,
-                    title: `${event.data.role} message`,
-                    body: event.data.content,
-                    timestamp: event.data.createdAt,
-                    tone: "accent" as const
-                  }
-                : event.type === "plan.created"
-                  ? {
-                      id: `${event.data.id}:created`,
-                      title: "Draft plan created",
-                      body: `${event.data.nodes.length} nodes across ${event.data.edges.length} dependencies are now visible to the operator console.`,
-                      timestamp: event.data.updatedAt,
-                      tone: "accent" as const
-                    }
-                  : event.type === "run.created"
-                    ? {
-                        id: `${event.data.id}:created`,
-                        title: "Run queued",
-                        body: `Run ${event.data.id} was created from ${event.data.planId}.`,
-                        timestamp: event.data.createdAt,
-                        tone: "warning" as const
-                      }
-                    : {
-                        id: `${event.data.id}:${event.data.updatedAt}`,
-                        title: `Step ${event.data.status}`,
-                        body: `${event.data.title} is now ${event.data.status}.`,
-                        timestamp: event.data.updatedAt,
-                        tone:
-                          event.data.status === "ready" ||
-                          event.data.status === "completed"
-                            ? ("success" as const)
-                            : ("warning" as const)
-                      };
+          const nextEntry = createEntryFromEvent(event);
 
           return [nextEntry, ...current].slice(0, 12);
         });

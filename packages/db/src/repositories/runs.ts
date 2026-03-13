@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import type { DatabaseClient } from "../client";
 import {
+  outcomes,
   outcomePlans,
   outcomeRuns,
   planEdges,
@@ -8,9 +9,11 @@ import {
   runEvents,
   runSteps
 } from "../schema";
+import type { StoredOutcome } from "./outcomes";
 
 type RunRow = typeof outcomeRuns.$inferSelect;
 type RunStepRow = typeof runSteps.$inferSelect;
+type OutcomeRow = typeof outcomes.$inferSelect;
 
 export type StoredRun = {
   id: string;
@@ -66,6 +69,14 @@ export type UpdateRunStatusInput = {
   updatedAt: string;
 };
 
+export type UpdateRunLifecycleStatusInput = {
+  runId: string;
+  outcomeId: string;
+  runStatus: RunRow["status"];
+  outcomeStatus: OutcomeRow["status"];
+  updatedAt: string;
+};
+
 export type ReleaseReadyDependentsInput = {
   runId: string;
   completedStepId: string;
@@ -101,6 +112,19 @@ function mapRunStepRow(row: RunStepRow): StoredRunStep {
       : {}),
     status: row.status,
     position: row.position,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString()
+  };
+}
+
+function mapOutcomeRow(row: OutcomeRow): StoredOutcome {
+  return {
+    id: row.id,
+    workspaceId: row.workspaceId,
+    userId: row.userId,
+    prompt: row.prompt,
+    source: row.source as StoredOutcome["source"],
+    status: row.status,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString()
   };
@@ -247,6 +271,54 @@ export class RunRepository {
       eventType: input.eventType,
       payload: input.payload,
       createdAt: new Date(input.createdAt)
+    });
+  }
+
+  async updateLifecycleStatus(
+    input: UpdateRunLifecycleStatusInput
+  ): Promise<{ run: StoredRun; outcome: StoredOutcome } | null> {
+    return this.db.transaction(async (transaction) => {
+      const runRows = await transaction.select().from(outcomeRuns);
+      const existingRun = runRows.find((row) => row.id === input.runId);
+
+      if (!existingRun) {
+        return null;
+      }
+
+      if (existingRun.outcomeId !== input.outcomeId) {
+        throw new Error(
+          `Run ${input.runId} belongs to ${existingRun.outcomeId}, not ${input.outcomeId}.`
+        );
+      }
+
+      const [updatedRun] = await transaction
+        .update(outcomeRuns)
+        .set({
+          status: input.runStatus,
+          updatedAt: new Date(input.updatedAt)
+        })
+        .where(eq(outcomeRuns.id, input.runId))
+        .returning();
+
+      const [updatedOutcome] = await transaction
+        .update(outcomes)
+        .set({
+          status: input.outcomeStatus,
+          updatedAt: new Date(input.updatedAt)
+        })
+        .where(eq(outcomes.id, input.outcomeId))
+        .returning();
+
+      if (!updatedOutcome) {
+        throw new Error(
+          `Outcome ${input.outcomeId} disappeared during lifecycle update.`
+        );
+      }
+
+      return {
+        run: mapRunRow(updatedRun),
+        outcome: mapOutcomeRow(updatedOutcome)
+      };
     });
   }
 
