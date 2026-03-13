@@ -204,4 +204,52 @@ describe("RunTimeline", () => {
     expect(screen.getByText("Execute outcome")).toBeInTheDocument();
     expect(screen.getByText("2 steps")).toBeInTheDocument();
   });
+
+  it("updates the selected run status when a run.updated event arrives", () => {
+    render(
+      <RunTimeline
+        outcomeId="outcome_123"
+        initialRun={{
+          id: "run_123",
+          outcomeId: "outcome_123",
+          planId: "plan_outcome_123",
+          status: "queued",
+          createdAt: "2026-03-11T00:05:00.000Z",
+          updatedAt: "2026-03-11T00:05:00.000Z",
+          steps: [
+            {
+              id: "step_1",
+              runId: "run_123",
+              planNodeId: "node_analyze",
+              title: "Analyze outcome",
+              kind: "root",
+              capability: "reasoning",
+              status: "ready",
+              position: 0,
+              createdAt: "2026-03-11T00:05:00.000Z",
+              updatedAt: "2026-03-11T00:05:00.000Z"
+            }
+          ]
+        }}
+      />
+    );
+
+    act(() => {
+      eventStream.handler?.({
+        outcomeId: "outcome_123",
+        type: "run.updated",
+        data: {
+          id: "run_123",
+          outcomeId: "outcome_123",
+          planId: "plan_outcome_123",
+          status: "running",
+          createdAt: "2026-03-11T00:05:00.000Z",
+          updatedAt: "2026-03-11T00:06:00.000Z"
+        }
+      });
+    });
+
+    expect(screen.getByText("running")).toBeInTheDocument();
+    expect(screen.queryByText("queued")).not.toBeInTheDocument();
+  });
 });

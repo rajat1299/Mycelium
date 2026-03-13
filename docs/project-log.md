@@ -50,7 +50,7 @@ Do not rewrite older entries except to correct factual mistakes.
 
 - Date: `2026-03-12`
 - Default branch: `main`
-- Current integrated runtime baseline: `660ae61`
+- Current integrated runtime baseline: `d0da6bb`
 - Completed milestone: `M2 Orchestration Kernel`
 - Next planned milestone: `M3 Execution Substrate V1`
 - Current mode:
@@ -102,3 +102,5 @@ Do not rewrite older entries except to correct factual mistakes.
 - `2026-03-12` | `Codex` | `codex/m3-task4-execution-service` | Applied review hardening to Milestone 3 Task 4: durable workspace-lease acquire/release failures no longer leak the local runtime workspace or escape the background runner, and execution-service coverage now locks that behavior in. | Re-verified with `pnpm --filter @computer-oss/control-plane test -- test/execution-service.test.ts`, `pnpm --filter @computer-oss/control-plane test`, `pnpm --filter @computer-oss/control-plane typecheck`, and sequential workspace `pnpm test`, `pnpm build`, `pnpm typecheck`.
 - `2026-03-12` | `Codex` | `codex/m3-task4-execution-service` | Applied final Task 4 hardening for failure-path correctness: `waitForRun()` now preserves raw execution failures for callers, and run/outcome lifecycle transitions now flow through a single atomic repository path instead of split updates in the execution service. | Re-verified with `pnpm --filter @computer-oss/db test -- src/repositories/runs.test.ts`, `pnpm --filter @computer-oss/control-plane test -- test/execution-service.test.ts`, and sequential workspace `pnpm test`, `pnpm build`, `pnpm typecheck`.
 - `2026-03-12` | `Codex` | `codex/m3-task4-execution-service` | Applied final repository-integrity hardening for Task 4: atomic lifecycle updates now also verify that the target run belongs to the supplied outcome before any mutation, and the in-memory repository mirrors the same invariant for tests and future callers. | Re-verified with `pnpm --filter @computer-oss/db test -- src/repositories/runs.test.ts`, `pnpm --filter @computer-oss/control-plane test -- test/repositories.test.ts`, and sequential workspace `pnpm test`, `pnpm build`, `pnpm typecheck`.
+- `2026-03-12` | `Codex` | `codex/m3-task5-operator-console` | Started Milestone 3 Task 5 in a fresh isolated worktree from merged `main`, reloaded the operator-console section of the M3 plan, and drove the UI slice with red tests for artifact loading, log streaming, and pinned run updates. | Baseline verified in the worktree with `pnpm install` and `pnpm test` before code changes.
+- `2026-03-12` | `Codex` | `codex/m3-task5-operator-console` | Completed Milestone 3 Task 5: added run-scoped artifact and log panels, server-side artifact loading for the selected run, and live `run.updated` handling so the operator console stays aligned with persisted execution state. | Verified with `pnpm --filter @computer-oss/web test`, `pnpm --filter @computer-oss/web typecheck`, and `pnpm --filter @computer-oss/web build`.

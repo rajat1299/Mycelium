@@ -103,6 +103,27 @@ export function RunTimeline({
             };
           });
         }
+
+        if (event.type === "run.updated") {
+          setState((current) => {
+            if (
+              !current.run ||
+              current.pinnedRunId !== event.data.id ||
+              current.run.id !== event.data.id
+            ) {
+              return current;
+            }
+
+            return {
+              ...current,
+              run: {
+                ...current.run,
+                ...event.data,
+                steps: sortSteps(current.run.steps)
+              }
+            };
+          });
+        }
       });
     });
   }, [outcomeId]);

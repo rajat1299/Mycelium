@@ -1,4 +1,5 @@
 import {
+  ArtifactListResponseSchema,
   CreateRunRequestSchema,
   CreateOutcomeRequestSchema,
   OutcomeListResponseSchema,
@@ -176,6 +177,29 @@ export async function createRun(outcomeId: string, input: CreateRunRequest) {
   }
 
   return parseJson(response, (value) => RunDetailSchema.parse(value));
+}
+
+export async function getRunArtifacts(runId: string) {
+  try {
+    const response = await fetch(
+      `${getControlPlaneBaseUrl()}/api/runs/${runId}/artifacts`,
+      {
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const parsed = await parseJson(response, (value) =>
+      ArtifactListResponseSchema.parse(value)
+    );
+
+    return parsed.artifacts;
+  } catch {
+    return [];
+  }
 }
 
 export function getControlPlaneEventUrl(outcomeId: string) {

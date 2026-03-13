@@ -1,4 +1,4 @@
-import type { Outcome, Plan, RunDetail } from "@computer-oss/protocol";
+import type { Artifact, Outcome, Plan, RunDetail, RunLogData } from "@computer-oss/protocol";
 
 export type OutcomeListItem = Pick<
   Outcome,
@@ -17,3 +17,6 @@ export type OutcomeOrchestrationSnapshot = {
   plan: Plan | null;
   run: RunDetail | null;
 };
+
+export type RunArtifact = Artifact;
+export type RunLogEntry = RunLogData;
