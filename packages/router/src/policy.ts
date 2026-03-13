@@ -92,7 +92,9 @@ export function validateRouterPolicy(input: {
     }
 
     const authProfile = input.authProfiles.find(
-      (profile) => profile.id === candidate.authProfileId
+      (profile) =>
+        profile.id === candidate.authProfileId &&
+        profile.workspaceId === input.policy.workspaceId
     );
 
     if (!authProfile) {

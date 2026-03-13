@@ -5,7 +5,11 @@ import type {
   RouterPolicy,
   StepRoute
 } from "@computer-oss/protocol";
-import { getModelDefinition, modelSupportsCapability } from "./catalog";
+import {
+  getModelDefinition,
+  getProviderDefinition,
+  modelSupportsCapability
+} from "./catalog";
 import { listOrderedCandidates } from "./policy";
 
 function isProfileEligible(profile: AuthProfile, resolvedAt: string): boolean {
@@ -20,13 +24,28 @@ function isProfileEligible(profile: AuthProfile, resolvedAt: string): boolean {
   return Date.parse(profile.cooldownUntil) <= Date.parse(resolvedAt);
 }
 
+type ProfileSelectionResult =
+  | {
+      kind: "resolved";
+      profile: AuthProfile;
+    }
+  | {
+      kind: "not_found";
+    }
+  | {
+      kind: "provider_mismatch";
+    }
+  | {
+      kind: "unavailable";
+    };
+
 function selectProfile(input: {
   workspaceId: string;
   providerId: string;
   authProfileId: string | null;
   authProfiles: AuthProfile[];
   resolvedAt: string;
-}): AuthProfile | null | "provider_mismatch" {
+}): ProfileSelectionResult {
   const profiles = input.authProfiles.filter(
     (profile) => profile.workspaceId === input.workspaceId
   );
@@ -35,25 +54,44 @@ function selectProfile(input: {
     const profile = profiles.find((item) => item.id === input.authProfileId);
 
     if (!profile) {
-      return null;
+      return {
+        kind: "not_found"
+      };
     }
 
     if (profile.providerId !== input.providerId) {
-      return "provider_mismatch";
+      return {
+        kind: "provider_mismatch"
+      };
     }
 
-    return isProfileEligible(profile, input.resolvedAt) ? profile : null;
+    return isProfileEligible(profile, input.resolvedAt)
+      ? {
+          kind: "resolved",
+          profile
+        }
+      : {
+          kind: "unavailable"
+        };
   }
 
-  return (
+  const profile =
     profiles
       .filter(
-        (profile) =>
-          profile.providerId === input.providerId &&
-          isProfileEligible(profile, input.resolvedAt)
+        (item) =>
+          item.providerId === input.providerId &&
+          isProfileEligible(item, input.resolvedAt)
       )
-      .sort((left, right) => left.priority - right.priority)[0] ?? null
-  );
+      .sort((left, right) => left.priority - right.priority)[0] ?? null;
+
+  return profile
+    ? {
+        kind: "resolved",
+        profile
+      }
+    : {
+        kind: "unavailable"
+      };
 }
 
 export function resolveRoute(input: {
@@ -64,6 +102,19 @@ export function resolveRoute(input: {
   authProfiles: AuthProfile[];
   resolvedAt: string;
 }): StepRoute {
+  if (input.policy.workspaceId !== input.workspaceId) {
+    return {
+      capability: input.capability,
+      providerId: null,
+      modelId: null,
+      authProfileId: null,
+      policyVersion: input.policy.version,
+      status: "invalid_policy",
+      reason: "policy_workspace_mismatch",
+      resolvedAt: input.resolvedAt
+    };
+  }
+
   const candidates = [
     ...listOrderedCandidates(input.policy, input.capability),
     ...listOrderedCandidates(input.policy, "fallback")
@@ -85,9 +136,25 @@ export function resolveRoute(input: {
   let firstFailure: StepRoute | null = null;
 
   for (const candidate of candidates) {
+    const provider = getProviderDefinition(input.catalog, candidate.providerId);
+
+    if (!provider) {
+      firstFailure ??= {
+        capability: input.capability,
+        providerId: candidate.providerId,
+        modelId: candidate.modelId,
+        authProfileId: candidate.authProfileId,
+        policyVersion: input.policy.version,
+        status: "invalid_policy",
+        reason: "provider_not_found",
+        resolvedAt: input.resolvedAt
+      };
+      continue;
+    }
+
     const model = getModelDefinition(
       input.catalog,
-      candidate.providerId,
+      provider.id,
       candidate.modelId
     );
 
@@ -127,7 +194,7 @@ export function resolveRoute(input: {
       resolvedAt: input.resolvedAt
     });
 
-    if (profile === "provider_mismatch") {
+    if (profile.kind === "provider_mismatch") {
       firstFailure ??= {
         capability: input.capability,
         providerId: candidate.providerId,
@@ -141,7 +208,21 @@ export function resolveRoute(input: {
       continue;
     }
 
-    if (!profile) {
+    if (profile.kind === "not_found") {
+      firstFailure ??= {
+        capability: input.capability,
+        providerId: candidate.providerId,
+        modelId: candidate.modelId,
+        authProfileId: candidate.authProfileId,
+        policyVersion: input.policy.version,
+        status: "invalid_policy",
+        reason: "auth_profile_not_found",
+        resolvedAt: input.resolvedAt
+      };
+      continue;
+    }
+
+    if (profile.kind === "unavailable") {
       firstFailure ??= {
         capability: input.capability,
         providerId: candidate.providerId,
@@ -159,7 +240,7 @@ export function resolveRoute(input: {
       capability: input.capability,
       providerId: candidate.providerId,
       modelId: candidate.modelId,
-      authProfileId: profile.id,
+      authProfileId: profile.profile.id,
       policyVersion: input.policy.version,
       status: "resolved",
       reason: null,

@@ -41,6 +41,7 @@ export const RouteStatusSchema = z.enum([
 
 export const RouteReasonSchema = z.enum([
   "no_policy_candidates",
+  "policy_workspace_mismatch",
   "provider_not_found",
   "model_not_found",
   "capability_unsupported",

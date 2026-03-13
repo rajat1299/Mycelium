@@ -171,4 +171,22 @@ describe("router protocol contracts", () => {
       })
     );
   });
+
+  it("rejects inconsistent resolved route metadata on persisted steps", () => {
+    const parsed = RunStepSchema.safeParse({
+      id: "step_run_123_plan_outcome_123:draft-brief",
+      runId: "run_123",
+      planNodeId: "plan_outcome_123:draft-brief",
+      title: "Draft brief",
+      kind: "task",
+      capability: "coding",
+      routeStatus: "resolved",
+      status: "ready",
+      position: 1,
+      createdAt: "2026-03-13T00:00:00.000Z",
+      updatedAt: "2026-03-13T00:00:00.000Z"
+    });
+
+    expect(parsed.success).toBe(false);
+  });
 });

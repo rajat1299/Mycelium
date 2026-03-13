@@ -6,6 +6,42 @@ import { resolveRoute } from "./resolve";
 const resolvedAt = "2026-03-13T00:00:00.000Z";
 
 describe("route resolution", () => {
+  it("rejects policies from a different workspace", () => {
+    const catalog = getProviderCatalog();
+    const policy: RouterPolicy = {
+      workspaceId: "ws_other",
+      version: 7,
+      updatedAt: resolvedAt,
+      candidates: [
+        {
+          capability: "coding",
+          priority: 1,
+          providerId: "openai",
+          modelId: "gpt-5.4",
+          authProfileId: null,
+          enabled: true
+        }
+      ]
+    };
+
+    expect(
+      resolveRoute({
+        workspaceId: "ws_default",
+        capability: "coding",
+        policy,
+        catalog,
+        authProfiles: [],
+        resolvedAt
+      })
+    ).toEqual(
+      expect.objectContaining({
+        capability: "coding",
+        status: "invalid_policy",
+        reason: "policy_workspace_mismatch"
+      })
+    );
+  });
+
   it("deterministically falls back to the next eligible candidate", () => {
     const catalog = getProviderCatalog();
     const policy: RouterPolicy = {
@@ -72,6 +108,21 @@ describe("route resolution", () => {
 
   it("returns explicit unresolved diagnostics for invalid policy and missing auth", () => {
     const catalog = getProviderCatalog();
+    const invalidProviderPolicy: RouterPolicy = {
+      workspaceId: "ws_default",
+      version: 4,
+      updatedAt: resolvedAt,
+      candidates: [
+        {
+          capability: "reasoning",
+          priority: 1,
+          providerId: "unknown-provider",
+          modelId: "mystery-model",
+          authProfileId: null,
+          enabled: true
+        }
+      ]
+    };
     const invalidPolicy: RouterPolicy = {
       workspaceId: "ws_default",
       version: 5,
@@ -83,6 +134,21 @@ describe("route resolution", () => {
           providerId: "openai",
           modelId: "gpt-unknown",
           authProfileId: null,
+          enabled: true
+        }
+      ]
+    };
+    const missingExplicitProfilePolicy: RouterPolicy = {
+      workspaceId: "ws_default",
+      version: 5,
+      updatedAt: resolvedAt,
+      candidates: [
+        {
+          capability: "reasoning",
+          priority: 1,
+          providerId: "openai",
+          modelId: "gpt-5.4",
+          authProfileId: "profile_openai_missing",
           enabled: true
         }
       ]
@@ -107,6 +173,23 @@ describe("route resolution", () => {
       resolveRoute({
         workspaceId: "ws_default",
         capability: "reasoning",
+        policy: invalidProviderPolicy,
+        catalog,
+        authProfiles: [],
+        resolvedAt
+      })
+    ).toEqual(
+      expect.objectContaining({
+        capability: "reasoning",
+        status: "invalid_policy",
+        reason: "provider_not_found"
+      })
+    );
+
+    expect(
+      resolveRoute({
+        workspaceId: "ws_default",
+        capability: "reasoning",
         policy: invalidPolicy,
         catalog,
         authProfiles: [],
@@ -117,6 +200,23 @@ describe("route resolution", () => {
         capability: "reasoning",
         status: "invalid_policy",
         reason: "model_not_found"
+      })
+    );
+
+    expect(
+      resolveRoute({
+        workspaceId: "ws_default",
+        capability: "reasoning",
+        policy: missingExplicitProfilePolicy,
+        catalog,
+        authProfiles: [],
+        resolvedAt
+      })
+    ).toEqual(
+      expect.objectContaining({
+        capability: "reasoning",
+        status: "invalid_policy",
+        reason: "auth_profile_not_found"
       })
     );
 

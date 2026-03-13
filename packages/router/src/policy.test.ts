@@ -98,4 +98,55 @@ describe("router policy helpers", () => {
       ])
     );
   });
+
+  it("rejects auth profiles that belong to a different workspace", () => {
+    const catalog = getProviderCatalog();
+    const policy: RouterPolicy = {
+      workspaceId: "ws_default",
+      version: 2,
+      updatedAt: "2026-03-13T00:00:00.000Z",
+      candidates: [
+        {
+          capability: "coding",
+          priority: 1,
+          providerId: "openai",
+          modelId: "gpt-5.4",
+          authProfileId: "profile_openai_other_workspace",
+          enabled: true
+        }
+      ]
+    };
+
+    const validation = validateRouterPolicy({
+      catalog,
+      policy,
+      authProfiles: [
+        ...authProfiles,
+        {
+          id: "profile_openai_other_workspace",
+          workspaceId: "ws_other",
+          providerId: "openai",
+          label: "OpenAI Other Workspace",
+          credentialId: "cred_openai_other_workspace",
+          status: "active",
+          priority: 1,
+          cooldownUntil: null,
+          lastValidatedAt: "2026-03-13T00:00:00.000Z",
+          createdAt: "2026-03-13T00:00:00.000Z",
+          updatedAt: "2026-03-13T00:00:00.000Z"
+        }
+      ]
+    });
+
+    expect(validation.ok).toBe(false);
+    expect(validation.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "auth_profile_not_found",
+          authProfileId: "profile_openai_other_workspace",
+          providerId: "openai"
+        })
+      ])
+    );
+  });
 });

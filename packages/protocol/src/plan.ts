@@ -89,29 +89,112 @@ export const RunSchema = z.object({
   updatedAt: z.string().datetime()
 });
 
-export const RunStepSchema = z.object({
-  id: z.string(),
-  runId: z.string(),
-  planNodeId: z.string(),
-  title: z.string().min(1),
-  kind: PlanNodeKindSchema,
-  capability: PlanNodeCapabilitySchema,
-  instruction: z.string().min(1).optional(),
-  template: PlanNodeTemplateSchema.optional(),
-  expectedArtifactPath: z.string().min(1).optional(),
-  expectedArtifactKind: ArtifactKindSchema.optional(),
-  routeProviderId: z.string().min(1).nullable().optional(),
-  routeModelId: z.string().min(1).nullable().optional(),
-  routeAuthProfileId: z.string().min(1).nullable().optional(),
-  routePolicyVersion: z.number().int().nonnegative().optional(),
-  routeStatus: RouteStatusSchema.optional(),
-  routeReason: RouteReasonSchema.nullable().optional(),
-  routeResolvedAt: z.string().datetime().optional(),
-  status: StepStatusSchema,
-  position: z.number().int().nonnegative(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime()
-});
+export const RunStepSchema = z
+  .object({
+    id: z.string(),
+    runId: z.string(),
+    planNodeId: z.string(),
+    title: z.string().min(1),
+    kind: PlanNodeKindSchema,
+    capability: PlanNodeCapabilitySchema,
+    instruction: z.string().min(1).optional(),
+    template: PlanNodeTemplateSchema.optional(),
+    expectedArtifactPath: z.string().min(1).optional(),
+    expectedArtifactKind: ArtifactKindSchema.optional(),
+    routeProviderId: z.string().min(1).nullable().optional(),
+    routeModelId: z.string().min(1).nullable().optional(),
+    routeAuthProfileId: z.string().min(1).nullable().optional(),
+    routePolicyVersion: z.number().int().nonnegative().optional(),
+    routeStatus: RouteStatusSchema.optional(),
+    routeReason: RouteReasonSchema.nullable().optional(),
+    routeResolvedAt: z.string().datetime().optional(),
+    status: StepStatusSchema,
+    position: z.number().int().nonnegative(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime()
+  })
+  .superRefine((step, ctx) => {
+    const hasRouteMetadata =
+      step.routeProviderId !== undefined ||
+      step.routeModelId !== undefined ||
+      step.routeAuthProfileId !== undefined ||
+      step.routePolicyVersion !== undefined ||
+      step.routeStatus !== undefined ||
+      step.routeReason !== undefined ||
+      step.routeResolvedAt !== undefined;
+
+    if (!hasRouteMetadata) {
+      return;
+    }
+
+    if (step.routeStatus === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["routeStatus"],
+        message: "routeStatus is required when route metadata is present."
+      });
+    }
+
+    if (step.routePolicyVersion === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["routePolicyVersion"],
+        message: "routePolicyVersion is required when route metadata is present."
+      });
+    }
+
+    if (step.routeResolvedAt === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["routeResolvedAt"],
+        message: "routeResolvedAt is required when route metadata is present."
+      });
+    }
+
+    if (step.routeStatus === "resolved") {
+      if (!step.routeProviderId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["routeProviderId"],
+          message: "Resolved route metadata requires routeProviderId."
+        });
+      }
+
+      if (!step.routeModelId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["routeModelId"],
+          message: "Resolved route metadata requires routeModelId."
+        });
+      }
+
+      if (!step.routeAuthProfileId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["routeAuthProfileId"],
+          message: "Resolved route metadata requires routeAuthProfileId."
+        });
+      }
+
+      if (step.routeReason !== null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["routeReason"],
+          message: "Resolved route metadata must set routeReason to null."
+        });
+      }
+
+      return;
+    }
+
+    if (step.routeStatus !== undefined && step.routeReason == null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["routeReason"],
+        message: "Unresolved route metadata requires a non-null routeReason."
+      });
+    }
+  });
 
 export const RunDetailSchema = RunSchema.extend({
   steps: z.array(RunStepSchema)
