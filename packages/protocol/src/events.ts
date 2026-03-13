@@ -82,6 +82,10 @@ export const RunLogEventSchema = z.object({
   data: RunLogDataSchema
 });
 
+export const RunLogListResponseSchema = z.object({
+  logs: z.array(RunLogDataSchema)
+});
+
 export const ArtifactCreatedEventSchema = z.object({
   outcomeId: z.string(),
   type: z.literal("artifact.created"),
@@ -110,5 +114,6 @@ export type RunStepUpdatedEvent = z.infer<typeof RunStepUpdatedEventSchema>;
 export type RunUpdatedEvent = z.infer<typeof RunUpdatedEventSchema>;
 export type RunLogData = z.infer<typeof RunLogDataSchema>;
 export type RunLogEvent = z.infer<typeof RunLogEventSchema>;
+export type RunLogListResponse = z.infer<typeof RunLogListResponseSchema>;
 export type ArtifactCreatedEvent = z.infer<typeof ArtifactCreatedEventSchema>;
 export type OutcomeStreamEvent = z.infer<typeof OutcomeStreamEventSchema>;

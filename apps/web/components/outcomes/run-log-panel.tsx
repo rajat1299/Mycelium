@@ -1,14 +1,11 @@
 "use client";
 
-import { startTransition, useEffect, useState } from "react";
 import type { RunLogData } from "@computer-oss/protocol";
-import { subscribeToOutcomeEvents } from "../../lib/events";
 import { Badge } from "../ui/badge";
 
 type RunLogPanelProps = {
-  outcomeId: string;
   selectedRunId: string | null;
-  initialLogs: RunLogData[];
+  logs: RunLogData[];
 };
 
 function sortLogs(logs: RunLogData[]) {
@@ -27,44 +24,15 @@ function logKey(log: RunLogData) {
   ].join(":");
 }
 
-function appendLog(logs: RunLogData[], incoming: RunLogData) {
-  if (logs.some((log) => logKey(log) === logKey(incoming))) {
-    return sortLogs(logs);
-  }
-
-  return sortLogs([incoming, ...logs]).slice(0, 40);
-}
-
 function levelVariant(level: RunLogData["level"]) {
   return level === "error" ? "amber" : "sky";
 }
 
 export function RunLogPanel({
-  outcomeId,
   selectedRunId,
-  initialLogs
+  logs
 }: RunLogPanelProps) {
-  const [logs, setLogs] = useState<RunLogData[]>(() => sortLogs(initialLogs));
-
-  useEffect(() => {
-    setLogs(sortLogs(initialLogs));
-  }, [initialLogs, selectedRunId]);
-
-  useEffect(() => {
-    return subscribeToOutcomeEvents(outcomeId, (event) => {
-      if (event.type !== "run.log") {
-        return;
-      }
-
-      if (!selectedRunId || event.data.runId !== selectedRunId) {
-        return;
-      }
-
-      startTransition(() => {
-        setLogs((current) => appendLog(current, event.data));
-      });
-    });
-  }, [outcomeId, selectedRunId]);
+  const orderedLogs = sortLogs(logs);
 
   return (
     <section className="rounded-[2rem] border border-panel-line bg-panel p-6 shadow-panel">
@@ -80,18 +48,18 @@ export function RunLogPanel({
             Streaming step output is pinned to the currently selected run.
           </p>
         </div>
-        <Badge variant={logs.length > 0 ? "sky" : "slate"}>
-          {logs.length} entr{logs.length === 1 ? "y" : "ies"}
+        <Badge variant={orderedLogs.length > 0 ? "sky" : "slate"}>
+          {orderedLogs.length} entr{orderedLogs.length === 1 ? "y" : "ies"}
         </Badge>
       </div>
 
-      {!selectedRunId || logs.length === 0 ? (
+      {!selectedRunId || orderedLogs.length === 0 ? (
         <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-white/55 px-5 py-8 text-sm leading-6 text-muted">
           Live step and run logs will appear here.
         </div>
       ) : (
         <ul className="mt-6 space-y-3">
-          {logs.map((log) => (
+          {orderedLogs.map((log) => (
             <li
               key={logKey(log)}
               className="rounded-[1.5rem] border border-panel-line bg-white/78 px-5 py-4"

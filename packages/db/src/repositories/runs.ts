@@ -14,6 +14,7 @@ import type { StoredOutcome } from "./outcomes";
 type RunRow = typeof outcomeRuns.$inferSelect;
 type RunStepRow = typeof runSteps.$inferSelect;
 type OutcomeRow = typeof outcomes.$inferSelect;
+type RunEventRow = typeof runEvents.$inferSelect;
 
 export type StoredRun = {
   id: string;
@@ -39,6 +40,14 @@ export type StoredRunStep = {
   position: number;
   createdAt: string;
   updatedAt: string;
+};
+
+export type StoredRunEvent = {
+  id: string;
+  runId: string;
+  eventType: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
 };
 
 export type CreateRunFromPlanInput = {
@@ -115,6 +124,26 @@ function mapRunStepRow(row: RunStepRow): StoredRunStep {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString()
   };
+}
+
+function mapRunEventRow(row: RunEventRow): StoredRunEvent {
+  return {
+    id: row.id,
+    runId: row.runId,
+    eventType: row.eventType,
+    payload: row.payload as Record<string, unknown>,
+    createdAt: row.createdAt.toISOString()
+  };
+}
+
+function compareRunEvents(left: RunEventRow, right: RunEventRow) {
+  const createdDelta = left.createdAt.getTime() - right.createdAt.getTime();
+
+  if (createdDelta !== 0) {
+    return createdDelta;
+  }
+
+  return left.id.localeCompare(right.id);
 }
 
 function mapOutcomeRow(row: OutcomeRow): StoredOutcome {
@@ -272,6 +301,22 @@ export class RunRepository {
       payload: input.payload,
       createdAt: new Date(input.createdAt)
     });
+  }
+
+  async listEvents(
+    runId: string,
+    eventType?: string
+  ): Promise<StoredRunEvent[]> {
+    const rows = await this.db.select().from(runEvents);
+
+    return rows
+      .filter(
+        (row) =>
+          row.runId === runId &&
+          (eventType ? row.eventType === eventType : true)
+      )
+      .sort(compareRunEvents)
+      .map(mapRunEventRow);
   }
 
   async updateLifecycleStatus(

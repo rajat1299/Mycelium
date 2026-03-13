@@ -2,6 +2,8 @@ import type { FastifyInstance } from "fastify";
 import {
   CreateRunRequestSchema,
   RunDetailSchema,
+  RunLogDataSchema,
+  RunLogListResponseSchema,
   RunSchema,
   RunStepSchema
 } from "@computer-oss/protocol";
@@ -198,5 +200,31 @@ export function registerRunRoutes(
     }
 
     return reply.code(200).send(response);
+  });
+
+  app.get("/api/runs/:runId/logs", async (request, reply) => {
+    const params = request.params as { runId?: string };
+
+    if (!params.runId) {
+      return reply.code(400).send(badRequest("Run id is required."));
+    }
+
+    const run = await options.repositories.runs.getById(params.runId);
+
+    if (!run) {
+      return reply.code(404).send(badRequest("Run not found."));
+    }
+
+    const events = await options.repositories.runs.listEvents(
+      params.runId,
+      "run.log"
+    );
+    const logs = events.map((event) => RunLogDataSchema.parse(event.payload));
+
+    return reply.code(200).send(
+      RunLogListResponseSchema.parse({
+        logs
+      })
+    );
   });
 }

@@ -6,6 +6,7 @@ import {
   OutcomeSchema,
   PlanSchema,
   RunDetailSchema,
+  RunLogListResponseSchema,
   type CreateOutcomeRequest,
   type CreateRunRequest,
   type Outcome
@@ -197,6 +198,26 @@ export async function getRunArtifacts(runId: string) {
     );
 
     return parsed.artifacts;
+  } catch {
+    return [];
+  }
+}
+
+export async function getRunLogs(runId: string) {
+  try {
+    const response = await fetch(`${getControlPlaneBaseUrl()}/api/runs/${runId}/logs`, {
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const parsed = await parseJson(response, (value) =>
+      RunLogListResponseSchema.parse(value)
+    );
+
+    return parsed.logs;
   } catch {
     return [];
   }

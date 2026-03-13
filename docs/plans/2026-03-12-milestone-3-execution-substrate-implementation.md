@@ -641,6 +641,7 @@ Do not hand the milestone back for merge until all of these are true:
 - `2026-03-12`: Final repository-integrity hardening for Task 4 tightened the lifecycle contract one step further: atomic lifecycle updates now verify that the selected run actually belongs to the supplied outcome before mutating either record. The in-memory repository implements the same ownership check so test harnesses and future non-DB callers cannot accidentally reintroduce split-brain lifecycle state with a mismatched pair.
 - `2026-03-12`: Codex began Task 5 on `codex/m3-task5-operator-console` after merging Task 4 to `main`. The batch stays limited to the web operator console and follows the approved M3 UI scope: selected-run artifact visibility, live log streaming, and realtime run status updates.
 - `2026-03-12`: Task 5 keeps the outcome detail route server-first. The page resolves the selected run on the server, loads only that run's persisted artifacts, and hands the client panels a pinned run ID so SSE updates remain scoped instead of letting adjacent runs bleed into the visible operator session.
+- `2026-03-13`: Review hardening for Task 5 closed two runtime gaps the initial batch missed. Persisted `run.log` history now has a durable read path from `run_events` through the control plane into the web page bootstrapping layer, and the web UI now uses a shared `ExecutionConsole` client wrapper so run selection, artifacts, and logs stay synchronized when a run is created after the page has already loaded.
 
 ## Verification Log
 
@@ -727,3 +728,12 @@ Do not hand the milestone back for merge until all of these are true:
   - `pnpm --filter @computer-oss/web test`
   - `pnpm --filter @computer-oss/web typecheck`
   - `pnpm --filter @computer-oss/web build`
+- `2026-03-13` Task 5 review hardening:
+  - `pnpm --filter @computer-oss/control-plane test -- test/runs.test.ts`
+  - `pnpm --filter @computer-oss/control-plane typecheck`
+  - `pnpm --filter @computer-oss/web test`
+  - `pnpm --filter @computer-oss/web typecheck`
+  - `pnpm --filter @computer-oss/web build`
+  - `pnpm test`
+  - `pnpm typecheck`
+  - `pnpm build`

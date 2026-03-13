@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   OutcomeSchema,
-  RunDetailSchema
+  RunDetailSchema,
+  RunLogListResponseSchema
 } from "@computer-oss/protocol";
 import {
   createExecutionHarness,
@@ -212,6 +213,56 @@ describe("run routes", () => {
               id: createdRun.id,
               status: "completed"
             })
+          })
+        ])
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("lists persisted run logs for a completed run", async () => {
+    const harness = await createExecutionHarness();
+
+    try {
+      const { app, services } = harness;
+      const { outcome, plan } = await createOutcomeAndPlan(
+        app,
+        "Reopen the operator log panel after execution."
+      );
+
+      const createRun = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome.id}/runs`,
+        payload: {
+          planId: plan.id
+        }
+      });
+      const createdRun = RunDetailSchema.parse(createRun.json());
+
+      await services.executionService.waitForRun(createdRun.id);
+
+      const readLogs = await app.inject({
+        method: "GET",
+        url: `/api/runs/${createdRun.id}/logs`
+      });
+
+      expect(readLogs.statusCode).toBe(200);
+      const payload = RunLogListResponseSchema.parse(readLogs.json());
+
+      expect(payload.logs).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            runId: createdRun.id,
+            level: "info",
+            stepTitle: "Analyze outcome",
+            message: "Starting Analyze outcome"
+          }),
+          expect.objectContaining({
+            runId: createdRun.id,
+            level: "info",
+            stepTitle: "Synthesize result",
+            message: "Completed Synthesize result"
           })
         ])
       );

@@ -1,14 +1,11 @@
 "use client";
 
-import { startTransition, useEffect, useState } from "react";
 import type { Artifact } from "@computer-oss/protocol";
-import { subscribeToOutcomeEvents } from "../../lib/events";
 import { Badge } from "../ui/badge";
 
 type ArtifactListProps = {
-  outcomeId: string;
   selectedRunId: string | null;
-  initialArtifacts: Artifact[];
+  artifacts: Artifact[];
 };
 
 function sortArtifacts(artifacts: Artifact[]) {
@@ -17,44 +14,11 @@ function sortArtifacts(artifacts: Artifact[]) {
   );
 }
 
-function upsertArtifact(artifacts: Artifact[], incoming: Artifact) {
-  const next = artifacts.some((artifact) => artifact.id === incoming.id)
-    ? artifacts.map((artifact) =>
-        artifact.id === incoming.id ? incoming : artifact
-      )
-    : [incoming, ...artifacts];
-
-  return sortArtifacts(next);
-}
-
 export function ArtifactList({
-  outcomeId,
   selectedRunId,
-  initialArtifacts
+  artifacts
 }: ArtifactListProps) {
-  const [artifacts, setArtifacts] = useState<Artifact[]>(() =>
-    sortArtifacts(initialArtifacts)
-  );
-
-  useEffect(() => {
-    setArtifacts(sortArtifacts(initialArtifacts));
-  }, [initialArtifacts, selectedRunId]);
-
-  useEffect(() => {
-    return subscribeToOutcomeEvents(outcomeId, (event) => {
-      if (event.type !== "artifact.created") {
-        return;
-      }
-
-      if (!selectedRunId || event.data.runId !== selectedRunId) {
-        return;
-      }
-
-      startTransition(() => {
-        setArtifacts((current) => upsertArtifact(current, event.data));
-      });
-    });
-  }, [outcomeId, selectedRunId]);
+  const orderedArtifacts = sortArtifacts(artifacts);
 
   return (
     <section className="rounded-[2rem] border border-panel-line bg-panel p-6 shadow-panel">
@@ -72,8 +36,9 @@ export function ArtifactList({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Badge variant={artifacts.length > 0 ? "emerald" : "slate"}>
-            {artifacts.length} artifact{artifacts.length === 1 ? "" : "s"}
+          <Badge variant={orderedArtifacts.length > 0 ? "emerald" : "slate"}>
+            {orderedArtifacts.length} artifact
+            {orderedArtifacts.length === 1 ? "" : "s"}
           </Badge>
         </div>
       </div>
@@ -82,13 +47,13 @@ export function ArtifactList({
         <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-white/55 px-5 py-8 text-sm leading-6 text-muted">
           Start or select a run to inspect its persisted artifacts.
         </div>
-      ) : artifacts.length === 0 ? (
+      ) : orderedArtifacts.length === 0 ? (
         <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-white/55 px-5 py-8 text-sm leading-6 text-muted">
           No artifacts have been persisted for this run yet.
         </div>
       ) : (
         <ul className="mt-6 space-y-3">
-          {artifacts.map((artifact) => (
+          {orderedArtifacts.map((artifact) => (
             <li
               key={artifact.id}
               className="rounded-[1.5rem] border border-panel-line bg-white/78 px-5 py-4"

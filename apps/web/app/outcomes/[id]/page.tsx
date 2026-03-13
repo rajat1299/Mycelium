@@ -1,12 +1,10 @@
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArtifactList } from "../../../components/outcomes/artifact-list";
+import { ExecutionConsole } from "../../../components/outcomes/execution-console";
 import { OutcomeActivity } from "../../../components/outcomes/outcome-activity";
 import { PlanActions } from "../../../components/outcomes/plan-actions";
 import { PlanGraph } from "../../../components/outcomes/plan-graph";
-import { RunLogPanel } from "../../../components/outcomes/run-log-panel";
-import { RunTimeline } from "../../../components/outcomes/run-timeline";
 import {
   createPlan,
   createRun,
@@ -14,6 +12,7 @@ import {
   getOutcome,
   getPlan,
   getRunArtifacts,
+  getRunLogs,
   getRun
 } from "../../../lib/api";
 
@@ -54,7 +53,9 @@ export default async function OutcomeDetailPage({
     notFound();
   }
 
-  const artifacts = run ? await getRunArtifacts(run.id) : [];
+  const [artifacts, logs] = run
+    ? await Promise.all([getRunArtifacts(run.id), getRunLogs(run.id)])
+    : [[], []];
 
   async function createPlanAction() {
     "use server";
@@ -121,20 +122,11 @@ export default async function OutcomeDetailPage({
         </div>
 
         <div className="space-y-8">
-          <RunTimeline
+          <ExecutionConsole
             outcomeId={outcome.id}
             initialRun={run}
-            selectedRunId={run?.id ?? null}
-          />
-          <ArtifactList
-            outcomeId={outcome.id}
-            selectedRunId={run?.id ?? null}
             initialArtifacts={artifacts}
-          />
-          <RunLogPanel
-            outcomeId={outcome.id}
-            selectedRunId={run?.id ?? null}
-            initialLogs={[]}
+            initialLogs={logs}
           />
           <OutcomeActivity outcome={outcome} />
         </div>
