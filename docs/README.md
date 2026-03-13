@@ -26,4 +26,4 @@ Read these in order if you are new to the project:
 
 ## Current status
 
-Milestone 2 is integrated on `main`. Use the runbook and local setup guide first, then use the Milestone 3 design and plan docs to start the next execution slice.
+Milestone 3 is integrated on `main`. Use the runbook and local setup guide first, then use the execution roadmap and project log to scope the next milestone slice.

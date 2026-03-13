@@ -108,7 +108,7 @@ Ship gate:
 
 ### M3 Execution Substrate V1
 
-Status: `Planned`
+Status: `Complete`
 
 Goal:
 
@@ -135,6 +135,13 @@ Ship gate:
 - independent ready steps run in parallel in isolated local containers
 - step lifecycle transitions are durable
 - artifacts can be attached to a run/step and shown in the UI
+
+Completion notes:
+
+- the local Docker provider, artifact store, and workspace lease model are integrated
+- `POST /api/outcomes/:id/runs` now kicks off execution automatically
+- the outcome detail page now shows timeline, persisted logs, and persisted artifacts for the selected run
+- the end-to-end smoke path has been verified against the real local stack with Docker
 
 ### M4 Routing and BYO Keys
 

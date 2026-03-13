@@ -144,7 +144,10 @@ Mycelium is the assembled thing. Not a framework. A product you run with one com
 
 ### Prerequisites
 
-- Docker and Docker Compose
+- Node.js `22.x`
+- `pnpm` `10.17.0` or newer
+- Docker Desktop or a local Docker engine
+- enough local Docker disk space to pull `node:22-bookworm-slim`
 - API keys from one or more supported providers (Anthropic, OpenAI, Google, etc.)
 
 ### Run it
@@ -170,11 +173,26 @@ You only need keys for the providers you want to use. One key is enough to get s
 ```bash
 pnpm install
 pnpm db:up
-pnpm db:push
+set -a; source .env; set +a; pnpm db:push
 pnpm dev
 ```
 
-Open `http://127.0.0.1:3000`. The current Milestone 2 slice lets you create an outcome, generate a deterministic draft plan, start a run from that plan, and watch the run timeline materialize in the operator console.
+`pnpm db:push` currently needs `DATABASE_URL` exported from the root `.env` file. The command above works from the repo root in a normal POSIX shell.
+
+The local sandbox uses `node:22-bookworm-slim` by default. If you need to pin a different local image, set `SANDBOX_IMAGE` in `apps/control-plane/.env.local` before starting the stack.
+
+Open `http://127.0.0.1:3000`. The current Milestone 3 slice lets you create an outcome, generate a deterministic fork/join draft plan, start a run that executes automatically in local Docker sandboxes, and inspect the run timeline, persisted logs, and run artifacts in the operator console.
+
+### Manual smoke checklist
+
+1. Create an outcome from the web UI.
+2. Generate the draft plan and confirm the four-node fork/join graph renders:
+   `Analyze outcome` -> `Draft brief` + `Draft operator summary` -> `Synthesize result`.
+3. Start the run and confirm the two middle steps complete before synthesis starts.
+4. Confirm the run reaches `completed` and the outcome header also reaches `completed`.
+5. Confirm the artifact panel shows exactly four artifacts:
+   `artifacts/analyze-outcome.md`, `artifacts/brief.md`, `artifacts/operator-summary.md`, and `artifacts/final-result.md`.
+6. Confirm the log panel shows persisted step logs after a page refresh, not just live SSE updates.
 
 ### Messaging (optional)
 
@@ -182,7 +200,7 @@ Mycelium supports Slack and Telegram out of the box. See the [messaging setup gu
 
 ### API
 
-The currently shipped local API surface for the Milestone 2 slice is:
+The currently shipped local API surface for the Milestone 3 slice is:
 
 ```bash
 # Create an outcome
@@ -201,11 +219,23 @@ curl -X POST http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/runs \
   -H "content-type: application/json" \
   -d '{"planId":"plan_<OUTCOME_ID>"}'
 
+# Read the latest persisted run for an outcome
+curl http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/runs/latest
+
+# Read a run and its steps
+curl http://127.0.0.1:4000/api/runs/<RUN_ID>
+
+# Read persisted run logs
+curl http://127.0.0.1:4000/api/runs/<RUN_ID>/logs
+
+# Read persisted run artifacts
+curl http://127.0.0.1:4000/api/runs/<RUN_ID>/artifacts
+
 # Stream live plan/run events over SSE
 curl -N http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/events
 ```
 
-The operator console consumes the same control-plane endpoints and the same outcome-scoped SSE stream.
+The operator console consumes the same control-plane endpoints and the same outcome-scoped SSE stream for timeline, activity, logs, and artifacts.
 
 ---
 

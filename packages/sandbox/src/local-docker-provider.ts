@@ -36,11 +36,19 @@ export class LocalDockerProvider implements SandboxProvider {
       throw new Error("Sandbox step runId must match the requested runId");
     }
 
+    const expectedArtifactPath = normalizeWorkspaceRelativePath(
+      request.step.expectedArtifactPath
+    );
+
     await Promise.all([
       mkdir(request.workspace.inputPath, { recursive: true }),
       mkdir(request.workspace.artifactsPath, { recursive: true }),
       mkdir(request.workspace.logsPath, { recursive: true })
     ]);
+
+    const artifactPathsBefore = new Set(
+      await listArtifactPaths(request.workspace.artifactsPath)
+    );
 
     const containerName = createContainerName(
       request.runId,
@@ -76,7 +84,11 @@ export class LocalDockerProvider implements SandboxProvider {
     };
 
     const runResult = await this.runner.run(dockerRequest);
-    const producedArtifactPaths = await listArtifactPaths(request.workspace.artifactsPath);
+    const producedArtifactPaths = filterProducedArtifactPaths({
+      before: artifactPathsBefore,
+      after: await listArtifactPaths(request.workspace.artifactsPath),
+      expectedArtifactPath
+    });
 
     return {
       containerName,
@@ -89,6 +101,22 @@ export class LocalDockerProvider implements SandboxProvider {
       producedArtifactPaths
     };
   }
+}
+
+function filterProducedArtifactPaths(input: {
+  before: ReadonlySet<string>;
+  after: string[];
+  expectedArtifactPath?: string;
+}): string[] {
+  if (input.expectedArtifactPath) {
+    return input.after.includes(input.expectedArtifactPath)
+      ? [input.expectedArtifactPath]
+      : [];
+  }
+
+  return input.after.filter(
+    (relativePath) => !input.before.has(relativePath)
+  );
 }
 
 export function createDockerCliRunner(): DockerRunner {

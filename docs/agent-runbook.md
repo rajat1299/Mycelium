@@ -4,13 +4,15 @@ Use this file as the first stop for any Codex agent working on Mycelium.
 
 ## What this repository is
 
-Mycelium is an open-source control plane for outcome-driven AI work. The current integrated slice is `Milestone 2: Orchestration Kernel`:
+Mycelium is an open-source control plane for outcome-driven AI work. The current integrated slice is `Milestone 3: Execution Substrate V1`:
 
 - `apps/control-plane`: Fastify API and SSE runtime
 - `apps/web`: Next.js operator console
 - `packages/protocol`: shared contracts
 - `packages/db`: Drizzle schema and repositories
-- `packages/orchestrator`: plan graph, planner, and run-state primitives
+- `packages/orchestrator`: plan graph, planner, scheduler, and run-state primitives
+- `packages/sandbox`: local Docker sandbox provider and workspace management
+- `packages/artifacts`: local artifact store and safe path resolution
 
 Read these next:
 
@@ -42,8 +44,12 @@ Start the local database and sync the schema:
 
 ```bash
 pnpm db:up
-pnpm db:push
+set -a; source .env; set +a; pnpm db:push
 ```
+
+`pnpm db:push` from the repo root currently requires the root `.env` file to be exported first. Keep the command above verbatim until the script is changed.
+
+The default local sandbox image is `node:22-bookworm-slim`. If a machine needs a different image, set `SANDBOX_IMAGE` in `apps/control-plane/.env.local`.
 
 Start the application stack:
 
@@ -72,6 +78,14 @@ If the task touches the running stack, also verify:
 ```bash
 curl http://127.0.0.1:4000/health
 ```
+
+If the task touches the execution path, also verify one real run in the UI or over the API:
+
+- generate the draft plan
+- start the run
+- confirm `Draft brief` and `Draft operator summary` complete before `Synthesize result`
+- confirm the run reaches `completed`
+- confirm the selected run shows persisted artifacts and persisted logs
 
 ## Stop commands
 
