@@ -3,7 +3,12 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { buildApp } from "../src/app";
 import { createEventBus } from "../src/lib/event-bus";
-import { createInMemoryServiceContainer } from "../src/lib/service-container";
+import { createExecutionService } from "../src/lib/execution-service";
+import {
+  createInMemoryRepositories,
+  type Repositories
+} from "../src/lib/repositories";
+import type { ServiceContainer } from "../src/lib/service-container";
 
 type FakeSandboxRequest = {
   runId: string;
@@ -27,6 +32,21 @@ type FakeSandboxResult = {
 
 type FakeSandboxOptions = {
   onExecute?: (request: FakeSandboxRequest) => Promise<FakeSandboxResult> | FakeSandboxResult;
+  repositories?: Repositories;
+  eventBus?: ReturnType<typeof createEventBus>;
+  workspaceManager?: {
+    acquire(runId: string): Promise<{
+      runId: string;
+      acquiredAt: string;
+      paths: {
+        rootPath: string;
+        inputPath: string;
+        artifactsPath: string;
+        logsPath: string;
+      };
+    }>;
+    release(runId: string): void;
+  };
 };
 
 export function createFakeSandboxProvider(options: FakeSandboxOptions = {}) {
@@ -77,13 +97,40 @@ export async function createExecutionHarness(
   const workspaceRootPath = await mkdtemp(
     join(tmpdir(), "mycelium-control-plane-")
   );
-  const eventBus = createEventBus();
+  const eventBus = options.eventBus ?? createEventBus();
   const fakeSandbox = createFakeSandboxProvider(options);
-  const services = createInMemoryServiceContainer({
+  const repositories = options.repositories ?? createInMemoryRepositories();
+  const workspaceManager =
+    options.workspaceManager ??
+    {
+      async acquire(runId: string) {
+        const rootPath = resolve(workspaceRootPath, runId);
+
+        return {
+          runId,
+          acquiredAt: new Date().toISOString(),
+          paths: {
+            rootPath,
+            inputPath: resolve(rootPath, "input"),
+            artifactsPath: resolve(rootPath, "artifacts"),
+            logsPath: resolve(rootPath, "logs")
+          }
+        };
+      },
+      release(_runId: string) {
+        return;
+      }
+    };
+  const services: ServiceContainer = {
+    repositories,
     eventBus,
-    sandboxProvider: fakeSandbox.provider,
-    workspaceRootPath
-  });
+    executionService: createExecutionService({
+      repositories,
+      eventBus,
+      sandboxProvider: fakeSandbox.provider as never,
+      workspaceManager: workspaceManager as never
+    })
+  };
   const events: Array<{ outcomeId: string; type: string; data: unknown }> = [];
   const unsubscribe = eventBus.subscribeAll((event) => {
     events.push(event);

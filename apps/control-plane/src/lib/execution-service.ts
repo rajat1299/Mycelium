@@ -48,6 +48,8 @@ export function createExecutionService(
         sandboxProvider: options.sandboxProvider,
         workspaceManager: options.workspaceManager,
         now
+      }).catch((error) => {
+        reportUnhandledExecutionError(runId, error);
       }).finally(() => {
         inFlightRuns.delete(runId);
       });
@@ -82,9 +84,10 @@ async function executeRun(options: ExecuteRunOptions): Promise<void> {
     return;
   }
 
-  const lease = await acquireWorkspaceLease(options, run.id);
+  let lease: RuntimeWorkspaceLease | null = null;
 
   try {
+    lease = await acquireWorkspaceLease(options, run.id);
     await updateLifecycleStatus(options, {
       runId: run.id,
       outcomeId: outcome.id,
@@ -151,7 +154,7 @@ async function executeRun(options: ExecuteRunOptions): Promise<void> {
             runId: run.id,
             outcomeId: outcome.id,
             outcomePrompt: outcome.prompt,
-            lease,
+            lease: lease!,
             step
           })
         )
@@ -168,7 +171,7 @@ async function executeRun(options: ExecuteRunOptions): Promise<void> {
       }
     }
   } catch (error) {
-    await emitRunLog(options, {
+    await emitBestEffortRunLog(options, {
       outcomeId: outcome.id,
       runId: run.id,
       level: "error",
@@ -181,11 +184,10 @@ async function executeRun(options: ExecuteRunOptions): Promise<void> {
       outcomeStatus: "failed"
     });
   } finally {
-    await options.repositories.workspaceLeases.release({
-      runId: run.id,
-      releasedAt: options.now().toISOString()
+    await releaseWorkspaceLease(options, {
+      outcomeId: outcome.id,
+      runId: run.id
     });
-    options.workspaceManager.release(run.id);
   }
 }
 
@@ -355,16 +357,64 @@ async function acquireWorkspaceLease(
 
   const runtimeLease = await options.workspaceManager.acquire(runId);
 
-  await options.repositories.workspaceLeases.acquire({
-    runId,
-    rootPath: runtimeLease.paths.rootPath,
-    inputPath: runtimeLease.paths.inputPath,
-    artifactsPath: runtimeLease.paths.artifactsPath,
-    logsPath: runtimeLease.paths.logsPath,
-    acquiredAt: runtimeLease.acquiredAt
-  });
+  try {
+    await options.repositories.workspaceLeases.acquire({
+      runId,
+      rootPath: runtimeLease.paths.rootPath,
+      inputPath: runtimeLease.paths.inputPath,
+      artifactsPath: runtimeLease.paths.artifactsPath,
+      logsPath: runtimeLease.paths.logsPath,
+      acquiredAt: runtimeLease.acquiredAt
+    });
+  } catch (error) {
+    try {
+      options.workspaceManager.release(runId);
+    } catch (releaseError) {
+      throw new Error(
+        `${toErrorMessage(error)}; local workspace cleanup failed: ${toErrorMessage(
+          releaseError
+        )}`
+      );
+    }
+
+    throw error;
+  }
 
   return runtimeLease;
+}
+
+async function releaseWorkspaceLease(
+  options: ExecuteRunOptions,
+  input: {
+    outcomeId: string;
+    runId: string;
+  }
+) {
+  const cleanupErrors: string[] = [];
+
+  try {
+    await options.repositories.workspaceLeases.release({
+      runId: input.runId,
+      releasedAt: options.now().toISOString()
+    });
+  } catch (error) {
+    cleanupErrors.push(`Durable workspace lease release failed: ${toErrorMessage(error)}`);
+  }
+
+  try {
+    options.workspaceManager.release(input.runId);
+  } catch (error) {
+    cleanupErrors.push(`Local workspace cleanup failed: ${toErrorMessage(error)}`);
+  }
+
+  for (const message of cleanupErrors) {
+    await emitBestEffortRunLog(options, {
+      outcomeId: input.outcomeId,
+      runId: input.runId,
+      level: "error",
+      message
+    });
+  }
 }
 
 async function updateLifecycleStatus(
@@ -491,6 +541,24 @@ async function emitRunLog(
   });
 }
 
+async function emitBestEffortRunLog(
+  options: ExecuteRunOptions,
+  input: {
+    outcomeId: string;
+    runId: string;
+    stepId?: string;
+    stepTitle?: string;
+    level: "info" | "error";
+    message: string;
+  }
+) {
+  try {
+    await emitRunLog(options, input);
+  } catch (error) {
+    reportUnhandledExecutionError(input.runId, error);
+  }
+}
+
 async function emitArtifactCreated(
   options: ExecuteRunOptions,
   outcomeId: string,
@@ -559,4 +627,8 @@ function toErrorMessage(error: unknown) {
   }
 
   return String(error);
+}
+
+function reportUnhandledExecutionError(runId: string, error: unknown) {
+  console.error(`[execution-service] run ${runId} crashed`, error);
 }

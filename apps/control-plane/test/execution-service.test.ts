@@ -1,9 +1,56 @@
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { RunDetailSchema } from "@computer-oss/protocol";
+import { createInMemoryRepositories } from "../src/lib/repositories";
 import {
   createExecutionHarness,
   createOutcomeAndPlan
 } from "./execution-test-helpers";
+
+async function createTrackingWorkspaceManager() {
+  const rootPath = await mkdtemp(
+    resolve(tmpdir(), "mycelium-execution-workspace-")
+  );
+  const leases = new Set<string>();
+
+  return {
+    async acquire(runId: string) {
+      const runRootPath = resolve(rootPath, runId);
+      const inputPath = resolve(runRootPath, "input");
+      const artifactsPath = resolve(runRootPath, "artifacts");
+      const logsPath = resolve(runRootPath, "logs");
+
+      leases.add(runId);
+      await Promise.all([
+        mkdir(inputPath, { recursive: true }),
+        mkdir(artifactsPath, { recursive: true }),
+        mkdir(logsPath, { recursive: true })
+      ]);
+
+      return {
+        runId,
+        acquiredAt: new Date("2026-03-12T00:10:00.000Z").toISOString(),
+        paths: {
+          rootPath: runRootPath,
+          inputPath,
+          artifactsPath,
+          logsPath
+        }
+      };
+    },
+    release(runId: string) {
+      leases.delete(runId);
+    },
+    isLeased(runId: string) {
+      return leases.has(runId);
+    },
+    async cleanup() {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  };
+}
 
 describe("execution service", () => {
   it("runs ready sibling steps before synthesis and emits logs plus artifacts", async () => {
@@ -125,6 +172,141 @@ describe("execution service", () => {
       );
     } finally {
       await harness.cleanup();
+    }
+  });
+
+  it("fails the run and clears the local workspace when durable lease acquisition fails", async () => {
+    const workspaceManager = await createTrackingWorkspaceManager();
+    const repositories = createInMemoryRepositories();
+    const harness = await createExecutionHarness({
+      repositories: {
+        ...repositories,
+        workspaceLeases: {
+          ...repositories.workspaceLeases,
+          async acquire() {
+            throw new Error("lease insert failed");
+          }
+        }
+      },
+      workspaceManager
+    });
+
+    try {
+      const { app, services, events } = harness;
+      const { outcome, plan } = await createOutcomeAndPlan(app);
+
+      const createRun = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome.id}/runs`,
+        payload: {
+          planId: plan.id
+        }
+      });
+      const createdRun = RunDetailSchema.parse(createRun.json());
+
+      await expect(
+        services.executionService.waitForRun(createdRun.id)
+      ).resolves.toBeUndefined();
+      expect(workspaceManager.isLeased(createdRun.id)).toBe(false);
+      await expect(
+        services.repositories.workspaceLeases.getActiveByRun(createdRun.id)
+      ).resolves.toBeNull();
+      await expect(services.repositories.runs.getById(createdRun.id)).resolves.toEqual(
+        expect.objectContaining({
+          id: createdRun.id,
+          status: "failed"
+        })
+      );
+      await expect(
+        services.repositories.outcomes.getById(outcome.id)
+      ).resolves.toEqual(
+        expect.objectContaining({
+          id: outcome.id,
+          status: "failed"
+        })
+      );
+      expect(events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            outcomeId: outcome.id,
+            type: "run.log",
+            data: expect.objectContaining({
+              runId: createdRun.id,
+              level: "error",
+              message: expect.stringContaining("lease insert failed")
+            })
+          })
+        ])
+      );
+    } finally {
+      await harness.cleanup();
+      await workspaceManager.cleanup();
+    }
+  });
+
+  it("keeps the run completed and clears the local workspace when durable lease release fails", async () => {
+    const workspaceManager = await createTrackingWorkspaceManager();
+    const repositories = createInMemoryRepositories();
+    const harness = await createExecutionHarness({
+      repositories: {
+        ...repositories,
+        workspaceLeases: {
+          ...repositories.workspaceLeases,
+          async release() {
+            throw new Error("lease release failed");
+          }
+        }
+      },
+      workspaceManager
+    });
+
+    try {
+      const { app, services, events } = harness;
+      const { outcome, plan } = await createOutcomeAndPlan(app);
+
+      const createRun = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome.id}/runs`,
+        payload: {
+          planId: plan.id
+        }
+      });
+      const createdRun = RunDetailSchema.parse(createRun.json());
+
+      await expect(
+        services.executionService.waitForRun(createdRun.id)
+      ).resolves.toBeUndefined();
+      expect(workspaceManager.isLeased(createdRun.id)).toBe(false);
+      await expect(services.repositories.runs.getById(createdRun.id)).resolves.toEqual(
+        expect.objectContaining({
+          id: createdRun.id,
+          status: "completed"
+        })
+      );
+      await expect(
+        services.repositories.outcomes.getById(outcome.id)
+      ).resolves.toEqual(
+        expect.objectContaining({
+          id: outcome.id,
+          status: "completed"
+        })
+      );
+      expect(events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            outcomeId: outcome.id,
+            type: "run.log",
+            data: expect.objectContaining({
+              runId: createdRun.id,
+              level: "error",
+              message: expect.stringContaining("lease release failed")
+            })
+          })
+        ])
+      );
+    } finally {
+      await harness.cleanup();
+      await workspaceManager.cleanup();
     }
   });
 });

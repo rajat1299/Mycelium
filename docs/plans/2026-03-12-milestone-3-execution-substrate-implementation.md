@@ -636,6 +636,7 @@ Do not hand the milestone back for merge until all of these are true:
 - `2026-03-12`: Review hardening for Task 3 tightened the remaining state-transition invariants in the persistence layer. `releaseReadyDependents()` now only flips a step to `ready` if the row is still `pending` at update time, which prevents duplicate join-step releases when sibling completions race. Workspace lease release is also idempotent now: the repository updates only active leases and preserves the first recorded `releasedAt` timestamp if cleanup runs twice.
 - `2026-03-12`: Codex began Task 4 on `codex/m3-task4-execution-service` after merging Task 3 to `main`. The batch stays centered on the control plane: background execution, artifact read APIs, and the SSE lifecycle that Task 5 will project into the operator console.
 - `2026-03-12`: Task 4 required a few small implementation-scope deviations from the listed file set. Shared protocol contracts were expanded with artifact and new event schemas, `tsconfig.base.json` gained resolver entries for the newer workspace packages, `apps/control-plane/src/server.ts` was updated so the real server composes the execution service instead of only DB repositories, and the existing web SSE parser/activity feed received a minimal compatibility patch so the widened event union does not break unrelated workspace typechecks before Task 5 lands.
+- `2026-03-12`: Review hardening for Task 4 tightened execution-service lifecycle cleanup. Runtime workspace acquisition is now covered by the main failure path, durable lease persistence failures actively release the local workspace before surfacing the run failure, and teardown failures are downgraded to best-effort error logs so `startRun()` does not leak unhandled background rejections or strand in-memory leases.
 
 ## Verification Log
 
@@ -692,6 +693,13 @@ Do not hand the milestone back for merge until all of these are true:
   - `pnpm --filter @computer-oss/control-plane typecheck`
   - `pnpm --filter @computer-oss/protocol test`
   - `pnpm --filter @computer-oss/protocol typecheck`
+  - `pnpm test`
+  - `pnpm build`
+  - `pnpm typecheck`
+- `2026-03-12` Task 4 review hardening:
+  - `pnpm --filter @computer-oss/control-plane test -- test/execution-service.test.ts`
+  - `pnpm --filter @computer-oss/control-plane test`
+  - `pnpm --filter @computer-oss/control-plane typecheck`
   - `pnpm test`
   - `pnpm build`
   - `pnpm typecheck`
