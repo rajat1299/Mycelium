@@ -212,6 +212,80 @@ describe("LocalDockerProvider", () => {
     expect(runner.run).not.toHaveBeenCalled();
   });
 
+  it("only reports artifacts introduced by the current step", async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), "mycelium-sandbox-provider-"));
+    roots.push(rootPath);
+
+    const manager = new WorkspaceManager({ rootPath });
+    const lease = await manager.acquire("run_123");
+
+    await mkdir(lease.paths.artifactsPath, { recursive: true });
+    await writeFile(
+      join(lease.paths.artifactsPath, "analyze-outcome.md"),
+      "# Existing artifact\n"
+    );
+
+    const runner = {
+      run: vi.fn(async (request: { mounts: Array<{ source: string; target: string }> }) => {
+        const artifactMount = request.mounts.find(
+          (mount) => mount.target === "/workspace/artifacts"
+        );
+
+        if (!artifactMount) {
+          throw new Error("expected artifacts mount");
+        }
+
+        await writeFile(join(artifactMount.source, "brief.md"), "# Draft brief\n");
+        await writeFile(
+          join(artifactMount.source, "operator-summary.md"),
+          "# Other step artifact\n"
+        );
+
+        return {
+          exitCode: 0,
+          stdout: "step complete",
+          stderr: "",
+          startedAt: "2026-03-12T10:00:00.000Z",
+          finishedAt: "2026-03-12T10:00:01.000Z",
+          durationMs: 1000
+        };
+      })
+    };
+
+    const provider = new LocalDockerProvider({
+      image: "node:22-bookworm-slim",
+      runner,
+      randomSuffix: () => "seed123"
+    });
+
+    const result = await provider.execute({
+      runId: "run_123",
+      context: {
+        outcomeId: "outcome_123",
+        outcomePrompt: "Draft the operator brief."
+      },
+      step: {
+        id: "step_123",
+        planNodeId: "plan_outcome_123:draft-brief",
+        title: "Draft brief",
+        kind: "task",
+        capability: "coding",
+        instruction: "Write the brief artifact.",
+        template: "draft_brief",
+        expectedArtifactPath: "artifacts/brief.md",
+        expectedArtifactKind: "brief",
+        status: "ready",
+        position: 1,
+        createdAt: "2026-03-12T10:00:00.000Z",
+        updatedAt: "2026-03-12T10:00:00.000Z",
+        runId: "run_123"
+      },
+      workspace: lease.paths
+    });
+
+    expect(result.producedArtifactPaths).toEqual(["artifacts/brief.md"]);
+  });
+
   it("rejects steps that do not belong to the requested run", async () => {
     const rootPath = await mkdtemp(join(tmpdir(), "mycelium-sandbox-provider-"));
     roots.push(rootPath);
