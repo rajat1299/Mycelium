@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   getPlan: vi.fn(),
   getRun: vi.fn(),
   getLatestRun: vi.fn(),
+  getRunArtifacts: vi.fn(),
+  getRunLogs: vi.fn(),
   createPlan: vi.fn(),
   createRun: vi.fn(),
   notFound: vi.fn(() => {
@@ -21,6 +23,8 @@ const mocks = vi.hoisted(() => ({
 
 let observedRun: RunDetail | null = null;
 let observedSelectedRunId: string | null = null;
+let observedArtifacts: Array<{ id: string; relativePath: string }> = [];
+let observedLogs: Array<{ message: string; level: string }> = [];
 
 vi.mock("next/cache", () => ({
   revalidatePath: mocks.revalidatePath
@@ -53,17 +57,36 @@ vi.mock("../../../components/outcomes/plan-graph", () => ({
   PlanGraph: () => <div data-testid="plan-graph" />
 }));
 
-vi.mock("../../../components/outcomes/run-timeline", () => ({
-  RunTimeline: ({
+vi.mock("../../../components/outcomes/execution-console", () => ({
+  ExecutionConsole: ({
     initialRun,
-    selectedRunId
+    initialArtifacts,
+    initialLogs
   }: {
     initialRun: RunDetail | null;
-    selectedRunId?: string | null;
+    initialArtifacts: Array<{ id: string; relativePath: string }>;
+    initialLogs: Array<{ message: string; level: string }>;
   }) => {
     observedRun = initialRun;
-    observedSelectedRunId = selectedRunId ?? null;
-    return <div data-testid="run-timeline">{initialRun?.id ?? "none"}</div>;
+    observedSelectedRunId = initialRun?.id ?? null;
+    observedArtifacts = initialArtifacts;
+    observedLogs = initialLogs;
+    return (
+      <div data-testid="execution-console">
+        {(initialRun?.id ?? "none") + ":" + initialArtifacts.length + ":" + initialLogs.length}
+      </div>
+    );
+  }
+}));
+
+vi.mock("../../../components/outcomes/artifact-list", () => ({
+  ArtifactList: ({
+    initialArtifacts
+  }: {
+    initialArtifacts: Array<{ id: string; relativePath: string }>;
+  }) => {
+    observedArtifacts = initialArtifacts;
+    return <div data-testid="artifact-list">{initialArtifacts.length}</div>;
   }
 }));
 
@@ -73,7 +96,9 @@ vi.mock("../../../lib/api", () => ({
   getOutcome: mocks.getOutcome,
   getPlan: mocks.getPlan,
   getRun: mocks.getRun,
-  getLatestRun: mocks.getLatestRun
+  getLatestRun: mocks.getLatestRun,
+  getRunArtifacts: mocks.getRunArtifacts,
+  getRunLogs: mocks.getRunLogs
 }));
 
 afterEach(() => {
@@ -84,6 +109,8 @@ describe("OutcomeDetailPage", () => {
   beforeEach(() => {
     observedRun = null;
     observedSelectedRunId = null;
+    observedArtifacts = [];
+    observedLogs = [];
     vi.clearAllMocks();
 
     mocks.getOutcome.mockResolvedValue({
@@ -107,6 +134,29 @@ describe("OutcomeDetailPage", () => {
       updatedAt: "2026-03-11T00:09:00.000Z",
       steps: []
     });
+    mocks.getRunArtifacts.mockResolvedValue([
+      {
+        id: "artifact_123",
+        outcomeId: "outcome_123",
+        runId: "run_latest",
+        stepId: "step_1",
+        kind: "analysis",
+        relativePath: "artifacts/analyze-outcome.md",
+        size: 128,
+        metadata: {},
+        createdAt: "2026-03-11T00:09:30.000Z"
+      }
+    ]);
+    mocks.getRunLogs.mockResolvedValue([
+      {
+        runId: "run_latest",
+        stepId: "step_1",
+        stepTitle: "Analyze outcome",
+        level: "info",
+        message: "Recovered persisted log output.",
+        createdAt: "2026-03-11T00:09:20.000Z"
+      }
+    ]);
   });
 
   it("loads the latest persisted run when no runId query param is provided", async () => {
@@ -119,9 +169,25 @@ describe("OutcomeDetailPage", () => {
 
     expect(mocks.getLatestRun).toHaveBeenCalledWith("outcome_123");
     expect(mocks.getRun).not.toHaveBeenCalled();
-    expect(screen.getByTestId("run-timeline")).toHaveTextContent("run_latest");
+    expect(mocks.getRunArtifacts).toHaveBeenCalledWith("run_latest");
+    expect(mocks.getRunLogs).toHaveBeenCalledWith("run_latest");
+    expect(screen.getByTestId("execution-console")).toHaveTextContent(
+      "run_latest:1:1"
+    );
     expect(observedRun?.id).toBe("run_latest");
     expect(observedSelectedRunId).toBe("run_latest");
+    expect(observedArtifacts).toEqual([
+      expect.objectContaining({
+        id: "artifact_123",
+        relativePath: "artifacts/analyze-outcome.md"
+      })
+    ]);
+    expect(observedLogs).toEqual([
+      expect.objectContaining({
+        message: "Recovered persisted log output.",
+        level: "info"
+      })
+    ]);
   });
 
   it("ignores a runId that belongs to a different outcome and falls back to the latest local run", async () => {
@@ -144,7 +210,11 @@ describe("OutcomeDetailPage", () => {
 
     expect(mocks.getRun).toHaveBeenCalledWith("run_other");
     expect(mocks.getLatestRun).toHaveBeenCalledWith("outcome_123");
-    expect(screen.getByTestId("run-timeline")).toHaveTextContent("run_latest");
+    expect(mocks.getRunArtifacts).toHaveBeenCalledWith("run_latest");
+    expect(mocks.getRunLogs).toHaveBeenCalledWith("run_latest");
+    expect(screen.getByTestId("execution-console")).toHaveTextContent(
+      "run_latest:1:1"
+    );
     expect(observedRun?.id).toBe("run_latest");
     expect(observedSelectedRunId).toBe("run_latest");
   });

@@ -56,9 +56,34 @@ export function RunTimeline({
   const run = state.run;
 
   useEffect(() => {
-    setState({
-      pinnedRunId: selectedRunId ?? initialRun?.id ?? null,
-      run: initialRun
+    setState((current) => {
+      const nextPinnedRunId = selectedRunId ?? initialRun?.id ?? null;
+
+      if (!nextPinnedRunId) {
+        return {
+          pinnedRunId: null,
+          run: initialRun
+        };
+      }
+
+      if (current.run && current.run.id === nextPinnedRunId) {
+        return {
+          pinnedRunId: nextPinnedRunId,
+          run: current.run
+        };
+      }
+
+      if (initialRun && initialRun.id === nextPinnedRunId) {
+        return {
+          pinnedRunId: nextPinnedRunId,
+          run: initialRun
+        };
+      }
+
+      return {
+        pinnedRunId: nextPinnedRunId,
+        run: null
+      };
     });
   }, [initialRun, selectedRunId]);
 
@@ -99,6 +124,27 @@ export function RunTimeline({
               run: {
                 ...current.run,
                 steps: upsertStep(current.run.steps, event.data)
+              }
+            };
+          });
+        }
+
+        if (event.type === "run.updated") {
+          setState((current) => {
+            if (
+              !current.run ||
+              current.pinnedRunId !== event.data.id ||
+              current.run.id !== event.data.id
+            ) {
+              return current;
+            }
+
+            return {
+              ...current,
+              run: {
+                ...current.run,
+                ...event.data,
+                steps: sortSteps(current.run.steps)
               }
             };
           });

@@ -639,6 +639,10 @@ Do not hand the milestone back for merge until all of these are true:
 - `2026-03-12`: Review hardening for Task 4 tightened execution-service lifecycle cleanup. Runtime workspace acquisition is now covered by the main failure path, durable lease persistence failures actively release the local workspace before surfacing the run failure, and teardown failures are downgraded to best-effort error logs so `startRun()` does not leak unhandled background rejections or strand in-memory leases.
 - `2026-03-12`: Final review hardening for Task 4 tightened two deeper execution invariants. `waitForRun()` now tracks the raw execution promise even after it settles so higher-level callers can still observe real background crashes, and run/outcome lifecycle transitions now use a single atomic repository method instead of separate run and outcome updates issued from the service layer.
 - `2026-03-12`: Final repository-integrity hardening for Task 4 tightened the lifecycle contract one step further: atomic lifecycle updates now verify that the selected run actually belongs to the supplied outcome before mutating either record. The in-memory repository implements the same ownership check so test harnesses and future non-DB callers cannot accidentally reintroduce split-brain lifecycle state with a mismatched pair.
+- `2026-03-12`: Codex began Task 5 on `codex/m3-task5-operator-console` after merging Task 4 to `main`. The batch stays limited to the web operator console and follows the approved M3 UI scope: selected-run artifact visibility, live log streaming, and realtime run status updates.
+- `2026-03-12`: Task 5 keeps the outcome detail route server-first. The page resolves the selected run on the server, loads only that run's persisted artifacts, and hands the client panels a pinned run ID so SSE updates remain scoped instead of letting adjacent runs bleed into the visible operator session.
+- `2026-03-13`: Review hardening for Task 5 closed two runtime gaps the initial batch missed. Persisted `run.log` history now has a durable read path from `run_events` through the control plane into the web page bootstrapping layer, and the web UI now uses a shared `ExecutionConsole` client wrapper so run selection, artifacts, and logs stay synchronized when a run is created after the page has already loaded.
+- `2026-03-13`: Final Task 5 hardening collapsed duplicate SSE transport usage without changing the panel contracts again. `apps/web/lib/events.ts` now multiplexes one shared `EventSource` per outcome to all local subscribers, so the page can keep separate panel components while avoiding redundant browser connections for the same stream.
 
 ## Verification Log
 
@@ -717,3 +721,28 @@ Do not hand the milestone back for merge until all of these are true:
   - `pnpm test`
   - `pnpm build`
   - `pnpm typecheck`
+- `2026-03-12` Task 5:
+  - `pnpm --filter @computer-oss/web test -- app/outcomes/[id]/page.test.tsx`
+  - `pnpm --filter @computer-oss/web test -- components/outcomes/artifact-list.test.tsx`
+  - `pnpm --filter @computer-oss/web test -- components/outcomes/run-log-panel.test.tsx`
+  - `pnpm --filter @computer-oss/web test -- components/outcomes/plan-graph.test.tsx`
+  - `pnpm --filter @computer-oss/web test`
+  - `pnpm --filter @computer-oss/web typecheck`
+  - `pnpm --filter @computer-oss/web build`
+- `2026-03-13` Task 5 review hardening:
+  - `pnpm --filter @computer-oss/control-plane test -- test/runs.test.ts`
+  - `pnpm --filter @computer-oss/control-plane typecheck`
+  - `pnpm --filter @computer-oss/web test`
+  - `pnpm --filter @computer-oss/web typecheck`
+  - `pnpm --filter @computer-oss/web build`
+  - `pnpm test`
+  - `pnpm typecheck`
+  - `pnpm build`
+- `2026-03-13` Task 5 SSE transport hardening:
+  - `pnpm --filter @computer-oss/web test -- lib/events.test.ts`
+  - `pnpm --filter @computer-oss/web test`
+  - `pnpm --filter @computer-oss/web build`
+  - `pnpm --filter @computer-oss/web typecheck`
+  - `pnpm test`
+  - `pnpm typecheck`
+  - `pnpm build`

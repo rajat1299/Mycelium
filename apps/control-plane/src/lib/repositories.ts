@@ -11,6 +11,7 @@ import type {
   StoredPlanEdge,
   StoredPlanNode,
   StoredRun,
+  StoredRunEvent,
   StoredRunStep,
   StoredWorkspaceLease,
   UpdateRunLifecycleStatusInput,
@@ -60,6 +61,7 @@ export type RunStore = {
   listSteps(runId: string): Promise<StoredRunStep[]>;
   listReadySteps(runId: string): Promise<StoredRunStep[]>;
   appendEvent(input: AppendRunEventInput): Promise<void>;
+  listEvents(runId: string, eventType?: string): Promise<StoredRunEvent[]>;
   updateLifecycleStatus(
     input: UpdateRunLifecycleStatusInput
   ): Promise<{ run: StoredRun; outcome: Outcome } | null>;
@@ -349,6 +351,28 @@ function createInMemoryRepositoriesState() {
     },
     async appendEvent(input) {
       runEvents.push(input);
+    },
+    async listEvents(runId, eventType) {
+      return runEvents
+        .filter(
+          (event) =>
+            event.runId === runId &&
+            (eventType ? event.eventType === eventType : true)
+        )
+        .sort((left, right) => {
+          const createdDelta =
+            new Date(left.createdAt).getTime() -
+            new Date(right.createdAt).getTime();
+
+          if (createdDelta !== 0) {
+            return createdDelta;
+          }
+
+          return left.id.localeCompare(right.id);
+        })
+        .map((event) => ({
+          ...event
+        }));
     },
     async updateLifecycleStatus(input) {
       const run = runsById.get(input.runId);

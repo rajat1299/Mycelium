@@ -1,16 +1,18 @@
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { ExecutionConsole } from "../../../components/outcomes/execution-console";
 import { OutcomeActivity } from "../../../components/outcomes/outcome-activity";
 import { PlanActions } from "../../../components/outcomes/plan-actions";
 import { PlanGraph } from "../../../components/outcomes/plan-graph";
-import { RunTimeline } from "../../../components/outcomes/run-timeline";
 import {
   createPlan,
   createRun,
   getLatestRun,
   getOutcome,
   getPlan,
+  getRunArtifacts,
+  getRunLogs,
   getRun
 } from "../../../lib/api";
 
@@ -50,6 +52,10 @@ export default async function OutcomeDetailPage({
   if (!outcome) {
     notFound();
   }
+
+  const [artifacts, logs] = run
+    ? await Promise.all([getRunArtifacts(run.id), getRunLogs(run.id)])
+    : [[], []];
 
   async function createPlanAction() {
     "use server";
@@ -116,10 +122,11 @@ export default async function OutcomeDetailPage({
         </div>
 
         <div className="space-y-8">
-          <RunTimeline
+          <ExecutionConsole
             outcomeId={outcome.id}
             initialRun={run}
-            selectedRunId={run?.id ?? null}
+            initialArtifacts={artifacts}
+            initialLogs={logs}
           />
           <OutcomeActivity outcome={outcome} />
         </div>
