@@ -1,20 +1,15 @@
 import { z } from "zod";
+import {
+  CapabilityFamilySchema,
+  RouteReasonSchema,
+  RouteStatusSchema
+} from "./router";
 
 export const PlanStatusSchema = z.enum(["draft"]);
 
 export const PlanNodeKindSchema = z.enum(["root", "task", "synthesis"]);
 
-export const PlanNodeCapabilitySchema = z.enum([
-  "reasoning",
-  "research",
-  "coding",
-  "browser",
-  "terminal",
-  "api",
-  "document",
-  "fast_tasks",
-  "fallback"
-]);
+export const PlanNodeCapabilitySchema = CapabilityFamilySchema;
 
 export const PlanNodeTemplateSchema = z.enum([
   "analyze_outcome",
@@ -105,6 +100,13 @@ export const RunStepSchema = z.object({
   template: PlanNodeTemplateSchema.optional(),
   expectedArtifactPath: z.string().min(1).optional(),
   expectedArtifactKind: ArtifactKindSchema.optional(),
+  routeProviderId: z.string().min(1).nullable().optional(),
+  routeModelId: z.string().min(1).nullable().optional(),
+  routeAuthProfileId: z.string().min(1).nullable().optional(),
+  routePolicyVersion: z.number().int().nonnegative().optional(),
+  routeStatus: RouteStatusSchema.optional(),
+  routeReason: RouteReasonSchema.nullable().optional(),
+  routeResolvedAt: z.string().datetime().optional(),
   status: StepStatusSchema,
   position: z.number().int().nonnegative(),
   createdAt: z.string().datetime(),

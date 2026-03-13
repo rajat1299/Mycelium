@@ -683,3 +683,18 @@ Request review after:
 ## Implementation notes
 
 - `2026-03-13`: Plan authored after M3 closure. The milestone is intentionally scoped to control-plane routing and BYO-key management only. Real provider-backed worker execution remains out of scope for M4.
+- `2026-03-13`: Codex began Task 1 on `codex/m4-task1-routing-contracts` after reloading the M4 design/plan, runbook, roadmap, and project-log context, then verifying a clean isolated baseline with `pnpm install` and `pnpm test`.
+- `2026-03-13`: Task 1 keeps route metadata additive on `RunStepSchema` so the shared contracts can expose persisted route state immediately without forcing Task 2 persistence and Task 4 run-step writes to land in the same batch.
+- `2026-03-13`: Task 1 required one small workspace bootstrapping deviation from the plan: after adding the new `packages/router` workspace package, the worktree needed one extra `pnpm install` so `@computer-oss/router` could resolve its local `@computer-oss/protocol` workspace dependency during tests and typecheck.
+
+## Verification log
+
+- `2026-03-13` Task 1:
+  - `pnpm install`
+  - `pnpm test`
+  - `pnpm --filter @computer-oss/protocol test -- src/router.test.ts`
+  - `pnpm --filter @computer-oss/router test`
+  - `pnpm install`
+  - `pnpm --filter @computer-oss/protocol test`
+  - `pnpm --filter @computer-oss/router test`
+  - `pnpm --filter @computer-oss/router typecheck`
