@@ -643,6 +643,9 @@ Do not hand the milestone back for merge until all of these are true:
 - `2026-03-12`: Task 5 keeps the outcome detail route server-first. The page resolves the selected run on the server, loads only that run's persisted artifacts, and hands the client panels a pinned run ID so SSE updates remain scoped instead of letting adjacent runs bleed into the visible operator session.
 - `2026-03-13`: Review hardening for Task 5 closed two runtime gaps the initial batch missed. Persisted `run.log` history now has a durable read path from `run_events` through the control plane into the web page bootstrapping layer, and the web UI now uses a shared `ExecutionConsole` client wrapper so run selection, artifacts, and logs stay synchronized when a run is created after the page has already loaded.
 - `2026-03-13`: Final Task 5 hardening collapsed duplicate SSE transport usage without changing the panel contracts again. `apps/web/lib/events.ts` now multiplexes one shared `EventSource` per outcome to all local subscribers, so the page can keep separate panel components while avoiding redundant browser connections for the same stream.
+- `2026-03-13`: Codex began Task 6 on `codex/m3-task6-smoke-docs` after merging Task 5 to `main`, reloading the runbook/setup docs, and validating that Docker plus the local database could support a real end-to-end smoke pass before any doc claims were updated.
+- `2026-03-13`: The live smoke path exposed two Task 6 issues that were outside the earlier review loops. First, the root `pnpm db:push` workflow only succeeds when `DATABASE_URL` is exported from the root `.env`, so the local-dev docs now record the exact `set -a; source .env; set +a; pnpm db:push` bootstrap step. Second, `LocalDockerProvider` originally reported every file already present under `artifacts/` after each step, which caused duplicate artifact metadata during the real fork/join run. Task 6 now snapshots the artifact directory before execution and only returns the step's expected artifact or newly introduced paths.
+- `2026-03-13`: The final smoke proof ran successfully against the real local stack with the default `node:22-bookworm-slim` sandbox image. The run completed with the expected fork/join order, persisted four artifacts (`analyze-outcome.md`, `brief.md`, `operator-summary.md`, `final-result.md`), persisted step logs that survive page reloads, and advanced the parent outcome to `completed`. With Task 6 complete, Milestone 3 acceptance criteria are now satisfied end-to-end.
 
 ## Verification Log
 
@@ -743,6 +746,23 @@ Do not hand the milestone back for merge until all of these are true:
   - `pnpm --filter @computer-oss/web test`
   - `pnpm --filter @computer-oss/web build`
   - `pnpm --filter @computer-oss/web typecheck`
+  - `pnpm test`
+  - `pnpm typecheck`
+  - `pnpm build`
+- `2026-03-13` Task 6 smoke-path hardening:
+  - `pnpm --filter @computer-oss/sandbox test -- src/provider.test.ts`
+- `2026-03-13` Task 6 live smoke path:
+  - `pnpm db:up`
+  - `set -a; source .env; set +a; pnpm db:push`
+  - `pnpm dev`
+  - `curl -sf http://127.0.0.1:4000/health`
+  - manual UI/API smoke proof:
+    - the draft plan rendered `Analyze outcome` -> `Draft brief` + `Draft operator summary` -> `Synthesize result`
+    - the two middle steps completed before synthesis
+    - the run and outcome both reached `completed`
+    - the selected run showed four persisted artifacts: `artifacts/analyze-outcome.md`, `artifacts/brief.md`, `artifacts/operator-summary.md`, and `artifacts/final-result.md`
+    - the selected run showed persisted step logs after refresh
+- `2026-03-13` Task 6 final workspace verification:
   - `pnpm test`
   - `pnpm typecheck`
   - `pnpm build`

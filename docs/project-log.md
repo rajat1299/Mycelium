@@ -48,11 +48,11 @@ Do not rewrite older entries except to correct factual mistakes.
 
 ## Current snapshot
 
-- Date: `2026-03-12`
+- Date: `2026-03-13`
 - Default branch: `main`
-- Current integrated runtime baseline: `d0da6bb`
-- Completed milestone: `M2 Orchestration Kernel`
-- Next planned milestone: `M3 Execution Substrate V1`
+- Current integrated runtime baseline: `Milestone 3 execution substrate integrated on main`
+- Completed milestone: `M3 Execution Substrate V1`
+- Next planned milestone: `M4 Routing and BYO Keys`
 - Current mode:
   - this chat window is review/planning/management space
   - implementation happens in separate Codex windows on `codex/*` branches
@@ -63,7 +63,7 @@ Do not rewrite older entries except to correct factual mistakes.
 | --- | --- | --- | --- |
 | M1 Foundation | Complete | Monorepo bootstrap, typed protocol, DB package, control-plane API, SSE, Next.js command center, local dev workflow | [Milestone 1 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-milestone-1-foundation-implementation.md) |
 | M2 Orchestration Kernel | Complete | Durable plan graph, run state machine, orchestration package, control-plane planning/run APIs, plan/run UI, and review-driven hardening of run recovery and selection behavior | [Milestone 2 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-milestone-2-orchestration-kernel-implementation.md) |
-| M3 Execution Substrate V1 | Planned | Local Docker sandbox provider, dependency-aware execution service, artifact persistence, run logs, and the first end-to-end execution proof | [Milestone 3 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-12-milestone-3-execution-substrate-implementation.md) |
+| M3 Execution Substrate V1 | Complete | Local Docker sandbox provider, dependency-aware execution service, artifact persistence, run logs, operator-console artifact/log surfaces, and a verified end-to-end fork/join execution path | [Milestone 3 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-12-milestone-3-execution-substrate-implementation.md) |
 | Execution Roadmap | Active | Multi-milestone delivery order for future Codex agents | [Execution Roadmap](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-execution-roadmap.md) |
 
 ## Decision log
@@ -73,6 +73,7 @@ Do not rewrite older entries except to correct factual mistakes.
 - `2026-03-11`: Use placeholder env values in tracked files and keep real local secrets only in ignored env files.
 - `2026-03-11`: Keep GitHub remote branches limited to `main`. Use local `codex/*` worktree branches for execution chunks, merge only verified work, and delete any temporary remote feature branches immediately after integration.
 - `2026-03-12`: Lock Milestone 3 to a local Docker sandbox provider. M3 is for proving orchestration semantics with real isolation, not for building remote daemons or provider routing.
+- `2026-03-13`: Keep local setup docs explicit that root-level `pnpm db:push` requires the root `.env` file to be exported first. Do not document bare `pnpm db:push` as a fresh-shell command until the script behavior changes.
 
 ## Activity log
 
@@ -106,3 +107,4 @@ Do not rewrite older entries except to correct factual mistakes.
 - `2026-03-12` | `Codex` | `codex/m3-task5-operator-console` | Completed Milestone 3 Task 5: added run-scoped artifact and log panels, server-side artifact loading for the selected run, and live `run.updated` handling so the operator console stays aligned with persisted execution state. | Verified with `pnpm --filter @computer-oss/web test`, `pnpm --filter @computer-oss/web typecheck`, and `pnpm --filter @computer-oss/web build`.
 - `2026-03-13` | `Codex` | `codex/m3-task5-operator-console` | Applied review-driven hardening to Task 5: the control plane now exposes persisted run logs, the outcome page bootstraps those logs server-side, and a shared execution-console client wrapper keeps run selection synchronized across timeline, artifact, and log panels. | Re-verified with targeted control-plane/web checks plus sequential workspace `pnpm test`, `pnpm typecheck`, and `pnpm build`.
 - `2026-03-13` | `Codex` | `codex/m3-task5-operator-console` | Applied final Task 5 efficiency hardening: outcome-panel subscribers now share a single `EventSource` connection per outcome through the web event transport layer instead of opening duplicate SSE sockets per panel. | Re-verified with new `events.ts` regression coverage plus fresh sequential workspace `pnpm test`, `pnpm typecheck`, and `pnpm build`.
+- `2026-03-13` | `Codex` | `codex/m3-task6-smoke-docs` | Completed Milestone 3 Task 6: ran the real local Docker smoke path, verified fork/join execution plus persisted logs and artifacts, fixed sandbox artifact discovery so each step only reports its own expected or newly created outputs, and updated the setup/runbook docs for the exported-env database bootstrap flow. | Verified with `pnpm --filter @computer-oss/sandbox test -- src/provider.test.ts`, `pnpm db:up`, `set -a; source .env; set +a; pnpm db:push`, `pnpm dev`, live health and UI/API smoke checks, and fresh sequential workspace `pnpm test`, `pnpm typecheck`, `pnpm build`.
