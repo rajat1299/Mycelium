@@ -52,7 +52,7 @@ Do not rewrite older entries except to correct factual mistakes.
 - Default branch: `main`
 - Current integrated runtime baseline: `Milestone 3 execution substrate integrated on main`
 - Completed milestone: `M3 Execution Substrate V1`
-- Next planned milestone: `M4 Routing and BYO Keys`
+- Active execution-ready milestone: `M4 Routing and BYO Keys`
 - Current mode:
   - this chat window is review/planning/management space
   - implementation happens in separate Codex windows on `codex/*` branches
@@ -64,6 +64,7 @@ Do not rewrite older entries except to correct factual mistakes.
 | M1 Foundation | Complete | Monorepo bootstrap, typed protocol, DB package, control-plane API, SSE, Next.js command center, local dev workflow | [Milestone 1 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-milestone-1-foundation-implementation.md) |
 | M2 Orchestration Kernel | Complete | Durable plan graph, run state machine, orchestration package, control-plane planning/run APIs, plan/run UI, and review-driven hardening of run recovery and selection behavior | [Milestone 2 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-milestone-2-orchestration-kernel-implementation.md) |
 | M3 Execution Substrate V1 | Complete | Local Docker sandbox provider, dependency-aware execution service, artifact persistence, run logs, operator-console artifact/log surfaces, and a verified end-to-end fork/join execution path | [Milestone 3 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-12-milestone-3-execution-substrate-implementation.md) |
+| M4 Routing and BYO Keys | Active | Static provider/model registry, encrypted credentials, auth profiles, router policy CRUD, deterministic route resolution, and operator settings surfaces | [Milestone 4 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-13-milestone-4-routing-byo-keys-design.md), [Milestone 4 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-13-milestone-4-routing-byo-keys-implementation.md) |
 | Execution Roadmap | Active | Multi-milestone delivery order for future Codex agents | [Execution Roadmap](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-execution-roadmap.md) |
 
 ## Decision log
@@ -74,6 +75,8 @@ Do not rewrite older entries except to correct factual mistakes.
 - `2026-03-11`: Keep GitHub remote branches limited to `main`. Use local `codex/*` worktree branches for execution chunks, merge only verified work, and delete any temporary remote feature branches immediately after integration.
 - `2026-03-12`: Lock Milestone 3 to a local Docker sandbox provider. M3 is for proving orchestration semantics with real isolation, not for building remote daemons or provider routing.
 - `2026-03-13`: Keep local setup docs explicit that root-level `pnpm db:push` requires the root `.env` file to be exported first. Do not document bare `pnpm db:push` as a fresh-shell command until the script behavior changes.
+- `2026-03-13`: Scope Milestone 4 to the routing and BYO-key control plane only. Persist deterministic provider/model/auth-profile decisions on steps, but keep the M3 local execution path as the runtime until a later milestone adds real provider-backed worker execution.
+- `2026-03-13`: Treat workspace credentials as a first-class M4 object, separate from auth profiles. Credentials own encrypted secret material; auth profiles are the durable routing identity that policy and run steps point at.
 
 ## Activity log
 
@@ -108,3 +111,5 @@ Do not rewrite older entries except to correct factual mistakes.
 - `2026-03-13` | `Codex` | `codex/m3-task5-operator-console` | Applied review-driven hardening to Task 5: the control plane now exposes persisted run logs, the outcome page bootstraps those logs server-side, and a shared execution-console client wrapper keeps run selection synchronized across timeline, artifact, and log panels. | Re-verified with targeted control-plane/web checks plus sequential workspace `pnpm test`, `pnpm typecheck`, and `pnpm build`.
 - `2026-03-13` | `Codex` | `codex/m3-task5-operator-console` | Applied final Task 5 efficiency hardening: outcome-panel subscribers now share a single `EventSource` connection per outcome through the web event transport layer instead of opening duplicate SSE sockets per panel. | Re-verified with new `events.ts` regression coverage plus fresh sequential workspace `pnpm test`, `pnpm typecheck`, and `pnpm build`.
 - `2026-03-13` | `Codex` | `codex/m3-task6-smoke-docs` | Completed Milestone 3 Task 6: ran the real local Docker smoke path, verified fork/join execution plus persisted logs and artifacts, fixed sandbox artifact discovery so each step only reports its own expected or newly created outputs, and updated the setup/runbook docs for the exported-env database bootstrap flow. | Verified with `pnpm --filter @computer-oss/sandbox test -- src/provider.test.ts`, `pnpm db:up`, `set -a; source .env; set +a; pnpm db:push`, `pnpm dev`, live health and UI/API smoke checks, and fresh sequential workspace `pnpm test`, `pnpm typecheck`, `pnpm build`.
+- `2026-03-13` | `Codex` | `main` | Authored the Milestone 4 design and implementation plan for routing and BYO-key control-plane work, and updated the roadmap/runbook surfaces so future agents can start M4 from a single reviewed spec. | Planning update only. No runtime behavior changed.
+- `2026-03-13` | `Codex` | `main` | Hardened the M4 execution spec: added exact reference-file mappings across OpenClaw, Terragon, Middleman, and Deer Flow; promoted workspace credentials to a first-class API and repository surface; and marked M4 as execution-ready in the shared docs. | Planning update only. No runtime behavior changed.

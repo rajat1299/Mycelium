@@ -145,7 +145,7 @@ Completion notes:
 
 ### M4 Routing and BYO Keys
 
-Status: `Planned`
+Status: `Active`
 
 Goal:
 
@@ -163,12 +163,25 @@ Deliverables:
 - provider/model capability registry
 - BYO key storage and validation model
 - router policy CRUD
+- persisted step route decisions
+- operator settings surface for keys and routing
 - cost/budget-aware routing groundwork
 
 Ship gate:
 
 - users can configure routing policy
+- a workspace can store encrypted provider credentials and auth profiles
 - a run/step can resolve to a provider/model selection through one path
+- route decisions are visible in the operator console
+
+Primary docs:
+
+- [Milestone 4 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-13-milestone-4-routing-byo-keys-design.md)
+- [Milestone 4 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-13-milestone-4-routing-byo-keys-implementation.md)
+
+Execution note:
+
+- the M4 docs are finalized enough to start implementation windows from Task 1 without additional architecture work in advance
 
 ### M5 Review Queue and Artifact Lineage
 

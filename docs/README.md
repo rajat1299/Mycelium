@@ -14,7 +14,9 @@ Read these in order if you are new to the project:
 10. [Milestone 2 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-milestone-2-orchestration-kernel-implementation.md)
 11. [Milestone 3 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-12-milestone-3-execution-substrate-design.md)
 12. [Milestone 3 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-12-milestone-3-execution-substrate-implementation.md)
-13. [Architecture Design Record](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-v1-architecture-design.md)
+13. [Milestone 4 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-13-milestone-4-routing-byo-keys-design.md)
+14. [Milestone 4 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-13-milestone-4-routing-byo-keys-implementation.md)
+15. [Architecture Design Record](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-v1-architecture-design.md)
 
 ## How to use this docs set
 
@@ -26,4 +28,4 @@ Read these in order if you are new to the project:
 
 ## Current status
 
-Milestone 3 is integrated on `main`. Use the runbook and local setup guide first, then use the execution roadmap and project log to scope the next milestone slice.
+Milestone 3 is integrated on `main`, and Milestone 4 is the active next implementation target. The M4 design and plan are now the execution-ready handoff for separate Codex implementation windows. Start with the runbook, then the local setup guide, then the M4 design and plan.

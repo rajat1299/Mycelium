@@ -4,7 +4,7 @@ Use this file as the first stop for any Codex agent working on Mycelium.
 
 ## What this repository is
 
-Mycelium is an open-source control plane for outcome-driven AI work. The current integrated slice is `Milestone 3: Execution Substrate V1`:
+Mycelium is an open-source control plane for outcome-driven AI work. The current integrated slice is `Milestone 3: Execution Substrate V1`, and the active next implementation target is `Milestone 4: Routing and BYO Keys`:
 
 - `apps/control-plane`: Fastify API and SSE runtime
 - `apps/web`: Next.js operator console
@@ -23,6 +23,10 @@ Read these next:
 5. [Execution Roadmap](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-execution-roadmap.md)
 6. [Milestone 3 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-12-milestone-3-execution-substrate-design.md)
 7. [Milestone 3 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-12-milestone-3-execution-substrate-implementation.md)
+8. [Milestone 4 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-13-milestone-4-routing-byo-keys-design.md)
+9. [Milestone 4 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-13-milestone-4-routing-byo-keys-implementation.md)
+
+The M4 docs are now the execution handoff for the next implementation windows. Start from Task 1 in the M4 plan unless this review window explicitly assigns a later task.
 
 ## Local setup
 
@@ -50,6 +54,12 @@ set -a; source .env; set +a; pnpm db:push
 `pnpm db:push` from the repo root currently requires the root `.env` file to be exported first. Keep the command above verbatim until the script is changed.
 
 The default local sandbox image is `node:22-bookworm-slim`. If a machine needs a different image, set `SANDBOX_IMAGE` in `apps/control-plane/.env.local`.
+
+When working on M4, also set `MYCELIUM_ENCRYPTION_KEY` in `apps/control-plane/.env.local`. Generate one local key with:
+
+```bash
+openssl rand -base64 32
+```
 
 Start the application stack:
 
@@ -86,6 +96,13 @@ If the task touches the execution path, also verify one real run in the UI or ov
 - confirm `Draft brief` and `Draft operator summary` complete before `Synthesize result`
 - confirm the run reaches `completed`
 - confirm the selected run shows persisted artifacts and persisted logs
+
+If the task touches the M4 routing surface, also verify:
+
+- the settings page loads provider catalog, workspace credentials, auth profiles, and router policy
+- creating a credential requires `MYCELIUM_ENCRYPTION_KEY`
+- a route preview resolves or returns explicit unresolved diagnostics
+- run steps show route metadata or unresolved state without breaking the M3 local execution path
 
 ## Stop commands
 
