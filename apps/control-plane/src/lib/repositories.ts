@@ -358,6 +358,12 @@ function createInMemoryRepositoriesState() {
         return null;
       }
 
+      if (run.outcomeId !== input.outcomeId) {
+        throw new Error(
+          `Run ${input.runId} belongs to ${run.outcomeId}, not ${input.outcomeId}.`
+        );
+      }
+
       const updatedRun: StoredRun = {
         ...run,
         status: input.runStatus,

@@ -244,6 +244,74 @@ describe("RunRepository", () => {
     ]);
   });
 
+  it("rejects lifecycle updates when the run belongs to a different outcome", async () => {
+    const { db, state } = createRepositoryTestDatabase();
+    const plans = new PlanRepository(db as never);
+    const runs = new RunRepository(db as never);
+
+    state.outcomes.push(
+      {
+        id: "outcome_123",
+        workspaceId: "ws_123",
+        userId: "user_123",
+        prompt: "Ship the launch brief and summary.",
+        source: "web",
+        status: "queued",
+        createdAt: new Date("2026-03-12T00:00:00.000Z"),
+        updatedAt: new Date("2026-03-12T00:00:00.000Z")
+      },
+      {
+        id: "outcome_456",
+        workspaceId: "ws_123",
+        userId: "user_123",
+        prompt: "Draft the operator escalation note.",
+        source: "web",
+        status: "queued",
+        createdAt: new Date("2026-03-12T00:00:00.000Z"),
+        updatedAt: new Date("2026-03-12T00:00:00.000Z")
+      }
+    );
+
+    await plans.create(buildExecutablePlanInput());
+    await runs.createFromPlan({
+      id: "run_123",
+      outcomeId: "outcome_123",
+      planId: "plan_outcome_123",
+      createdAt: "2026-03-12T00:05:00.000Z",
+      updatedAt: "2026-03-12T00:05:00.000Z"
+    });
+
+    await expect(
+      runs.updateLifecycleStatus({
+        runId: "run_123",
+        outcomeId: "outcome_456",
+        runStatus: "running",
+        outcomeStatus: "running",
+        updatedAt: "2026-03-12T00:06:00.000Z"
+      })
+    ).rejects.toThrow("Run run_123 belongs to outcome_123, not outcome_456.");
+
+    expect(state.outcomeRuns).toEqual([
+      expect.objectContaining({
+        id: "run_123",
+        outcomeId: "outcome_123",
+        status: "queued"
+      })
+    ]);
+    expect(state.outcomes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "outcome_123",
+          status: "queued"
+        }),
+        expect.objectContaining({
+          id: "outcome_456",
+          status: "queued"
+        })
+      ])
+    );
+  });
+
   it("marks a step completed and makes newly unblocked dependents ready", async () => {
     const { db, state } = createRepositoryTestDatabase();
     const plans = new PlanRepository(db as never);

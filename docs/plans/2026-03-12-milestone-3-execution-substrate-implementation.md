@@ -638,6 +638,7 @@ Do not hand the milestone back for merge until all of these are true:
 - `2026-03-12`: Task 4 required a few small implementation-scope deviations from the listed file set. Shared protocol contracts were expanded with artifact and new event schemas, `tsconfig.base.json` gained resolver entries for the newer workspace packages, `apps/control-plane/src/server.ts` was updated so the real server composes the execution service instead of only DB repositories, and the existing web SSE parser/activity feed received a minimal compatibility patch so the widened event union does not break unrelated workspace typechecks before Task 5 lands.
 - `2026-03-12`: Review hardening for Task 4 tightened execution-service lifecycle cleanup. Runtime workspace acquisition is now covered by the main failure path, durable lease persistence failures actively release the local workspace before surfacing the run failure, and teardown failures are downgraded to best-effort error logs so `startRun()` does not leak unhandled background rejections or strand in-memory leases.
 - `2026-03-12`: Final review hardening for Task 4 tightened two deeper execution invariants. `waitForRun()` now tracks the raw execution promise even after it settles so higher-level callers can still observe real background crashes, and run/outcome lifecycle transitions now use a single atomic repository method instead of separate run and outcome updates issued from the service layer.
+- `2026-03-12`: Final repository-integrity hardening for Task 4 tightened the lifecycle contract one step further: atomic lifecycle updates now verify that the selected run actually belongs to the supplied outcome before mutating either record. The in-memory repository implements the same ownership check so test harnesses and future non-DB callers cannot accidentally reintroduce split-brain lifecycle state with a mismatched pair.
 
 ## Verification Log
 
@@ -707,6 +708,12 @@ Do not hand the milestone back for merge until all of these are true:
 - `2026-03-12` Task 4 final failure-path hardening:
   - `pnpm --filter @computer-oss/db test -- src/repositories/runs.test.ts`
   - `pnpm --filter @computer-oss/control-plane test -- test/execution-service.test.ts`
+  - `pnpm test`
+  - `pnpm build`
+  - `pnpm typecheck`
+- `2026-03-12` Task 4 repository-integrity hardening:
+  - `pnpm --filter @computer-oss/db test -- src/repositories/runs.test.ts`
+  - `pnpm --filter @computer-oss/control-plane test -- test/repositories.test.ts`
   - `pnpm test`
   - `pnpm build`
   - `pnpm typecheck`

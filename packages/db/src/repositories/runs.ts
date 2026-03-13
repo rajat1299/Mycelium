@@ -278,6 +278,19 @@ export class RunRepository {
     input: UpdateRunLifecycleStatusInput
   ): Promise<{ run: StoredRun; outcome: StoredOutcome } | null> {
     return this.db.transaction(async (transaction) => {
+      const runRows = await transaction.select().from(outcomeRuns);
+      const existingRun = runRows.find((row) => row.id === input.runId);
+
+      if (!existingRun) {
+        return null;
+      }
+
+      if (existingRun.outcomeId !== input.outcomeId) {
+        throw new Error(
+          `Run ${input.runId} belongs to ${existingRun.outcomeId}, not ${input.outcomeId}.`
+        );
+      }
+
       const [updatedRun] = await transaction
         .update(outcomeRuns)
         .set({
@@ -286,10 +299,6 @@ export class RunRepository {
         })
         .where(eq(outcomeRuns.id, input.runId))
         .returning();
-
-      if (!updatedRun) {
-        return null;
-      }
 
       const [updatedOutcome] = await transaction
         .update(outcomes)
