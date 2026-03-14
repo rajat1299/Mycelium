@@ -607,3 +607,4 @@ git commit -m "docs: record m5 review queue workflow"
 ## Implementation Notes
 
 - `2026-03-14`: Plan authored. No implementation notes yet.
+- `2026-03-14`: Task 1 completed on `codex/m5-task1-approval-lineage-contracts`: added first-class approval and artifact-lineage protocol contracts, wired approval events into the shared SSE union, and added additive approval-requirement metadata on plan nodes and run steps.

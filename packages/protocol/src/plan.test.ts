@@ -22,6 +22,12 @@ describe("plan and run protocols", () => {
           capability: "reasoning",
           instruction: "Inspect the outcome prompt and produce execution notes.",
           template: "analyze_outcome",
+          approvalRequirement: {
+            kind: "output_review_required",
+            title: "Review analysis artifact",
+            summary: "Check the analysis before release.",
+            instruction: "Approve when the analysis artifact is ready."
+          },
           expectedArtifactPath: "artifacts/analyze-outcome.md",
           expectedArtifactKind: "analysis",
           position: 0
@@ -52,6 +58,12 @@ describe("plan and run protocols", () => {
       data: expect.objectContaining({
         nodes: [
           expect.objectContaining({
+            approvalRequirement: {
+              kind: "output_review_required",
+              title: "Review analysis artifact",
+              summary: "Check the analysis before release.",
+              instruction: "Approve when the analysis artifact is ready."
+            },
             instruction: "Inspect the outcome prompt and produce execution notes.",
             template: "analyze_outcome",
             expectedArtifactPath: "artifacts/analyze-outcome.md",
@@ -86,6 +98,12 @@ describe("plan and run protocols", () => {
           capability: "reasoning",
           instruction: "Inspect the outcome prompt and produce execution notes.",
           template: "analyze_outcome",
+          approvalRequirement: {
+            kind: "output_review_required",
+            title: "Review analysis artifact",
+            summary: "Check the analysis before release.",
+            instruction: "Approve when the analysis artifact is ready."
+          },
           expectedArtifactPath: "artifacts/analyze-outcome.md",
           expectedArtifactKind: "analysis",
           status: "ready",
@@ -98,6 +116,12 @@ describe("plan and run protocols", () => {
 
     expect(run.steps).toEqual([
       expect.objectContaining({
+        approvalRequirement: {
+          kind: "output_review_required",
+          title: "Review analysis artifact",
+          summary: "Check the analysis before release.",
+          instruction: "Approve when the analysis artifact is ready."
+        },
         instruction: "Inspect the outcome prompt and produce execution notes.",
         template: "analyze_outcome",
         expectedArtifactPath: "artifacts/analyze-outcome.md",
@@ -107,6 +131,8 @@ describe("plan and run protocols", () => {
     expect(EventTypeSchema.parse("plan.created")).toBe("plan.created");
     expect(EventTypeSchema.parse("run.created")).toBe("run.created");
     expect(EventTypeSchema.parse("run.step.updated")).toBe("run.step.updated");
+    expect(EventTypeSchema.parse("approval.requested")).toBe("approval.requested");
+    expect(EventTypeSchema.parse("approval.resolved")).toBe("approval.resolved");
 
     expect(
       OutcomeStreamEventSchema.parse({

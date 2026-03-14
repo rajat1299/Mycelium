@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ApprovalSchema } from "./approval";
 import { ArtifactSchema } from "./artifact";
 import { OutcomeSchema } from "./outcome";
 import { PlanSchema, RunSchema, RunStepSchema } from "./plan";
@@ -92,6 +93,18 @@ export const ArtifactCreatedEventSchema = z.object({
   data: ArtifactSchema
 });
 
+export const ApprovalRequestedEventSchema = z.object({
+  outcomeId: z.string(),
+  type: z.literal("approval.requested"),
+  data: ApprovalSchema
+});
+
+export const ApprovalResolvedEventSchema = z.object({
+  outcomeId: z.string(),
+  type: z.literal("approval.resolved"),
+  data: ApprovalSchema
+});
+
 export const OutcomeStreamEventSchema = z.discriminatedUnion("type", [
   OutcomeUpdatedEventSchema,
   MessageCreatedEventSchema,
@@ -100,7 +113,9 @@ export const OutcomeStreamEventSchema = z.discriminatedUnion("type", [
   RunStepUpdatedEventSchema,
   RunUpdatedEventSchema,
   RunLogEventSchema,
-  ArtifactCreatedEventSchema
+  ArtifactCreatedEventSchema,
+  ApprovalRequestedEventSchema,
+  ApprovalResolvedEventSchema
 ]);
 
 export type EventType = z.infer<typeof EventTypeSchema>;
@@ -116,4 +131,6 @@ export type RunLogData = z.infer<typeof RunLogDataSchema>;
 export type RunLogEvent = z.infer<typeof RunLogEventSchema>;
 export type RunLogListResponse = z.infer<typeof RunLogListResponseSchema>;
 export type ArtifactCreatedEvent = z.infer<typeof ArtifactCreatedEventSchema>;
+export type ApprovalRequestedEvent = z.infer<typeof ApprovalRequestedEventSchema>;
+export type ApprovalResolvedEvent = z.infer<typeof ApprovalResolvedEventSchema>;
 export type OutcomeStreamEvent = z.infer<typeof OutcomeStreamEventSchema>;

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ApprovalRequirementSchema } from "./approval";
 import {
   CapabilityFamilySchema,
   RouteReasonSchema,
@@ -32,6 +33,7 @@ export const PlanNodeSchema = z.object({
   capability: PlanNodeCapabilitySchema,
   instruction: z.string().min(1).optional(),
   template: PlanNodeTemplateSchema.optional(),
+  approvalRequirement: ApprovalRequirementSchema.optional(),
   expectedArtifactPath: z.string().min(1).optional(),
   expectedArtifactKind: ArtifactKindSchema.optional(),
   position: z.number().int().nonnegative()
@@ -99,6 +101,7 @@ export const RunStepSchema = z
     capability: PlanNodeCapabilitySchema,
     instruction: z.string().min(1).optional(),
     template: PlanNodeTemplateSchema.optional(),
+    approvalRequirement: ApprovalRequirementSchema.optional(),
     expectedArtifactPath: z.string().min(1).optional(),
     expectedArtifactKind: ArtifactKindSchema.optional(),
     routeProviderId: z.string().min(1).nullable().optional(),
