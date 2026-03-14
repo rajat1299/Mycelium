@@ -54,7 +54,12 @@ export default async function SettingsPage() {
       <section className="grid gap-8 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-8">
           <ProviderCatalog catalog={catalog} />
-          <RouterPolicyEditor policy={policy} authProfiles={authProfiles} />
+          <RouterPolicyEditor
+            workspaceId={workspaceId}
+            catalog={catalog}
+            policy={policy}
+            authProfiles={authProfiles}
+          />
         </div>
         <div className="space-y-8">
           <WorkspaceCredentialsPanel credentials={credentials} />

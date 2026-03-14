@@ -3,12 +3,15 @@
 import { startTransition, useEffect, useState } from "react";
 import type {
   AuthProfile,
-  RouteReason,
-  RouteStatus,
   RunDetail,
   RunStep
 } from "@computer-oss/protocol";
 import { subscribeToOutcomeEvents } from "../../lib/events";
+import {
+  formatRouteReason,
+  formatRouteStatus,
+  routeStatusVariant
+} from "../../lib/routing";
 import { Badge } from "../ui/badge";
 
 type RunTimelineProps = {
@@ -50,44 +53,6 @@ type RunTimelineState = {
   pinnedRunId: string | null;
   run: RunDetail | null;
 };
-
-function formatRouteStatus(status: RouteStatus) {
-  switch (status) {
-    case "resolved":
-      return "Resolved";
-    case "missing_auth":
-      return "Missing auth";
-    case "invalid_policy":
-      return "Invalid policy";
-    default:
-      return "Unresolved";
-  }
-}
-
-function formatRouteReason(reason: RouteReason) {
-  switch (reason) {
-    case "no_policy_candidates":
-      return "No policy candidates";
-    case "policy_workspace_mismatch":
-      return "Policy workspace mismatch";
-    case "provider_not_found":
-      return "Provider not found";
-    case "model_not_found":
-      return "Model not found";
-    case "capability_unsupported":
-      return "Capability unsupported";
-    case "auth_profile_not_found":
-      return "Auth profile not found";
-    case "auth_profile_provider_mismatch":
-      return "Auth profile provider mismatch";
-    default:
-      return "No active auth profile";
-  }
-}
-
-function routeStatusVariant(status: RouteStatus) {
-  return status === "resolved" ? "sky" : "amber";
-}
 
 function resolveAuthProfileLabel(
   authProfiles: AuthProfile[],

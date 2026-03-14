@@ -121,7 +121,7 @@ describe("SettingsPage", () => {
       screen.getByRole("heading", { name: /provider routing and byo keys/i })
     ).toBeInTheDocument();
     expect(screen.getByText("ws_default")).toBeInTheDocument();
-    expect(screen.getByText("Anthropic")).toBeInTheDocument();
+    expect(screen.getAllByText("Anthropic").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Anthropic Primary").length).toBeGreaterThan(0);
     expect(screen.getAllByText("claude-opus-4.6").length).toBeGreaterThan(0);
   });

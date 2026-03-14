@@ -22,7 +22,7 @@ const DEFAULT_CONTROL_PLANE_URL = "http://127.0.0.1:4000";
 const DEFAULT_WORKSPACE_ID = "ws_default";
 const DEFAULT_USER_ID = "user_default";
 
-function getControlPlaneBaseUrl() {
+export function getControlPlaneBaseUrl() {
   return process.env.CONTROL_PLANE_URL ?? DEFAULT_CONTROL_PLANE_URL;
 }
 
