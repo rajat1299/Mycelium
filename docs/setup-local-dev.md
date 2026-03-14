@@ -1,12 +1,14 @@
 # Local Development
 
-This repository is currently shipping the Milestone 3 execution-substrate slice:
+This repository is currently shipping the Milestone 4 routing-and-BYO-keys slice on top of the Milestone 3 execution substrate:
 
 - Postgres-backed outcome storage
 - Fastify control plane with outcome, draft-plan, run, log, and artifact APIs
 - Outcome-scoped SSE for outcome, plan, run, step, log, and artifact lifecycle updates
 - Local Docker sandbox execution with deterministic fork/join scheduling
-- Next.js operator console for create, list, detail, draft-plan, run timeline, persisted logs, and run artifact views
+- Encrypted workspace credentials plus auth profiles
+- Router policy CRUD and deterministic route preview
+- Next.js operator console for create, list, detail, settings, draft-plan, run timeline, persisted logs, and run artifact views
 
 ## Prerequisites
 
@@ -20,12 +22,17 @@ This repository is currently shipping the Milestone 3 execution-substrate slice:
 2. Push the Drizzle schema to the local database.
 3. Start the control plane.
 4. Start the web app.
-5. Create an outcome from the web UI.
-6. Generate a draft plan from the outcome detail page.
-7. Start a run from the persisted plan.
-8. Confirm the two middle draft steps finish before synthesis starts.
-9. Confirm the run timeline, artifact panel, log panel, and live activity panel update without a manual refresh.
-10. Refresh the page and confirm persisted logs and artifacts are still visible for the selected run.
+5. Open the settings page and confirm provider catalog, credentials, auth profiles, and router policy load.
+6. Create one workspace credential and one auth profile.
+7. Save router policy for `reasoning` and `coding`, and add `document` too if you want every step in the default draft plan to resolve.
+8. Preview `reasoning` and `coding` and confirm provider/model/auth-profile selection stays stable across repeated previews.
+9. Create an outcome from the web UI.
+10. Generate a draft plan from the outcome detail page.
+11. Start a run from the persisted plan.
+12. Confirm the two middle draft steps finish before synthesis starts.
+13. Confirm the run timeline shows persisted route metadata on steps without breaking local Docker execution.
+14. Confirm the run timeline, artifact panel, log panel, and live activity panel update without a manual refresh.
+15. Refresh the page and confirm persisted logs, artifacts, and route badges are still visible for the selected run.
 
 ## First-time setup
 
@@ -35,6 +42,8 @@ cp .env.example .env
 cp apps/control-plane/.env.example apps/control-plane/.env.local
 cp apps/web/.env.example apps/web/.env.local
 # replace REPLACE_WITH_LOCAL_DB_PASSWORD in .env and apps/control-plane/.env.local
+openssl rand -base64 32
+# add the generated value as MYCELIUM_ENCRYPTION_KEY in apps/control-plane/.env.local
 pnpm db:up
 set -a; source .env; set +a; pnpm db:push
 ```
@@ -42,6 +51,7 @@ set -a; source .env; set +a; pnpm db:push
 `pnpm db:push` is still the current schema bootstrap step for local development. The root command does not auto-load `.env`, so export the root env file first as shown above.
 `pnpm db:push` waits for the local Postgres port to accept connections before it runs the schema sync.
 The repository does not commit a database password. You must set your own local password in `.env` and `apps/control-plane/.env.local`.
+`MYCELIUM_ENCRYPTION_KEY` is required for workspace-credential create and update operations. A local generated key is enough for development.
 The local Docker sandbox defaults to `node:22-bookworm-slim`. If you need a different local image, set `SANDBOX_IMAGE` in `apps/control-plane/.env.local`.
 
 ## Start the stack
@@ -59,16 +69,23 @@ Expected local services:
 ## Manual smoke path
 
 1. Open the web app at [http://127.0.0.1:3000](http://127.0.0.1:3000).
-2. Submit a new outcome from the home page.
-3. Confirm the new outcome appears in the list.
-4. Open the outcome detail page.
-5. Click `Generate draft plan` and confirm the four-node fork/join graph renders:
+2. Open the settings page.
+3. Create one workspace credential.
+4. Create one auth profile for that credential.
+5. Save router policy entries for `reasoning` and `coding`.
+6. Preview both routes and confirm the selected provider, model, and auth profile stay the same on repeated previews. The preview timestamp changes because each preview is a fresh resolution.
+7. If you want every step in the default draft plan to resolve, also add a `document` candidate. The shipped plan uses `reasoning` once and `document` for the other three nodes.
+8. Submit a new outcome from the home page.
+9. Confirm the new outcome appears in the list.
+10. Open the outcome detail page.
+11. Click `Generate draft plan` and confirm the four-node fork/join graph renders:
    `Analyze outcome`, `Draft brief`, `Draft operator summary`, and `Synthesize result`.
-6. Click `Start run` and confirm the run timeline shows `Analyze outcome` finishing first, `Draft brief` and `Draft operator summary` finishing before `Synthesize result`, and the run reaching `completed`.
-7. Confirm the artifact panel shows exactly four persisted artifacts for the run:
+12. Click `Start run` and confirm the run timeline shows `Analyze outcome` finishing first, `Draft brief` and `Draft operator summary` finishing before `Synthesize result`, and the run reaching `completed`.
+13. Confirm the run timeline shows provider, model, auth profile, and route status badges on the selected run.
+14. Confirm the artifact panel shows exactly four persisted artifacts for the run:
    `artifacts/analyze-outcome.md`, `artifacts/brief.md`, `artifacts/operator-summary.md`, and `artifacts/final-result.md`.
-8. Confirm the log panel shows persisted step logs and still shows them after a page refresh.
-9. In a second terminal, append a message through the control plane:
+15. Confirm the log panel shows persisted step logs and still shows them after a page refresh.
+16. In a second terminal, append a message through the control plane:
 
 ```bash
 curl -X POST http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/messages \
@@ -76,10 +93,23 @@ curl -X POST http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/messages \
   -d '{"role":"assistant","content":"Smoke path event from the control plane."}'
 ```
 
-10. Confirm the detail page adds a new activity entry without a refresh.
-11. Optional API verification for the same outcome:
+17. Confirm the detail page adds a new activity entry without a refresh.
+18. Optional API verification for the same workspace and outcome:
 
 ```bash
+curl http://127.0.0.1:4000/api/providers/models
+curl -X POST http://127.0.0.1:3000/api/workspace-credentials \
+  -H 'content-type: application/json' \
+  -d '{"workspaceId":"ws_default","providerId":"anthropic","label":"Primary Anthropic key","secret":"sk-ant-..."}'
+curl -X POST http://127.0.0.1:3000/api/auth-profiles \
+  -H 'content-type: application/json' \
+  -d '{"workspaceId":"ws_default","providerId":"anthropic","label":"Anthropic primary","credentialId":"<CREDENTIAL_ID>","priority":0,"status":"active"}'
+curl -X PUT http://127.0.0.1:3000/api/router/policy \
+  -H 'content-type: application/json' \
+  -d '{"workspaceId":"ws_default","version":1,"updatedAt":"<ISO_TIMESTAMP>","candidates":[{"capability":"reasoning","priority":0,"providerId":"anthropic","modelId":"claude-opus-4.6","authProfileId":"<PROFILE_ID>","enabled":true},{"capability":"coding","priority":0,"providerId":"anthropic","modelId":"claude-opus-4.6","authProfileId":"<PROFILE_ID>","enabled":true},{"capability":"document","priority":0,"providerId":"anthropic","modelId":"claude-opus-4.6","authProfileId":"<PROFILE_ID>","enabled":true}]}'
+curl -X POST http://127.0.0.1:3000/api/router/resolve-preview \
+  -H 'content-type: application/json' \
+  -d '{"workspaceId":"ws_default","capability":"reasoning","policyVersion":1}'
 curl -X POST http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/plan
 curl http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/plan
 curl -X POST http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/runs \
@@ -119,8 +149,12 @@ If `pnpm db:push` fails with a `DATABASE_URL` validation error from the repo roo
 
 If outcome creation fails with authentication or relation errors, verify the password in `.env` matches `apps/control-plane/.env.local`, then rerun `set -a; source .env; set +a; pnpm db:push`.
 
+If credential creation fails with `MYCELIUM_ENCRYPTION_KEY is required for credential writes.`, add `MYCELIUM_ENCRYPTION_KEY` to `apps/control-plane/.env.local`, restart the control plane, and retry.
+
 If the web UI loads but shows no outcomes, verify `CONTROL_PLANE_URL` in `apps/web/.env.local` and check [http://127.0.0.1:4000/health](http://127.0.0.1:4000/health).
 
 If you already run Postgres locally on `5432`, that is expected. Mycelium uses `54321` locally to avoid connecting to the wrong database.
 
 If runs stay queued or step execution fails immediately, verify Docker Desktop is running, confirm the host has enough free space to pull and start `node:22-bookworm-slim`, and check whether `SANDBOX_IMAGE` points at a valid local image.
+
+If a run shows unresolved route badges on `Draft brief`, `Draft operator summary`, or `Synthesize result`, verify the router policy includes a `document` candidate. The default M3 draft plan uses `document` for those three nodes.

@@ -686,6 +686,11 @@ Request review after:
 - `2026-03-13`: Codex began Task 1 on `codex/m4-task1-routing-contracts` after reloading the M4 design/plan, runbook, roadmap, and project-log context, then verifying a clean isolated baseline with `pnpm install` and `pnpm test`.
 - `2026-03-13`: Task 1 keeps route metadata additive on `RunStepSchema` so the shared contracts can expose persisted route state immediately without forcing Task 2 persistence and Task 4 run-step writes to land in the same batch.
 - `2026-03-13`: Task 1 required one small workspace bootstrapping deviation from the plan: after adding the new `packages/router` workspace package, the worktree needed one extra `pnpm install` so `@computer-oss/router` could resolve its local `@computer-oss/protocol` workspace dependency during tests and typecheck.
+- `2026-03-13`: Task 2 extended the persistence layer for encrypted workspace credentials, auth profiles, router policy, and step-route writes, then hardened both the in-memory parity layer and the fake DB harness so routing foreign-key behavior matches real Postgres.
+- `2026-03-14`: Tasks 3-5 landed as one reviewed services-and-UI batch: control-plane provider/credential/auth-profile/router APIs, run-time route persistence, settings workflows, route preview, and run-timeline route badges all now ship on `main`.
+- `2026-03-14`: The real Task 6 smoke path confirmed that repeated route previews are deterministic in selected provider/model/auth profile for a fixed policy version, but `resolvedAt` changes per preview because the resolver records a fresh timestamp.
+- `2026-03-14`: The real Task 6 smoke path also confirmed that a fully resolved run needs `document` policy coverage in addition to the `reasoning` and `coding` preview checks, because the default M3 draft plan emits one `reasoning` node and three `document` nodes.
+- `2026-03-14`: The operator smoke was driven through the live shipped HTTP surface from the terminal rather than browser click automation. That is a tooling deviation only; the verification still exercised the running Next.js and Fastify apps end to end.
 
 ## Verification log
 
@@ -698,3 +703,47 @@ Request review after:
   - `pnpm --filter @computer-oss/protocol test`
   - `pnpm --filter @computer-oss/router test`
   - `pnpm --filter @computer-oss/router typecheck`
+- `2026-03-13` Task 2:
+  - `pnpm --filter @computer-oss/db test`
+  - `pnpm --filter @computer-oss/db typecheck`
+  - `pnpm --filter @computer-oss/db build`
+  - `pnpm --filter @computer-oss/control-plane test -- test/repositories-workspace-credentials.test.ts`
+  - `pnpm --filter @computer-oss/control-plane test -- test/repositories-auth-profiles.test.ts`
+  - `pnpm --filter @computer-oss/control-plane typecheck`
+  - `pnpm --filter @computer-oss/control-plane build`
+- `2026-03-14` Tasks 3-5:
+  - `pnpm --filter @computer-oss/web test`
+  - `pnpm --filter @computer-oss/web build`
+  - `pnpm --filter @computer-oss/web typecheck`
+  - `pnpm --filter @computer-oss/control-plane test -- test/auth-profiles.test.ts`
+  - `pnpm --filter @computer-oss/control-plane typecheck`
+  - `pnpm --filter @computer-oss/control-plane build`
+  - `pnpm test`
+  - `pnpm typecheck`
+  - `pnpm build`
+- `2026-03-14` Task 6:
+  - `pnpm test`
+  - `pnpm typecheck`
+  - `pnpm build`
+  - `pnpm db:up`
+  - `set -a; source .env; set +a; pnpm db:push`
+  - `pnpm dev:control-plane`
+  - `pnpm dev:web`
+  - live HTTP smoke covering:
+    - `GET /settings`
+    - `POST /api/workspace-credentials`
+    - `POST /api/auth-profiles`
+    - `PUT /api/router/policy`
+    - repeated `POST /api/router/resolve-preview` for `reasoning` and `coding`
+    - `POST /api/outcomes`
+    - `POST /api/outcomes/:id/plan`
+    - `POST /api/outcomes/:id/runs`
+    - `GET /api/runs/:runId`
+    - `GET /api/runs/:runId/logs`
+    - rendered `/outcomes/:id?runId=<RUN_ID>` confirmation for route metadata
+
+## Merged milestone summary
+
+- Mycelium now ships a static provider/model catalog, encrypted workspace credentials, durable auth profiles, router policy CRUD, deterministic route preview, and persisted route metadata on run steps.
+- The operator console now includes a settings surface for catalog review, credential creation, auth-profile management, router-policy editing, and route preview, plus route badges on the run timeline.
+- M4 intentionally leaves runtime execution on the proven M3 local Docker path. The milestone makes route decisions durable and operator-visible without yet requiring vendor-backed worker execution.

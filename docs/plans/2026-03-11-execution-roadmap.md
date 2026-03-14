@@ -145,7 +145,7 @@ Completion notes:
 
 ### M4 Routing and BYO Keys
 
-Status: `Active`
+Status: `Complete`
 
 Goal:
 
@@ -182,6 +182,13 @@ Primary docs:
 Execution note:
 
 - the M4 docs are finalized enough to start implementation windows from Task 1 without additional architecture work in advance
+
+Completion notes:
+
+- `packages/router`, routing contracts, and persisted step-route fields are integrated
+- workspaces can store encrypted provider credentials, create auth profiles, save router policy, and preview route resolution from the settings surface
+- run creation persists route metadata on steps while execution remains on the M3 local Docker path
+- the local smoke path is verified against the running stack, including settings load, credential/profile creation, route preview, route badges on run steps, and completed execution on the existing draft-plan runtime
 
 ### M5 Review Queue and Artifact Lineage
 

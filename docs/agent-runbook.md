@@ -4,7 +4,7 @@ Use this file as the first stop for any Codex agent working on Mycelium.
 
 ## What this repository is
 
-Mycelium is an open-source control plane for outcome-driven AI work. The current integrated slice is `Milestone 3: Execution Substrate V1`, and the active next implementation target is `Milestone 4: Routing and BYO Keys`:
+Mycelium is an open-source control plane for outcome-driven AI work. The current integrated slice is `Milestone 4: Routing and BYO Keys`, running on top of the verified `Milestone 3: Execution Substrate V1` local execution path:
 
 - `apps/control-plane`: Fastify API and SSE runtime
 - `apps/web`: Next.js operator console
@@ -26,7 +26,7 @@ Read these next:
 8. [Milestone 4 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-13-milestone-4-routing-byo-keys-design.md)
 9. [Milestone 4 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-13-milestone-4-routing-byo-keys-implementation.md)
 
-The M4 docs are now the execution handoff for the next implementation windows. Start from Task 1 in the M4 plan unless this review window explicitly assigns a later task.
+The M4 docs now include the milestone-closure verification notes and are the best handoff for understanding the current routing stack before moving to the next milestone.
 
 ## Local setup
 
@@ -55,7 +55,7 @@ set -a; source .env; set +a; pnpm db:push
 
 The default local sandbox image is `node:22-bookworm-slim`. If a machine needs a different image, set `SANDBOX_IMAGE` in `apps/control-plane/.env.local`.
 
-When working on M4, also set `MYCELIUM_ENCRYPTION_KEY` in `apps/control-plane/.env.local`. Generate one local key with:
+Set `MYCELIUM_ENCRYPTION_KEY` in `apps/control-plane/.env.local` before testing credential writes. Generate one local key with:
 
 ```bash
 openssl rand -base64 32
@@ -102,6 +102,8 @@ If the task touches the M4 routing surface, also verify:
 - the settings page loads provider catalog, workspace credentials, auth profiles, and router policy
 - creating a credential requires `MYCELIUM_ENCRYPTION_KEY`
 - a route preview resolves or returns explicit unresolved diagnostics
+- repeated route previews keep the same provider/model/auth-profile selection for a fixed policy version, even though `resolvedAt` changes per preview
+- if you want every node in the default draft plan to resolve, the policy includes `document` as well as `reasoning`
 - run steps show route metadata or unresolved state without breaking the M3 local execution path
 
 ## Stop commands

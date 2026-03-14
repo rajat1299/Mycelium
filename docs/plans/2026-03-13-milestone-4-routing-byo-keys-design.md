@@ -738,3 +738,9 @@ M4 should make the product claim real at the control-plane level:
 - your policy
 
 without yet forcing the runtime to execute through vendor adapters.
+
+## Milestone closure notes
+
+- The shipped M4 slice matches that scope: credentials, auth profiles, router policy, preview, and persisted step-route metadata are all live, while runtime execution still uses the M3 local Docker provider.
+- The default M3 draft plan uses `reasoning` for `Analyze outcome` and `document` for the remaining three nodes. That means a fully resolved M4 smoke run needs `document` coverage in policy, even if the route-preview acceptance checks only exercise `reasoning` and `coding`.
+- Repeated route previews for a fixed policy version are deterministic in provider/model/auth-profile selection. `resolvedAt` changes per preview because each preview performs a new resolution.

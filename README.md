@@ -148,7 +148,7 @@ Mycelium is the assembled thing. Not a framework. A product you run with one com
 - `pnpm` `10.17.0` or newer
 - Docker Desktop or a local Docker engine
 - enough local Docker disk space to pull `node:22-bookworm-slim`
-- API keys from one or more supported providers (Anthropic, OpenAI, Google, etc.)
+- at least one provider API key you can enter through the settings page after the stack is running
 
 ### Run it
 
@@ -160,15 +160,17 @@ cp apps/control-plane/.env.example apps/control-plane/.env.local
 cp apps/web/.env.example apps/web/.env.local
 ```
 
-Open `.env` and add your API keys:
+Open `.env` and replace `REPLACE_WITH_LOCAL_DB_PASSWORD` with a local password. Then open `apps/control-plane/.env.local`, replace the same DB password there, and add a local encryption key:
 
-```env
-ANTHROPIC_API_KEY=sk-ant-...
-OPENAI_API_KEY=sk-...
-GOOGLE_AI_API_KEY=...
+```bash
+openssl rand -base64 32
 ```
 
-You only need keys for the providers you want to use. One key is enough to get started.
+```env
+MYCELIUM_ENCRYPTION_KEY=<paste-generated-key>
+```
+
+The root `.env` file is only for the local Postgres bootstrap. Provider secrets are stored through the settings page and encrypted before they are written to Postgres.
 
 ```bash
 pnpm install
@@ -181,18 +183,24 @@ pnpm dev
 
 The local sandbox uses `node:22-bookworm-slim` by default. If you need to pin a different local image, set `SANDBOX_IMAGE` in `apps/control-plane/.env.local` before starting the stack.
 
-Open `http://127.0.0.1:3000`. The current Milestone 3 slice lets you create an outcome, generate a deterministic fork/join draft plan, start a run that executes automatically in local Docker sandboxes, and inspect the run timeline, persisted logs, and run artifacts in the operator console.
+Open `http://127.0.0.1:3000`. The current integrated slice is Milestone 4 routing and BYO keys on top of the Milestone 3 local execution path: you can save encrypted provider credentials, create auth profiles, define router policy, preview route resolution, and then run the same local Docker execution flow with persisted route metadata on each step.
 
 ### Manual smoke checklist
 
-1. Create an outcome from the web UI.
-2. Generate the draft plan and confirm the four-node fork/join graph renders:
+1. Open `/settings` and confirm the provider catalog, workspace credentials, auth profiles, and routing policy surfaces load.
+2. Create one workspace credential. Credential writes require `MYCELIUM_ENCRYPTION_KEY` in `apps/control-plane/.env.local`.
+3. Create one auth profile for that credential.
+4. Save router policy entries for `reasoning` and `coding`, then preview both routes and confirm they resolve to the same provider, model, and auth profile on repeated previews. `resolvedAt` changes per preview because it is a fresh resolution timestamp.
+5. If you want every node in the default M3 draft plan to resolve, also add a `document` policy entry. The shipped four-node draft plan uses `reasoning` for `Analyze outcome` and `document` for the other three nodes.
+6. Create an outcome from the web UI.
+7. Generate the draft plan and confirm the four-node fork/join graph renders:
    `Analyze outcome` -> `Draft brief` + `Draft operator summary` -> `Synthesize result`.
-3. Start the run and confirm the two middle steps complete before synthesis starts.
-4. Confirm the run reaches `completed` and the outcome header also reaches `completed`.
-5. Confirm the artifact panel shows exactly four artifacts:
+8. Start the run and confirm the two middle steps complete before synthesis starts.
+9. Confirm the run reaches `completed` and the outcome header also reaches `completed`.
+10. Confirm the timeline shows route badges on each step and that unresolved routes, if any, are rendered explicitly instead of blocking local execution.
+11. Confirm the artifact panel shows exactly four artifacts:
    `artifacts/analyze-outcome.md`, `artifacts/brief.md`, `artifacts/operator-summary.md`, and `artifacts/final-result.md`.
-6. Confirm the log panel shows persisted step logs after a page refresh, not just live SSE updates.
+12. Confirm the log panel shows persisted step logs after a page refresh, not just live SSE updates.
 
 ### Messaging (optional)
 
@@ -200,9 +208,32 @@ Mycelium supports Slack and Telegram out of the box. See the [messaging setup gu
 
 ### API
 
-The currently shipped local API surface for the Milestone 3 slice is:
+The currently shipped local API surface for the Milestone 4 slice is:
 
 ```bash
+# Read the static provider/model catalog
+curl http://127.0.0.1:4000/api/providers/models
+
+# Create a workspace credential
+curl -X POST http://127.0.0.1:3000/api/workspace-credentials \
+  -H "content-type: application/json" \
+  -d '{"workspaceId":"ws_default","providerId":"anthropic","label":"Primary Anthropic key","secret":"sk-ant-..."}'
+
+# Create an auth profile
+curl -X POST http://127.0.0.1:3000/api/auth-profiles \
+  -H "content-type: application/json" \
+  -d '{"workspaceId":"ws_default","providerId":"anthropic","label":"Anthropic primary","credentialId":"<CREDENTIAL_ID>","priority":0,"status":"active"}'
+
+# Save router policy
+curl -X PUT http://127.0.0.1:3000/api/router/policy \
+  -H "content-type: application/json" \
+  -d '{"workspaceId":"ws_default","version":1,"updatedAt":"<ISO_TIMESTAMP>","candidates":[{"capability":"reasoning","priority":0,"providerId":"anthropic","modelId":"claude-opus-4.6","authProfileId":"<PROFILE_ID>","enabled":true},{"capability":"coding","priority":0,"providerId":"anthropic","modelId":"claude-opus-4.6","authProfileId":"<PROFILE_ID>","enabled":true},{"capability":"document","priority":0,"providerId":"anthropic","modelId":"claude-opus-4.6","authProfileId":"<PROFILE_ID>","enabled":true}]}'
+
+# Preview a route
+curl -X POST http://127.0.0.1:3000/api/router/resolve-preview \
+  -H "content-type: application/json" \
+  -d '{"workspaceId":"ws_default","capability":"reasoning","policyVersion":1}'
+
 # Create an outcome
 curl -X POST http://127.0.0.1:4000/api/outcomes \
   -H "content-type: application/json" \
@@ -235,7 +266,7 @@ curl http://127.0.0.1:4000/api/runs/<RUN_ID>/artifacts
 curl -N http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/events
 ```
 
-The operator console consumes the same control-plane endpoints and the same outcome-scoped SSE stream for timeline, activity, logs, and artifacts.
+The operator console consumes the same control-plane endpoints and the same outcome-scoped SSE stream for timeline, activity, logs, artifacts, and persisted step-route metadata. Runtime execution remains on the M3 local Docker path in this milestone; M4 makes the routing decisions durable and visible before provider-backed worker execution lands in a later milestone.
 
 ---
 
