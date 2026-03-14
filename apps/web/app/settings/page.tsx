@@ -1,8 +1,5 @@
 import Link from "next/link";
-import { AuthProfilesPanel } from "../../components/settings/auth-profiles-panel";
-import { ProviderCatalog } from "../../components/settings/provider-catalog";
-import { RouterPolicyEditor } from "../../components/settings/router-policy-editor";
-import { WorkspaceCredentialsPanel } from "../../components/settings/workspace-credentials-panel";
+import { SettingsWorkspaceShell } from "../../components/settings/settings-workspace-shell";
 import {
   getDefaultWorkspaceId,
   getProviderCatalog,
@@ -51,21 +48,13 @@ export default async function SettingsPage() {
         </div>
       </header>
 
-      <section className="grid gap-8 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="space-y-8">
-          <ProviderCatalog catalog={catalog} />
-          <RouterPolicyEditor
-            workspaceId={workspaceId}
-            catalog={catalog}
-            policy={policy}
-            authProfiles={authProfiles}
-          />
-        </div>
-        <div className="space-y-8">
-          <WorkspaceCredentialsPanel credentials={credentials} />
-          <AuthProfilesPanel authProfiles={authProfiles} />
-        </div>
-      </section>
+      <SettingsWorkspaceShell
+        workspaceId={workspaceId}
+        catalog={catalog}
+        credentials={credentials}
+        authProfiles={authProfiles}
+        policy={policy}
+      />
     </main>
   );
 }
