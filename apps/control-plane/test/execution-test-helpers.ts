@@ -5,6 +5,7 @@ import { buildApp } from "../src/app";
 import { createEncryptionService } from "../src/lib/encryption";
 import { createEventBus } from "../src/lib/event-bus";
 import { createExecutionService } from "../src/lib/execution-service";
+import { createRouterService } from "../src/lib/router-service";
 import {
   createInMemoryRepositories,
   type Repositories
@@ -128,6 +129,7 @@ export async function createExecutionHarness(
     repositories,
     eventBus,
     encryption: createEncryptionService(TEST_ENCRYPTION_KEY),
+    routerService: createRouterService({ repositories }),
     executionService: createExecutionService({
       repositories,
       eventBus,

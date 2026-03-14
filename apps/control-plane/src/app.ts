@@ -13,6 +13,7 @@ import { registerOutcomeEventRoutes } from "./routes/outcome-events";
 import { registerOutcomeRoutes } from "./routes/outcomes";
 import { registerPlanRoutes } from "./routes/plans";
 import { registerProviderRoutes } from "./routes/providers";
+import { registerRouterRoutes } from "./routes/router";
 import { registerWorkspaceCredentialRoutes } from "./routes/workspace-credentials";
 import { registerRunRoutes } from "./routes/runs";
 
@@ -37,11 +38,13 @@ export function buildApp(options: BuildAppOptions = {}) {
   const executionService =
     options.executionService ?? services.executionService;
   const encryption = services.encryption;
+  const routerService = services.routerService;
 
   registerHealthRoutes(app);
   registerProviderRoutes(app);
   registerWorkspaceCredentialRoutes(app, { repositories, encryption });
   registerAuthProfileRoutes(app, { repositories, encryption });
+  registerRouterRoutes(app, { routerService });
   registerOutcomeRoutes(app, { repositories, eventBus });
   registerPlanRoutes(app, { repositories, eventBus });
   registerRunRoutes(app, { repositories, eventBus, executionService });

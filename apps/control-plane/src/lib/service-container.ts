@@ -17,6 +17,10 @@ import {
   type ExecutionService
 } from "./execution-service";
 import {
+  createRouterService,
+  type RouterService
+} from "./router-service";
+import {
   createDatabaseRepositories,
   createInMemoryRepositories,
   type Repositories
@@ -27,6 +31,7 @@ export type ServiceContainer = {
   eventBus: EventBus;
   executionService: ExecutionService;
   encryption: EncryptionService;
+  routerService: RouterService;
 };
 
 type InMemoryServiceContainerOptions = {
@@ -44,6 +49,10 @@ export function createInMemoryServiceContainer(
   const repositories = options.repositories ?? createInMemoryRepositories();
   const eventBus = options.eventBus ?? createEventBus();
   const encryption = createEncryptionService(options.encryptionKey);
+  const routerService = createRouterService({
+    repositories,
+    ...(options.now ? { now: options.now } : {})
+  });
   const workspaceManager = new WorkspaceManager({
     rootPath:
       options.workspaceRootPath ??
@@ -63,7 +72,8 @@ export function createInMemoryServiceContainer(
     repositories,
     eventBus,
     executionService,
-    encryption
+    encryption,
+    routerService
   };
 }
 
@@ -71,6 +81,7 @@ export async function createServiceContainer(env: AppEnv): Promise<ServiceContai
   const repositories = await createDatabaseRepositories(env.DATABASE_URL);
   const eventBus = createEventBus();
   const encryption = createEncryptionService(env.MYCELIUM_ENCRYPTION_KEY);
+  const routerService = createRouterService({ repositories });
   const workspaceManager = new WorkspaceManager({
     rootPath: env.WORKSPACE_ROOT
   });
@@ -88,7 +99,8 @@ export async function createServiceContainer(env: AppEnv): Promise<ServiceContai
     repositories,
     eventBus,
     executionService,
-    encryption
+    encryption,
+    routerService
   };
 }
 
