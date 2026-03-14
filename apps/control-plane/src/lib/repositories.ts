@@ -96,6 +96,7 @@ export type WorkspaceLeaseStore = {
 export type WorkspaceCredentialStore = {
   create(input: CreateWorkspaceCredentialInput): Promise<WorkspaceCredentialMetadata>;
   getById(id: string): Promise<WorkspaceCredentialMetadata | null>;
+  getStoredById(id: string): Promise<CreateWorkspaceCredentialInput | null>;
   listByWorkspace(workspaceId: string): Promise<WorkspaceCredentialMetadata[]>;
   update(
     input: UpdateWorkspaceCredentialInput
@@ -819,6 +820,9 @@ function createInMemoryRepositoriesState() {
     async getById(id) {
       const credential = workspaceCredentialsById.get(id);
       return credential ? mapWorkspaceCredentialMetadata(credential) : null;
+    },
+    async getStoredById(id) {
+      return workspaceCredentialsById.get(id) ?? null;
     },
     async listByWorkspace(workspaceId) {
       return Array.from(workspaceCredentialsById.values())

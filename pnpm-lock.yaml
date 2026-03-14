@@ -35,6 +35,9 @@ importers:
       '@computer-oss/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@computer-oss/router':
+        specifier: workspace:*
+        version: link:../../packages/router
       '@computer-oss/sandbox':
         specifier: workspace:*
         version: link:../../packages/sandbox

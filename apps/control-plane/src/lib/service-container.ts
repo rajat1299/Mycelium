@@ -7,6 +7,10 @@ import {
   WorkspaceManager
 } from "@computer-oss/sandbox";
 import type { AppEnv } from "./env";
+import {
+  createEncryptionService,
+  type EncryptionService
+} from "./encryption";
 import { createEventBus, type EventBus } from "./event-bus";
 import {
   createExecutionService,
@@ -22,6 +26,7 @@ export type ServiceContainer = {
   repositories: Repositories;
   eventBus: EventBus;
   executionService: ExecutionService;
+  encryption: EncryptionService;
 };
 
 type InMemoryServiceContainerOptions = {
@@ -29,6 +34,7 @@ type InMemoryServiceContainerOptions = {
   eventBus?: EventBus;
   sandboxProvider?: SandboxProvider;
   workspaceRootPath?: string;
+  encryptionKey?: string;
   now?: () => Date;
 };
 
@@ -37,6 +43,7 @@ export function createInMemoryServiceContainer(
 ): ServiceContainer {
   const repositories = options.repositories ?? createInMemoryRepositories();
   const eventBus = options.eventBus ?? createEventBus();
+  const encryption = createEncryptionService(options.encryptionKey);
   const workspaceManager = new WorkspaceManager({
     rootPath:
       options.workspaceRootPath ??
@@ -55,13 +62,15 @@ export function createInMemoryServiceContainer(
   return {
     repositories,
     eventBus,
-    executionService
+    executionService,
+    encryption
   };
 }
 
 export async function createServiceContainer(env: AppEnv): Promise<ServiceContainer> {
   const repositories = await createDatabaseRepositories(env.DATABASE_URL);
   const eventBus = createEventBus();
+  const encryption = createEncryptionService(env.MYCELIUM_ENCRYPTION_KEY);
   const workspaceManager = new WorkspaceManager({
     rootPath: env.WORKSPACE_ROOT
   });
@@ -78,7 +87,8 @@ export async function createServiceContainer(env: AppEnv): Promise<ServiceContai
   return {
     repositories,
     eventBus,
-    executionService
+    executionService,
+    encryption
   };
 }
 

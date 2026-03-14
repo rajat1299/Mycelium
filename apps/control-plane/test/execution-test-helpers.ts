@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { buildApp } from "../src/app";
+import { createEncryptionService } from "../src/lib/encryption";
 import { createEventBus } from "../src/lib/event-bus";
 import { createExecutionService } from "../src/lib/execution-service";
 import {
@@ -9,6 +10,8 @@ import {
   type Repositories
 } from "../src/lib/repositories";
 import type { ServiceContainer } from "../src/lib/service-container";
+
+const TEST_ENCRYPTION_KEY = "12345678901234567890123456789012";
 
 type FakeSandboxRequest = {
   runId: string;
@@ -124,6 +127,7 @@ export async function createExecutionHarness(
   const services: ServiceContainer = {
     repositories,
     eventBus,
+    encryption: createEncryptionService(TEST_ENCRYPTION_KEY),
     executionService: createExecutionService({
       repositories,
       eventBus,

@@ -44,6 +44,15 @@ function mapMetadataRow(row: WorkspaceCredentialRow): WorkspaceCredentialMetadat
   };
 }
 
+function mapStoredRow(row: WorkspaceCredentialRow): StoredWorkspaceCredential {
+  return {
+    ...mapMetadataRow(row),
+    secretCiphertext: row.secretCiphertext,
+    secretNonce: row.secretNonce,
+    secretVersion: row.secretVersion
+  };
+}
+
 function compareCredentialRows(left: WorkspaceCredentialRow, right: WorkspaceCredentialRow) {
   const createdDelta = left.createdAt.getTime() - right.createdAt.getTime();
 
@@ -97,6 +106,13 @@ export class WorkspaceCredentialRepository {
     const found = rows.find((row) => row.id === id);
 
     return found ? mapMetadataRow(found) : null;
+  }
+
+  async getStoredById(id: string): Promise<StoredWorkspaceCredential | null> {
+    const rows = await this.db.select().from(workspaceCredentials);
+    const found = rows.find((row) => row.id === id);
+
+    return found ? mapStoredRow(found) : null;
   }
 
   async listByWorkspace(workspaceId: string): Promise<WorkspaceCredentialMetadata[]> {
