@@ -1,4 +1,5 @@
 import {
+  ApprovalSchema,
   ArtifactSchema,
   MessageCreatedDataSchema,
   OutcomeSchema,
@@ -64,6 +65,8 @@ export function subscribeToOutcomeEvents(
     registerListener("run.log", (payload) => RunLogDataSchema.parse(payload));
     registerListener("artifact.created", (payload) => ArtifactSchema.parse(payload));
     registerListener("run.step.updated", (payload) => RunStepSchema.parse(payload));
+    registerListener("approval.requested", (payload) => ApprovalSchema.parse(payload));
+    registerListener("approval.resolved", (payload) => ApprovalSchema.parse(payload));
 
     sharedSource = {
       source,

@@ -83,4 +83,62 @@ describe("subscribeToOutcomeEvents", () => {
     unsubscribeSecond();
     expect(FakeEventSource.instances[0]?.closed).toBe(true);
   });
+
+  it("forwards approval lifecycle SSE events to subscribers", () => {
+    vi.stubGlobal("EventSource", FakeEventSource as unknown as typeof EventSource);
+
+    const handler = vi.fn();
+    subscribeToOutcomeEvents("outcome_123", handler);
+
+    FakeEventSource.instances[0]?.emit("approval.requested", {
+      id: "approval_123",
+      workspaceId: "ws_default",
+      outcomeId: "outcome_123",
+      runId: "run_123",
+      stepId: "step_123",
+      status: "pending",
+      kind: "output_review_required",
+      title: "Review final result",
+      summary: null,
+      instruction: "Check tone, facts, and formatting.",
+      artifactIds: ["artifact_1"],
+      requestedAt: "2026-03-14T12:00:00.000Z",
+      resolvedAt: null,
+      resolution: null,
+      resolutionNote: null
+    });
+
+    FakeEventSource.instances[0]?.emit("approval.resolved", {
+      id: "approval_123",
+      workspaceId: "ws_default",
+      outcomeId: "outcome_123",
+      runId: "run_123",
+      stepId: "step_123",
+      status: "resolved",
+      kind: "output_review_required",
+      title: "Review final result",
+      summary: null,
+      instruction: "Check tone, facts, and formatting.",
+      artifactIds: ["artifact_1"],
+      requestedAt: "2026-03-14T12:00:00.000Z",
+      resolvedAt: "2026-03-14T12:05:00.000Z",
+      resolution: "approved",
+      resolutionNote: "Ready to ship."
+    });
+
+    expect(handler).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        outcomeId: "outcome_123",
+        type: "approval.requested"
+      })
+    );
+    expect(handler).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        outcomeId: "outcome_123",
+        type: "approval.resolved"
+      })
+    );
+  });
 });
