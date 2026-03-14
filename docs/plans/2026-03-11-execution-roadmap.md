@@ -216,6 +216,15 @@ Ship gate:
 - side-effecting steps can block on approval
 - the UI exposes what needs human action
 
+Primary docs:
+
+- [Milestone 5 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-14-milestone-5-review-queue-and-artifact-lineage-design.md)
+- [Milestone 5 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-14-milestone-5-review-queue-and-artifact-lineage-implementation.md)
+
+Execution note:
+
+- M5 is the next execution-ready milestone after M4. Start from the design doc, then execute the implementation plan task-by-task on a fresh `codex/*` branch.
+
 ### M6 Checkpoints, Replay, and Audit
 
 Status: `Planned`

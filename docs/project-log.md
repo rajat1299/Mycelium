@@ -48,11 +48,11 @@ Do not rewrite older entries except to correct factual mistakes.
 
 ## Current snapshot
 
-- Date: `2026-03-13`
+- Date: `2026-03-14`
 - Default branch: `main`
-- Current integrated runtime baseline: `Milestone 3 execution substrate integrated on main`
-- Completed milestone: `M3 Execution Substrate V1`
-- Active execution-ready milestone: `M4 Routing and BYO Keys`
+- Current integrated runtime baseline: `Milestone 4 routing and BYO keys integrated on main`
+- Completed milestone: `M4 Routing and BYO Keys`
+- Active execution-ready milestone: `M5 Review Queue and Artifact Lineage`
 - Current mode:
   - this chat window is review/planning/management space
   - implementation happens in separate Codex windows on `codex/*` branches
@@ -65,6 +65,7 @@ Do not rewrite older entries except to correct factual mistakes.
 | M2 Orchestration Kernel | Complete | Durable plan graph, run state machine, orchestration package, control-plane planning/run APIs, plan/run UI, and review-driven hardening of run recovery and selection behavior | [Milestone 2 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-milestone-2-orchestration-kernel-implementation.md) |
 | M3 Execution Substrate V1 | Complete | Local Docker sandbox provider, dependency-aware execution service, artifact persistence, run logs, operator-console artifact/log surfaces, and a verified end-to-end fork/join execution path | [Milestone 3 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-12-milestone-3-execution-substrate-implementation.md) |
 | M4 Routing and BYO Keys | Complete | Static provider/model registry, encrypted credentials, auth profiles, router policy CRUD, deterministic route resolution, route preview, persisted step-route metadata, and operator settings surfaces verified against the local M3 execution path | [Milestone 4 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-13-milestone-4-routing-byo-keys-design.md), [Milestone 4 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-13-milestone-4-routing-byo-keys-implementation.md) |
+| M5 Review Queue and Artifact Lineage | Planned | First-class approvals, review queue, approval-aware execution blocking and resume, and durable artifact-lineage inspection | [Milestone 5 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-14-milestone-5-review-queue-and-artifact-lineage-design.md), [Milestone 5 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-14-milestone-5-review-queue-and-artifact-lineage-implementation.md) |
 | Execution Roadmap | Active | Multi-milestone delivery order for future Codex agents | [Execution Roadmap](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-execution-roadmap.md) |
 
 ## Decision log
@@ -79,6 +80,8 @@ Do not rewrite older entries except to correct factual mistakes.
 - `2026-03-13`: Treat workspace credentials as a first-class M4 object, separate from auth profiles. Credentials own encrypted secret material; auth profiles are the durable routing identity that policy and run steps point at.
 - `2026-03-14`: Treat repeated route previews as deterministic when provider, model, auth profile, and status remain stable for a fixed policy version. `resolvedAt` is expected to change on each preview because it records a fresh resolution time.
 - `2026-03-14`: Keep the local smoke docs explicit that the default M3 draft plan uses `reasoning` plus `document`. A fully resolved M4 run needs a `document` route candidate in addition to any `reasoning` and `coding` preview checks.
+- `2026-03-14`: Lock Milestone 5 to the review queue and artifact-lineage slice. M5 should add approval-aware blocking and resume before checkpoints, schedules, messaging, or remote worker work.
+- `2026-03-14`: Approval resolution must be transactional with run, step, and outcome updates, and artifact lineage should be persisted as first-class edge records rather than only loose artifact metadata.
 
 ## Activity log
 
@@ -120,3 +123,4 @@ Do not rewrite older entries except to correct factual mistakes.
 - `2026-03-13` | `Codex` | `codex/m4-task2-routing-persistence` | Completed Milestone 4 Task 2: added encrypted workspace-credential persistence, auth-profile persistence, router-policy repositories, durable step-route writes, and matching in-memory/FK parity coverage for the DB and control-plane test harnesses. | Verified with `pnpm --filter @computer-oss/db test`, `pnpm --filter @computer-oss/db typecheck`, `pnpm --filter @computer-oss/db build`, `pnpm --filter @computer-oss/control-plane test -- test/repositories-workspace-credentials.test.ts`, `pnpm --filter @computer-oss/control-plane test -- test/repositories-auth-profiles.test.ts`, `pnpm --filter @computer-oss/control-plane typecheck`, and `pnpm --filter @computer-oss/control-plane build`.
 - `2026-03-14` | `Codex` | `main@16664db` | Completed Milestone 4 Tasks 3-5: added control-plane routing services and APIs, route preview workflows, settings surfaces for provider credentials and auth profiles, router-policy editing, and run-timeline route badges, then merged the reviewed batch to `main`. | Verified with targeted control-plane and web checks plus workspace `pnpm test`, `pnpm typecheck`, and `pnpm build` before merge.
 - `2026-03-14` | `Codex` | `codex/m4-task6-docs-verification` | Completed Milestone 4 Task 6: updated the README, runbook, local-dev guide, roadmap, and milestone notes for the settings workflow and encryption setup, then ran the real local-stack smoke path through the shipped HTTP surface to verify route preview, persisted step routes, and M3-compatible run completion. | Verified with `pnpm test`, `pnpm typecheck`, `pnpm build`, `pnpm db:up`, `set -a; source .env; set +a; pnpm db:push`, live `pnpm dev:control-plane` and `pnpm dev:web`, and HTTP smoke checks covering settings load, credential/profile create, router policy save, repeated preview resolution, outcome/run creation, run completion, and rendered route metadata.
+- `2026-03-14` | `Codex` | `main` | Authored the Milestone 5 design and implementation plan for review queue and artifact lineage, and updated the roadmap, runbook, docs index, and project status so new implementation windows can start M5 directly from reviewed docs. | Planning update only. No runtime behavior changed.
