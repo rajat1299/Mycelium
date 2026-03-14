@@ -93,6 +93,33 @@ function createEntryFromEvent(event: OutcomeStreamEvent): ActivityEntry {
             ? "success"
             : "warning"
       };
+    case "approval.requested":
+      return {
+        id: `${event.data.id}:requested:${event.data.requestedAt}`,
+        title: "Approval requested",
+        body: `${event.data.title} is waiting for operator review.${event.data.instruction ? ` ${event.data.instruction}` : ""}`,
+        timestamp: event.data.requestedAt,
+        tone: "warning"
+      };
+    case "approval.resolved": {
+      const resolutionTitle =
+        event.data.resolution === "approved"
+          ? "Approval approved"
+          : event.data.resolution === "rejected"
+            ? "Approval rejected"
+            : "Approval cancelled";
+
+      return {
+        id: `${event.data.id}:resolved:${event.data.resolvedAt ?? event.data.requestedAt}`,
+        title: resolutionTitle,
+        body: `${event.data.title} ${event.data.resolution}.${event.data.resolutionNote ? ` ${event.data.resolutionNote}` : ""}`,
+        timestamp: event.data.resolvedAt ?? event.data.requestedAt,
+        tone:
+          event.data.resolution === "approved"
+            ? "success"
+            : "warning"
+      };
+    }
   }
 }
 
