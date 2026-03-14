@@ -1,4 +1,14 @@
-import type { Artifact, Outcome, Plan, RunDetail, RunLogData } from "@computer-oss/protocol";
+import type {
+  Artifact,
+  AuthProfile,
+  Outcome,
+  Plan,
+  ProviderCatalog,
+  RouterPolicy,
+  RunDetail,
+  RunLogData,
+  WorkspaceCredentialMetadata
+} from "@computer-oss/protocol";
 
 export type OutcomeListItem = Pick<
   Outcome,
@@ -20,3 +30,7 @@ export type OutcomeOrchestrationSnapshot = {
 
 export type RunArtifact = Artifact;
 export type RunLogEntry = RunLogData;
+export type ProviderCatalogData = ProviderCatalog;
+export type WorkspaceCredentialSummary = WorkspaceCredentialMetadata;
+export type AuthProfileSummary = AuthProfile;
+export type WorkspaceRouterPolicy = RouterPolicy;

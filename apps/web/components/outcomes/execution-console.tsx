@@ -1,7 +1,12 @@
 "use client";
 
 import { startTransition, useEffect, useState } from "react";
-import type { Artifact, RunDetail, RunLogData } from "@computer-oss/protocol";
+import type {
+  Artifact,
+  AuthProfile,
+  RunDetail,
+  RunLogData
+} from "@computer-oss/protocol";
 import { subscribeToOutcomeEvents } from "../../lib/events";
 import { ArtifactList } from "./artifact-list";
 import { RunLogPanel } from "./run-log-panel";
@@ -12,6 +17,7 @@ type ExecutionConsoleProps = {
   initialRun: RunDetail | null;
   initialArtifacts: Artifact[];
   initialLogs: RunLogData[];
+  initialAuthProfiles?: AuthProfile[];
 };
 
 type ExecutionConsoleState = {
@@ -76,7 +82,8 @@ export function ExecutionConsole({
   outcomeId,
   initialRun,
   initialArtifacts,
-  initialLogs
+  initialLogs,
+  initialAuthProfiles = []
 }: ExecutionConsoleProps) {
   const [state, setState] = useState<ExecutionConsoleState>(() =>
     buildInitialState(initialRun, initialArtifacts, initialLogs)
@@ -137,6 +144,7 @@ export function ExecutionConsole({
         outcomeId={outcomeId}
         initialRun={initialRun}
         selectedRunId={state.selectedRunId}
+        authProfiles={initialAuthProfiles}
       />
       <ArtifactList
         selectedRunId={state.selectedRunId}

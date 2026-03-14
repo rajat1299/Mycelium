@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   getLatestRun: vi.fn(),
   getRunArtifacts: vi.fn(),
   getRunLogs: vi.fn(),
+  listAuthProfiles: vi.fn(),
   createPlan: vi.fn(),
   createRun: vi.fn(),
   notFound: vi.fn(() => {
@@ -25,6 +26,7 @@ let observedRun: RunDetail | null = null;
 let observedSelectedRunId: string | null = null;
 let observedArtifacts: Array<{ id: string; relativePath: string }> = [];
 let observedLogs: Array<{ message: string; level: string }> = [];
+let observedAuthProfiles: Array<{ id: string; label: string }> = [];
 
 vi.mock("next/cache", () => ({
   revalidatePath: mocks.revalidatePath
@@ -61,16 +63,19 @@ vi.mock("../../../components/outcomes/execution-console", () => ({
   ExecutionConsole: ({
     initialRun,
     initialArtifacts,
-    initialLogs
+    initialLogs,
+    initialAuthProfiles
   }: {
     initialRun: RunDetail | null;
     initialArtifacts: Array<{ id: string; relativePath: string }>;
     initialLogs: Array<{ message: string; level: string }>;
+    initialAuthProfiles: Array<{ id: string; label: string }>;
   }) => {
     observedRun = initialRun;
     observedSelectedRunId = initialRun?.id ?? null;
     observedArtifacts = initialArtifacts;
     observedLogs = initialLogs;
+    observedAuthProfiles = initialAuthProfiles;
     return (
       <div data-testid="execution-console">
         {(initialRun?.id ?? "none") + ":" + initialArtifacts.length + ":" + initialLogs.length}
@@ -98,7 +103,8 @@ vi.mock("../../../lib/api", () => ({
   getRun: mocks.getRun,
   getLatestRun: mocks.getLatestRun,
   getRunArtifacts: mocks.getRunArtifacts,
-  getRunLogs: mocks.getRunLogs
+  getRunLogs: mocks.getRunLogs,
+  listAuthProfiles: mocks.listAuthProfiles
 }));
 
 afterEach(() => {
@@ -111,6 +117,7 @@ describe("OutcomeDetailPage", () => {
     observedSelectedRunId = null;
     observedArtifacts = [];
     observedLogs = [];
+    observedAuthProfiles = [];
     vi.clearAllMocks();
 
     mocks.getOutcome.mockResolvedValue({
@@ -157,6 +164,21 @@ describe("OutcomeDetailPage", () => {
         createdAt: "2026-03-11T00:09:20.000Z"
       }
     ]);
+    mocks.listAuthProfiles.mockResolvedValue([
+      {
+        id: "profile_openai_primary",
+        workspaceId: "ws_default",
+        providerId: "openai",
+        label: "OpenAI Primary",
+        credentialId: "cred_openai_primary",
+        status: "active",
+        priority: 1,
+        cooldownUntil: null,
+        lastValidatedAt: null,
+        createdAt: "2026-03-11T00:00:00.000Z",
+        updatedAt: "2026-03-11T00:00:00.000Z"
+      }
+    ]);
   });
 
   it("loads the latest persisted run when no runId query param is provided", async () => {
@@ -169,6 +191,7 @@ describe("OutcomeDetailPage", () => {
 
     expect(mocks.getLatestRun).toHaveBeenCalledWith("outcome_123");
     expect(mocks.getRun).not.toHaveBeenCalled();
+    expect(mocks.listAuthProfiles).toHaveBeenCalledWith("ws_default");
     expect(mocks.getRunArtifacts).toHaveBeenCalledWith("run_latest");
     expect(mocks.getRunLogs).toHaveBeenCalledWith("run_latest");
     expect(screen.getByTestId("execution-console")).toHaveTextContent(
@@ -186,6 +209,12 @@ describe("OutcomeDetailPage", () => {
       expect.objectContaining({
         message: "Recovered persisted log output.",
         level: "info"
+      })
+    ]);
+    expect(observedAuthProfiles).toEqual([
+      expect.objectContaining({
+        id: "profile_openai_primary",
+        label: "OpenAI Primary"
       })
     ]);
   });
@@ -210,6 +239,7 @@ describe("OutcomeDetailPage", () => {
 
     expect(mocks.getRun).toHaveBeenCalledWith("run_other");
     expect(mocks.getLatestRun).toHaveBeenCalledWith("outcome_123");
+    expect(mocks.listAuthProfiles).toHaveBeenCalledWith("ws_default");
     expect(mocks.getRunArtifacts).toHaveBeenCalledWith("run_latest");
     expect(mocks.getRunLogs).toHaveBeenCalledWith("run_latest");
     expect(screen.getByTestId("execution-console")).toHaveTextContent(

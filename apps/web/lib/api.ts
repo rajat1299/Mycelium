@@ -1,16 +1,22 @@
 import {
+  AuthProfileSchema,
   ArtifactListResponseSchema,
   CreateRunRequestSchema,
   CreateOutcomeRequestSchema,
   OutcomeListResponseSchema,
   OutcomeSchema,
   PlanSchema,
+  ProviderCatalogSchema,
   RunDetailSchema,
   RunLogListResponseSchema,
+  RouterPolicySchema,
+  WorkspaceCredentialMetadataSchema,
   type CreateOutcomeRequest,
   type CreateRunRequest,
+  type AuthProfile,
   type Outcome
 } from "@computer-oss/protocol";
+import { z } from "zod";
 
 const DEFAULT_CONTROL_PLANE_URL = "http://127.0.0.1:4000";
 const DEFAULT_WORKSPACE_ID = "ws_default";
@@ -31,6 +37,18 @@ export function getDefaultUserId() {
 async function parseJson<T>(response: Response, parser: (value: unknown) => T): Promise<T> {
   return parser(await response.json());
 }
+
+const WorkspaceCredentialListEnvelopeSchema = z.object({
+  credentials: z.array(z.unknown())
+});
+
+const AuthProfileListEnvelopeSchema = z.object({
+  authProfiles: z.array(z.unknown())
+});
+
+const RouterPolicyResponseEnvelopeSchema = z.object({
+  policy: z.unknown().nullable()
+});
 
 export async function listOutcomes(workspaceId: string): Promise<Outcome[]> {
   try {
@@ -220,6 +238,105 @@ export async function getRunLogs(runId: string) {
     return parsed.logs;
   } catch {
     return [];
+  }
+}
+
+export async function getProviderCatalog() {
+  try {
+    const response = await fetch(`${getControlPlaneBaseUrl()}/api/providers/models`, {
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      return {
+        providers: [],
+        models: []
+      };
+    }
+
+    return parseJson(response, (value) => ProviderCatalogSchema.parse(value));
+  } catch {
+    return {
+      providers: [],
+      models: []
+    };
+  }
+}
+
+export async function listWorkspaceCredentials(workspaceId: string) {
+  try {
+    const response = await fetch(
+      `${getControlPlaneBaseUrl()}/api/workspace-credentials?workspaceId=${encodeURIComponent(workspaceId)}`,
+      {
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const parsed = await parseJson(response, (value) =>
+      WorkspaceCredentialListEnvelopeSchema.parse(value)
+    );
+
+    return parsed.credentials.map((credential) =>
+      WorkspaceCredentialMetadataSchema.parse(credential)
+    );
+  } catch {
+    return [];
+  }
+}
+
+export async function listAuthProfiles(workspaceId: string): Promise<AuthProfile[]> {
+  try {
+    const response = await fetch(
+      `${getControlPlaneBaseUrl()}/api/auth-profiles?workspaceId=${encodeURIComponent(workspaceId)}`,
+      {
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const parsed = await parseJson(response, (value) =>
+      AuthProfileListEnvelopeSchema.parse(value)
+    );
+
+    return parsed.authProfiles.map((authProfile) =>
+      AuthProfileSchema.parse(authProfile)
+    );
+  } catch {
+    return [];
+  }
+}
+
+export async function getRouterPolicy(workspaceId: string) {
+  try {
+    const response = await fetch(
+      `${getControlPlaneBaseUrl()}/api/router/policy?workspaceId=${encodeURIComponent(workspaceId)}`,
+      {
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const parsed = await parseJson(response, (value) =>
+      RouterPolicyResponseEnvelopeSchema.parse(value)
+    );
+
+    if (parsed.policy === null) {
+      return null;
+    }
+
+    return RouterPolicySchema.parse(parsed.policy);
+  } catch {
+    return null;
   }
 }
 

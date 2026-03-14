@@ -9,6 +9,7 @@ import {
   createPlan,
   createRun,
   getLatestRun,
+  listAuthProfiles,
   getOutcome,
   getPlan,
   getRunArtifacts,
@@ -53,9 +54,14 @@ export default async function OutcomeDetailPage({
     notFound();
   }
 
-  const [artifacts, logs] = run
-    ? await Promise.all([getRunArtifacts(run.id), getRunLogs(run.id)])
-    : [[], []];
+  const authProfilesPromise = listAuthProfiles(outcome.workspaceId);
+  const [artifacts, logs, authProfiles] = run
+    ? await Promise.all([
+        getRunArtifacts(run.id),
+        getRunLogs(run.id),
+        authProfilesPromise
+      ])
+    : [[], [], await authProfilesPromise];
 
   async function createPlanAction() {
     "use server";
@@ -127,6 +133,7 @@ export default async function OutcomeDetailPage({
             initialRun={run}
             initialArtifacts={artifacts}
             initialLogs={logs}
+            initialAuthProfiles={authProfiles}
           />
           <OutcomeActivity outcome={outcome} />
         </div>

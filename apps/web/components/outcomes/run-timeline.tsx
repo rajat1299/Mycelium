@@ -1,7 +1,13 @@
 "use client";
 
 import { startTransition, useEffect, useState } from "react";
-import type { RunDetail, RunStep } from "@computer-oss/protocol";
+import type {
+  AuthProfile,
+  RouteReason,
+  RouteStatus,
+  RunDetail,
+  RunStep
+} from "@computer-oss/protocol";
 import { subscribeToOutcomeEvents } from "../../lib/events";
 import { Badge } from "../ui/badge";
 
@@ -9,6 +15,7 @@ type RunTimelineProps = {
   outcomeId: string;
   initialRun: RunDetail | null;
   selectedRunId?: string | null;
+  authProfiles?: AuthProfile[];
 };
 
 function sortSteps(steps: RunStep[]) {
@@ -44,16 +51,69 @@ type RunTimelineState = {
   run: RunDetail | null;
 };
 
+function formatRouteStatus(status: RouteStatus) {
+  switch (status) {
+    case "resolved":
+      return "Resolved";
+    case "missing_auth":
+      return "Missing auth";
+    case "invalid_policy":
+      return "Invalid policy";
+    default:
+      return "Unresolved";
+  }
+}
+
+function formatRouteReason(reason: RouteReason) {
+  switch (reason) {
+    case "no_policy_candidates":
+      return "No policy candidates";
+    case "policy_workspace_mismatch":
+      return "Policy workspace mismatch";
+    case "provider_not_found":
+      return "Provider not found";
+    case "model_not_found":
+      return "Model not found";
+    case "capability_unsupported":
+      return "Capability unsupported";
+    case "auth_profile_not_found":
+      return "Auth profile not found";
+    case "auth_profile_provider_mismatch":
+      return "Auth profile provider mismatch";
+    default:
+      return "No active auth profile";
+  }
+}
+
+function routeStatusVariant(status: RouteStatus) {
+  return status === "resolved" ? "sky" : "amber";
+}
+
+function resolveAuthProfileLabel(
+  authProfiles: AuthProfile[],
+  authProfileId: string | null | undefined
+) {
+  if (!authProfileId) {
+    return null;
+  }
+
+  return authProfiles.find((profile) => profile.id === authProfileId)?.label ?? authProfileId;
+}
+
 export function RunTimeline({
   outcomeId,
   initialRun,
-  selectedRunId = null
+  selectedRunId = null,
+  authProfiles = []
 }: RunTimelineProps) {
   const [state, setState] = useState<RunTimelineState>({
     pinnedRunId: selectedRunId ?? initialRun?.id ?? null,
     run: initialRun
   });
   const run = state.run;
+  const authProfileLookup = new Map(
+    authProfiles.map((profile) => [profile.id, profile.label])
+  );
 
   useEffect(() => {
     setState((current) => {
@@ -209,6 +269,33 @@ export function RunTimeline({
                   Position {step.position + 1}. Updated{" "}
                   {new Date(step.updatedAt).toLocaleTimeString()}.
                 </p>
+                {step.routeStatus ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {step.routeProviderId ? (
+                      <Badge size="sm">{step.routeProviderId}</Badge>
+                    ) : null}
+                    {step.routeModelId ? (
+                      <Badge size="sm">{step.routeModelId}</Badge>
+                    ) : null}
+                    {resolveAuthProfileLabel(authProfiles, step.routeAuthProfileId) ? (
+                      <Badge size="sm">
+                        {authProfileLookup.get(step.routeAuthProfileId!) ??
+                          step.routeAuthProfileId}
+                      </Badge>
+                    ) : null}
+                    <Badge
+                      variant={routeStatusVariant(step.routeStatus)}
+                      size="sm"
+                    >
+                      {formatRouteStatus(step.routeStatus)}
+                    </Badge>
+                  </div>
+                ) : null}
+                {step.routeStatus && step.routeStatus !== "resolved" && step.routeReason ? (
+                  <p className="mt-2 text-sm leading-6 text-amber-900">
+                    {formatRouteReason(step.routeReason)}
+                  </p>
+                ) : null}
               </div>
             </li>
           ))}

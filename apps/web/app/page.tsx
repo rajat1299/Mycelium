@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { NewOutcomeForm } from "../components/outcomes/new-outcome-form";
@@ -40,9 +41,17 @@ export default async function HomePage() {
     <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-6 py-10">
       <header className="grid gap-4 border-b border-panel-line pb-8 lg:grid-cols-[1.3fr_0.9fr] lg:items-end">
         <div className="space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.32em] text-accent">
-            Mycelium
-          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.32em] text-accent">
+              Mycelium
+            </p>
+            <Link
+              href="/settings"
+              className="rounded-full border border-panel-line px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-ink transition hover:border-accent hover:text-accent"
+            >
+              Settings
+            </Link>
+          </div>
           <h1 className="max-w-3xl font-serif text-4xl tracking-tight text-ink sm:text-5xl">
             Command center for long-running AI work.
           </h1>
