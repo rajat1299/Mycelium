@@ -1,4 +1,5 @@
 import {
+  boolean,
   integer,
   jsonb,
   pgEnum,
@@ -51,11 +52,51 @@ export const stepStatusValues = [
   "cancelled"
 ] as const;
 
+export const workspaceCredentialStatusValues = [
+  "active",
+  "disabled",
+  "error"
+] as const;
+
+export const authProfileStatusValues = [
+  "active",
+  "disabled",
+  "cooling_down"
+] as const;
+
+export const routeStatusValues = [
+  "resolved",
+  "unresolved",
+  "invalid_policy",
+  "missing_auth"
+] as const;
+
+export const routeReasonValues = [
+  "no_policy_candidates",
+  "policy_workspace_mismatch",
+  "provider_not_found",
+  "model_not_found",
+  "capability_unsupported",
+  "auth_profile_not_found",
+  "auth_profile_provider_mismatch",
+  "no_active_auth_profile"
+] as const;
+
 export const outcomeStatusEnum = pgEnum("outcome_status", outcomeStatusValues);
 export const approvalStatusEnum = pgEnum("approval_status", approvalStatusValues);
 export const planStatusEnum = pgEnum("plan_status", planStatusValues);
 export const runStatusEnum = pgEnum("run_status", runStatusValues);
 export const stepStatusEnum = pgEnum("step_status", stepStatusValues);
+export const workspaceCredentialStatusEnum = pgEnum(
+  "workspace_credential_status",
+  workspaceCredentialStatusValues
+);
+export const authProfileStatusEnum = pgEnum(
+  "auth_profile_status",
+  authProfileStatusValues
+);
+export const routeStatusEnum = pgEnum("route_status", routeStatusValues);
+export const routeReasonEnum = pgEnum("route_reason", routeReasonValues);
 
 export const workspaces = pgTable("workspaces", {
   id: text("id").primaryKey(),
@@ -121,14 +162,60 @@ export const approvals = pgTable("approvals", {
   resolvedAt: timestamp("resolved_at", { withTimezone: true })
 });
 
-export const routerPolicies = pgTable("router_policies", {
+export const workspaceCredentials = pgTable("workspace_credentials", {
   id: text("id").primaryKey(),
   workspaceId: text("workspace_id")
     .notNull()
     .references(() => workspaces.id),
-  policy: jsonb("policy").notNull().default({}),
+  providerId: text("provider_id").notNull(),
+  label: text("label").notNull(),
+  secretCiphertext: text("secret_ciphertext").notNull(),
+  secretNonce: text("secret_nonce").notNull(),
+  secretVersion: integer("secret_version").notNull(),
+  status: workspaceCredentialStatusEnum("status").notNull().default("active"),
+  lastValidatedAt: timestamp("last_validated_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+});
+
+export const authProfiles = pgTable("auth_profiles", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id")
+    .notNull()
+    .references(() => workspaces.id),
+  providerId: text("provider_id").notNull(),
+  label: text("label").notNull(),
+  credentialId: text("credential_id")
+    .notNull()
+    .references(() => workspaceCredentials.id),
+  status: authProfileStatusEnum("status").notNull().default("active"),
+  priority: integer("priority").notNull(),
+  cooldownUntil: timestamp("cooldown_until", { withTimezone: true }),
+  lastValidatedAt: timestamp("last_validated_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+});
+
+export const routerPolicies = pgTable("router_policies", {
+  workspaceId: text("workspace_id")
+    .primaryKey()
+    .notNull()
+    .references(() => workspaces.id),
+  version: integer("version").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+});
+
+export const routerPolicyCandidates = pgTable("router_policy_candidates", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id")
+    .notNull()
+    .references(() => routerPolicies.workspaceId),
+  capability: text("capability").notNull(),
+  priority: integer("priority").notNull(),
+  providerId: text("provider_id").notNull(),
+  modelId: text("model_id").notNull(),
+  authProfileId: text("auth_profile_id").references(() => authProfiles.id),
+  enabled: boolean("enabled").notNull().default(true)
 });
 
 export const outcomePlans = pgTable("outcome_plans", {
@@ -198,6 +285,13 @@ export const runSteps = pgTable("run_steps", {
   template: text("template"),
   expectedArtifactPath: text("expected_artifact_path"),
   expectedArtifactKind: text("expected_artifact_kind"),
+  routeProviderId: text("route_provider_id"),
+  routeModelId: text("route_model_id"),
+  routeAuthProfileId: text("route_auth_profile_id"),
+  routePolicyVersion: integer("route_policy_version"),
+  routeStatus: routeStatusEnum("route_status"),
+  routeReason: routeReasonEnum("route_reason"),
+  routeResolvedAt: timestamp("route_resolved_at", { withTimezone: true }),
   status: stepStatusEnum("status").notNull().default("pending"),
   position: integer("position").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

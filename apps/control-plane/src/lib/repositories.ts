@@ -1,9 +1,11 @@
 import type {
   AcquireWorkspaceLeaseInput,
   AppendRunEventInput,
+  CreateAuthProfileInput,
   CreateArtifactInput,
   CreatePlanInput,
   CreateRunFromPlanInput,
+  CreateWorkspaceCredentialInput,
   ReleaseReadyDependentsInput,
   ReleaseWorkspaceLeaseInput,
   StoredArtifact,
@@ -14,15 +16,21 @@ import type {
   StoredRunEvent,
   StoredRunStep,
   StoredWorkspaceLease,
+  UpdateAuthProfileInput,
   UpdateRunLifecycleStatusInput,
   UpdateRunStatusInput,
-  UpdateStepStatusInput
+  UpdateStepRouteInput,
+  UpdateStepStatusInput,
+  UpdateWorkspaceCredentialInput
 } from "@computer-oss/db";
 import type {
+  AuthProfile,
   CreateOutcomeMessageRequest,
   CreateOutcomeRequest,
   Outcome,
-  OutcomeStatus
+  OutcomeStatus,
+  RouterPolicy,
+  WorkspaceCredentialMetadata
 } from "@computer-oss/protocol";
 
 export type CreateStoredOutcomeInput = CreateOutcomeRequest & { id: string };
@@ -67,6 +75,7 @@ export type RunStore = {
   ): Promise<{ run: StoredRun; outcome: Outcome } | null>;
   updateStatus(input: UpdateRunStatusInput): Promise<StoredRun | null>;
   updateStepStatus(input: UpdateStepStatusInput): Promise<StoredRunStep | null>;
+  updateStepRoute(input: UpdateStepRouteInput): Promise<StoredRunStep | null>;
   releaseReadyDependents(
     input: ReleaseReadyDependentsInput
   ): Promise<StoredRunStep[]>;
@@ -84,17 +93,46 @@ export type WorkspaceLeaseStore = {
   release(input: ReleaseWorkspaceLeaseInput): Promise<StoredWorkspaceLease | null>;
 };
 
+export type WorkspaceCredentialStore = {
+  create(input: CreateWorkspaceCredentialInput): Promise<WorkspaceCredentialMetadata>;
+  getById(id: string): Promise<WorkspaceCredentialMetadata | null>;
+  listByWorkspace(workspaceId: string): Promise<WorkspaceCredentialMetadata[]>;
+  update(
+    input: UpdateWorkspaceCredentialInput
+  ): Promise<WorkspaceCredentialMetadata | null>;
+  delete(id: string): Promise<boolean>;
+};
+
+export type AuthProfileStore = {
+  create(input: CreateAuthProfileInput): Promise<AuthProfile>;
+  getById(id: string): Promise<AuthProfile | null>;
+  listByWorkspace(workspaceId: string): Promise<AuthProfile[]>;
+  update(input: UpdateAuthProfileInput): Promise<AuthProfile | null>;
+  delete(id: string): Promise<boolean>;
+};
+
+export type RouterPolicyStore = {
+  getByWorkspace(workspaceId: string): Promise<RouterPolicy | null>;
+  upsert(input: RouterPolicy): Promise<RouterPolicy>;
+};
+
 export type Repositories = {
   outcomes: OutcomeStore;
   plans: PlanStore;
   runs: RunStore;
   artifacts: ArtifactStore;
   workspaceLeases: WorkspaceLeaseStore;
+  workspaceCredentials: WorkspaceCredentialStore;
+  authProfiles: AuthProfileStore;
+  routerPolicy: RouterPolicyStore;
 };
 
 type InMemoryState = ReturnType<typeof createInMemoryRepositoriesState>;
 type InMemoryDataState = {
   runStepsByRunId: Map<string, StoredRunStep[]>;
+  workspaceCredentialsById: Map<string, CreateWorkspaceCredentialInput>;
+  authProfilesById: Map<string, AuthProfile>;
+  routerPoliciesByWorkspaceId: Map<string, RouterPolicy>;
 };
 
 function compareRuns(left: StoredRun, right: StoredRun) {
@@ -126,6 +164,100 @@ function compareArtifacts(left: StoredArtifact, right: StoredArtifact) {
   return left.id.localeCompare(right.id);
 }
 
+function compareWorkspaceCredentials(
+  left: WorkspaceCredentialMetadata,
+  right: WorkspaceCredentialMetadata
+) {
+  const createdDelta =
+    new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+
+  if (createdDelta !== 0) {
+    return createdDelta;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
+function compareAuthProfiles(left: AuthProfile, right: AuthProfile) {
+  if (left.priority !== right.priority) {
+    return left.priority - right.priority;
+  }
+
+  const createdDelta =
+    new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+
+  if (createdDelta !== 0) {
+    return createdDelta;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
+function comparePolicyCandidates(
+  left: RouterPolicy["candidates"][number],
+  right: RouterPolicy["candidates"][number]
+) {
+  if (left.capability !== right.capability) {
+    return left.capability.localeCompare(right.capability);
+  }
+
+  if (left.priority !== right.priority) {
+    return left.priority - right.priority;
+  }
+
+  return `${left.providerId}:${left.modelId}:${left.authProfileId ?? ""}`.localeCompare(
+    `${right.providerId}:${right.modelId}:${right.authProfileId ?? ""}`
+  );
+}
+
+function mapWorkspaceCredentialMetadata(
+  credential: CreateWorkspaceCredentialInput
+): WorkspaceCredentialMetadata {
+  return {
+    id: credential.id,
+    workspaceId: credential.workspaceId,
+    providerId: credential.providerId,
+    label: credential.label,
+    status: credential.status,
+    createdAt: credential.createdAt,
+    updatedAt: credential.updatedAt,
+    lastValidatedAt: credential.lastValidatedAt
+  };
+}
+
+function validateCredentialOwnership(
+  credential: CreateWorkspaceCredentialInput | undefined,
+  workspaceId: string,
+  providerId: string,
+  credentialId: string
+) {
+  if (!credential) {
+    throw new Error(`Credential ${credentialId} does not exist.`);
+  }
+
+  if (credential.workspaceId !== workspaceId) {
+    throw new Error(
+      `Credential ${credentialId} belongs to workspace ${credential.workspaceId}, not ${workspaceId}.`
+    );
+  }
+
+  if (credential.providerId !== providerId) {
+    throw new Error(
+      `Credential ${credentialId} belongs to provider ${credential.providerId}, not ${providerId}.`
+    );
+  }
+}
+
+function foreignKeyDeleteError(
+  table: string,
+  constraint: string,
+  referencingTable: string
+) {
+  return new Error(
+    `update or delete on table "${table}" violates foreign key constraint "${constraint}" on table "${referencingTable}"`
+  );
+}
+
 function getStoredRunStep(
   state: InMemoryDataState,
   stepId: string
@@ -150,6 +282,9 @@ function createInMemoryRepositoriesState() {
   const runStepsByRunId = new Map<string, StoredRunStep[]>();
   const artifacts = new Map<string, StoredArtifact>();
   const workspaceLeasesByRunId = new Map<string, StoredWorkspaceLease>();
+  const workspaceCredentialsById = new Map<string, CreateWorkspaceCredentialInput>();
+  const authProfilesById = new Map<string, AuthProfile>();
+  const routerPoliciesByWorkspaceId = new Map<string, RouterPolicy>();
   const runEvents: AppendRunEventInput[] = [];
 
   const state = {
@@ -161,6 +296,9 @@ function createInMemoryRepositoriesState() {
     runStepsByRunId,
     artifacts,
     workspaceLeasesByRunId,
+    workspaceCredentialsById,
+    authProfilesById,
+    routerPoliciesByWorkspaceId,
     runEvents
   };
 
@@ -443,6 +581,37 @@ function createInMemoryRepositoriesState() {
       runStepsByRunId.set(located.runId, updatedSteps);
       return updatedStep;
     },
+    async updateStepRoute(input) {
+      const located = getStoredRunStep(state, input.stepId);
+
+      if (!located) {
+        return null;
+      }
+
+      if (located.step.capability !== input.route.capability) {
+        throw new Error(
+          `Route capability ${input.route.capability} does not match step capability ${located.step.capability}.`
+        );
+      }
+
+      const updatedStep: StoredRunStep = {
+        ...located.step,
+        routeProviderId: input.route.providerId,
+        routeModelId: input.route.modelId,
+        routeAuthProfileId: input.route.authProfileId,
+        routePolicyVersion: input.route.policyVersion,
+        routeStatus: input.route.status,
+        routeReason: input.route.reason,
+        routeResolvedAt: input.route.resolvedAt
+      };
+      const updatedSteps =
+        runStepsByRunId.get(located.runId)?.map((candidate) =>
+          candidate.id === input.stepId ? updatedStep : candidate
+        ) ?? [];
+
+      runStepsByRunId.set(located.runId, updatedSteps);
+      return updatedStep;
+    },
     async releaseReadyDependents(input) {
       const run = runsById.get(input.runId);
 
@@ -636,12 +805,205 @@ function createInMemoryRepositoriesState() {
     }
   };
 
+  const workspaceCredentialsStore: WorkspaceCredentialStore = {
+    async create(input) {
+      if (workspaceCredentialsById.has(input.id)) {
+        throw new Error(
+          'duplicate key value violates unique constraint "workspace_credentials_pkey"'
+        );
+      }
+
+      workspaceCredentialsById.set(input.id, { ...input });
+      return mapWorkspaceCredentialMetadata(input);
+    },
+    async getById(id) {
+      const credential = workspaceCredentialsById.get(id);
+      return credential ? mapWorkspaceCredentialMetadata(credential) : null;
+    },
+    async listByWorkspace(workspaceId) {
+      return Array.from(workspaceCredentialsById.values())
+        .filter((credential) => credential.workspaceId === workspaceId)
+        .map(mapWorkspaceCredentialMetadata)
+        .sort(compareWorkspaceCredentials);
+    },
+    async update(input) {
+      const current = workspaceCredentialsById.get(input.id);
+
+      if (!current) {
+        return null;
+      }
+
+      const updated: CreateWorkspaceCredentialInput = {
+        ...current,
+        ...(input.label !== undefined ? { label: input.label } : {}),
+        ...(input.secretCiphertext !== undefined
+          ? { secretCiphertext: input.secretCiphertext }
+          : {}),
+        ...(input.secretNonce !== undefined ? { secretNonce: input.secretNonce } : {}),
+        ...(input.secretVersion !== undefined
+          ? { secretVersion: input.secretVersion }
+          : {}),
+        ...(input.status !== undefined ? { status: input.status } : {}),
+        ...(input.lastValidatedAt !== undefined
+          ? { lastValidatedAt: input.lastValidatedAt }
+          : {}),
+        updatedAt: input.updatedAt
+      };
+
+      workspaceCredentialsById.set(updated.id, updated);
+      return mapWorkspaceCredentialMetadata(updated);
+    },
+    async delete(id) {
+      if (
+        Array.from(authProfilesById.values()).some(
+          (profile) => profile.credentialId === id
+        )
+      ) {
+        throw foreignKeyDeleteError(
+          "workspace_credentials",
+          "auth_profiles_credential_id_fkey",
+          "auth_profiles"
+        );
+      }
+
+      return workspaceCredentialsById.delete(id);
+    }
+  };
+
+  const authProfilesStore: AuthProfileStore = {
+    async create(input) {
+      if (authProfilesById.has(input.id)) {
+        throw new Error(
+          'duplicate key value violates unique constraint "auth_profiles_pkey"'
+        );
+      }
+
+      const credential = workspaceCredentialsById.get(input.credentialId);
+      validateCredentialOwnership(
+        credential,
+        input.workspaceId,
+        input.providerId,
+        input.credentialId
+      );
+
+      const profile: AuthProfile = { ...input };
+      authProfilesById.set(profile.id, profile);
+      return profile;
+    },
+    async getById(id) {
+      return authProfilesById.get(id) ?? null;
+    },
+    async listByWorkspace(workspaceId) {
+      return Array.from(authProfilesById.values())
+        .filter((profile) => profile.workspaceId === workspaceId)
+        .sort(compareAuthProfiles);
+    },
+    async update(input) {
+      const current = authProfilesById.get(input.id);
+
+      if (!current) {
+        return null;
+      }
+
+      const nextCredentialId = input.credentialId ?? current.credentialId;
+
+      if (nextCredentialId !== current.credentialId) {
+        const credential = workspaceCredentialsById.get(nextCredentialId);
+        validateCredentialOwnership(
+          credential,
+          current.workspaceId,
+          current.providerId,
+          nextCredentialId
+        );
+      }
+
+      const updated: AuthProfile = {
+        ...current,
+        ...(input.label !== undefined ? { label: input.label } : {}),
+        ...(input.credentialId !== undefined
+          ? { credentialId: input.credentialId }
+          : {}),
+        ...(input.status !== undefined ? { status: input.status } : {}),
+        ...(input.priority !== undefined ? { priority: input.priority } : {}),
+        ...(input.cooldownUntil !== undefined
+          ? { cooldownUntil: input.cooldownUntil }
+          : {}),
+        ...(input.lastValidatedAt !== undefined
+          ? { lastValidatedAt: input.lastValidatedAt }
+          : {}),
+        updatedAt: input.updatedAt
+      };
+
+      authProfilesById.set(updated.id, updated);
+      return updated;
+    },
+    async delete(id) {
+      if (
+        Array.from(routerPoliciesByWorkspaceId.values()).some((policy) =>
+          policy.candidates.some((candidate) => candidate.authProfileId === id)
+        )
+      ) {
+        throw foreignKeyDeleteError(
+          "auth_profiles",
+          "router_policy_candidates_auth_profile_id_fkey",
+          "router_policy_candidates"
+        );
+      }
+
+      return authProfilesById.delete(id);
+    }
+  };
+
+  const routerPolicyStore: RouterPolicyStore = {
+    async getByWorkspace(workspaceId) {
+      return routerPoliciesByWorkspaceId.get(workspaceId) ?? null;
+    },
+    async upsert(input) {
+      for (const candidate of input.candidates) {
+        if (!candidate.authProfileId) {
+          continue;
+        }
+
+        const profile = authProfilesById.get(candidate.authProfileId);
+
+        if (!profile) {
+          throw new Error(`Auth profile ${candidate.authProfileId} does not exist.`);
+        }
+
+        if (profile.workspaceId !== input.workspaceId) {
+          throw new Error(
+            `Auth profile ${candidate.authProfileId} belongs to workspace ${profile.workspaceId}, not ${input.workspaceId}.`
+          );
+        }
+
+        if (profile.providerId !== candidate.providerId) {
+          throw new Error(
+            `Auth profile ${candidate.authProfileId} belongs to provider ${profile.providerId}, not ${candidate.providerId}.`
+          );
+        }
+      }
+
+      const stored: RouterPolicy = {
+        workspaceId: input.workspaceId,
+        version: input.version,
+        updatedAt: input.updatedAt,
+        candidates: [...input.candidates].sort(comparePolicyCandidates)
+      };
+
+      routerPoliciesByWorkspaceId.set(input.workspaceId, stored);
+      return stored;
+    }
+  };
+
   return {
     outcomesStore,
     plansStore,
     runsStore,
     artifactsStore,
-    workspaceLeasesStore
+    workspaceLeasesStore,
+    workspaceCredentialsStore,
+    authProfilesStore,
+    routerPolicyStore
   };
 }
 
@@ -653,7 +1015,10 @@ export function createInMemoryRepositories(): Repositories {
     plans: state.plansStore,
     runs: state.runsStore,
     artifacts: state.artifactsStore,
-    workspaceLeases: state.workspaceLeasesStore
+    workspaceLeases: state.workspaceLeasesStore,
+    workspaceCredentials: state.workspaceCredentialsStore,
+    authProfiles: state.authProfilesStore,
+    routerPolicy: state.routerPolicyStore
   };
 }
 
@@ -661,10 +1026,13 @@ export async function createDatabaseRepositories(
   connectionString: string
 ): Promise<Repositories> {
   const {
+    AuthProfileRepository,
     ArtifactRepository,
     OutcomeRepository,
     PlanRepository,
+    RouterPolicyRepository,
     RunRepository,
+    WorkspaceCredentialRepository,
     WorkspaceLeaseRepository,
     createDatabaseClient
   } = await import("@computer-oss/db");
@@ -675,6 +1043,9 @@ export async function createDatabaseRepositories(
     plans: new PlanRepository(db),
     runs: new RunRepository(db),
     artifacts: new ArtifactRepository(db),
-    workspaceLeases: new WorkspaceLeaseRepository(db)
+    workspaceLeases: new WorkspaceLeaseRepository(db),
+    workspaceCredentials: new WorkspaceCredentialRepository(db),
+    authProfiles: new AuthProfileRepository(db),
+    routerPolicy: new RouterPolicyRepository(db)
   };
 }

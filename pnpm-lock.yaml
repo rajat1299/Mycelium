@@ -93,6 +93,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@computer-oss/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       drizzle-orm:
         specifier: ^0.44.5
         version: 0.44.7(postgres@3.4.8)

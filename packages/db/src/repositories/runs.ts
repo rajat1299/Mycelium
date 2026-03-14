@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { StepRouteSchema, type StepRoute } from "@computer-oss/protocol";
 import type { DatabaseClient } from "../client";
 import {
   outcomes,
@@ -36,6 +37,13 @@ export type StoredRunStep = {
   template?: string;
   expectedArtifactPath?: string;
   expectedArtifactKind?: string;
+  routeProviderId?: string | null;
+  routeModelId?: string | null;
+  routeAuthProfileId?: string | null;
+  routePolicyVersion?: number;
+  routeStatus?: StepRoute["status"];
+  routeReason?: StepRoute["reason"];
+  routeResolvedAt?: string;
   status: RunStepRow["status"];
   position: number;
   createdAt: string;
@@ -70,6 +78,11 @@ export type UpdateStepStatusInput = {
   stepId: string;
   status: RunStepRow["status"];
   updatedAt: string;
+};
+
+export type UpdateStepRouteInput = {
+  stepId: string;
+  route: StepRoute;
 };
 
 export type UpdateRunStatusInput = {
@@ -118,6 +131,17 @@ function mapRunStepRow(row: RunStepRow): StoredRunStep {
       : {}),
     ...(row.expectedArtifactKind
       ? { expectedArtifactKind: row.expectedArtifactKind }
+      : {}),
+    ...(row.routeStatus
+      ? {
+          routeProviderId: row.routeProviderId,
+          routeModelId: row.routeModelId,
+          routeAuthProfileId: row.routeAuthProfileId,
+          routePolicyVersion: row.routePolicyVersion ?? undefined,
+          routeStatus: row.routeStatus,
+          routeReason: row.routeReason,
+          routeResolvedAt: row.routeResolvedAt?.toISOString()
+        }
       : {}),
     status: row.status,
     position: row.position,
@@ -388,6 +412,40 @@ export class RunRepository {
       .set({
         status: input.status,
         updatedAt: new Date(input.updatedAt)
+      })
+      .where(eq(runSteps.id, input.stepId))
+      .returning();
+
+    return updated ? mapRunStepRow(updated) : null;
+  }
+
+  async updateStepRoute(
+    input: UpdateStepRouteInput
+  ): Promise<StoredRunStep | null> {
+    const route = StepRouteSchema.parse(input.route);
+    const rows = await this.db.select().from(runSteps);
+    const existing = rows.find((row) => row.id === input.stepId);
+
+    if (!existing) {
+      return null;
+    }
+
+    if (existing.capability !== route.capability) {
+      throw new Error(
+        `Route capability ${route.capability} does not match step capability ${existing.capability}.`
+      );
+    }
+
+    const [updated] = await this.db
+      .update(runSteps)
+      .set({
+        routeProviderId: route.providerId,
+        routeModelId: route.modelId,
+        routeAuthProfileId: route.authProfileId,
+        routePolicyVersion: route.policyVersion,
+        routeStatus: route.status,
+        routeReason: route.reason,
+        routeResolvedAt: new Date(route.resolvedAt)
       })
       .where(eq(runSteps.id, input.stepId))
       .returning();

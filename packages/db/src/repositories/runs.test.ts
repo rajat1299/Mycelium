@@ -501,4 +501,117 @@ describe("RunRepository", () => {
       ])
     );
   });
+
+  it("persists resolved route metadata on run steps", async () => {
+    const { db, state } = createRepositoryTestDatabase();
+    const plans = new PlanRepository(db as never);
+    const runs = new RunRepository(db as never);
+
+    await plans.create(buildExecutablePlanInput());
+    await runs.createFromPlan({
+      id: "run_123",
+      outcomeId: "outcome_123",
+      planId: "plan_outcome_123",
+      createdAt: "2026-03-12T00:05:00.000Z",
+      updatedAt: "2026-03-12T00:05:00.000Z"
+    });
+
+    const [step] = await runs.listReadySteps("run_123");
+
+    if (!step) {
+      throw new Error("Expected a ready step to persist route metadata.");
+    }
+
+    await expect(
+      runs.updateStepRoute({
+        stepId: step.id,
+        route: {
+          capability: step.capability as "reasoning",
+          providerId: "openai",
+          modelId: "gpt-5.4",
+          authProfileId: "profile_openai_primary",
+          policyVersion: 4,
+          status: "resolved",
+          reason: null,
+          resolvedAt: "2026-03-13T00:10:00.000Z"
+        }
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        id: step.id,
+        routeProviderId: "openai",
+        routeModelId: "gpt-5.4",
+        routeAuthProfileId: "profile_openai_primary",
+        routePolicyVersion: 4,
+        routeStatus: "resolved",
+        routeReason: null,
+        routeResolvedAt: "2026-03-13T00:10:00.000Z"
+      })
+    );
+
+    expect(state.runSteps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: step.id,
+          routeProviderId: "openai",
+          routeModelId: "gpt-5.4",
+          routeAuthProfileId: "profile_openai_primary",
+          routePolicyVersion: 4,
+          routeStatus: "resolved",
+          routeReason: null,
+          routeResolvedAt: new Date("2026-03-13T00:10:00.000Z")
+        })
+      ])
+    );
+  });
+
+  it("preserves unresolved route diagnostics when no auth profile is available", async () => {
+    const { db } = createRepositoryTestDatabase();
+    const plans = new PlanRepository(db as never);
+    const runs = new RunRepository(db as never);
+
+    await plans.create(buildExecutablePlanInput());
+    await runs.createFromPlan({
+      id: "run_123",
+      outcomeId: "outcome_123",
+      planId: "plan_outcome_123",
+      createdAt: "2026-03-12T00:05:00.000Z",
+      updatedAt: "2026-03-12T00:05:00.000Z"
+    });
+
+    const [step] = await runs.listReadySteps("run_123");
+
+    if (!step) {
+      throw new Error("Expected a ready step to persist unresolved route metadata.");
+    }
+
+    await runs.updateStepRoute({
+      stepId: step.id,
+      route: {
+        capability: step.capability as "reasoning",
+        providerId: "openai",
+        modelId: "gpt-5.4",
+        authProfileId: null,
+        policyVersion: 5,
+        status: "missing_auth",
+        reason: "no_active_auth_profile",
+        resolvedAt: "2026-03-13T00:11:00.000Z"
+      }
+    });
+
+    await expect(runs.listSteps("run_123")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: step.id,
+          routeProviderId: "openai",
+          routeModelId: "gpt-5.4",
+          routeAuthProfileId: null,
+          routePolicyVersion: 5,
+          routeStatus: "missing_auth",
+          routeReason: "no_active_auth_profile",
+          routeResolvedAt: "2026-03-13T00:11:00.000Z"
+        })
+      ])
+    );
+  });
 });

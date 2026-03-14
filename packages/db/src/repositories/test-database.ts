@@ -1,4 +1,5 @@
 import {
+  authProfiles,
   artifacts,
   outcomes,
   outcomePlans,
@@ -7,6 +8,9 @@ import {
   planNodes,
   runEvents,
   runSteps,
+  routerPolicies,
+  routerPolicyCandidates,
+  workspaceCredentials,
   workspaceLeases
 } from "../schema";
 
@@ -21,6 +25,10 @@ type SupportedTable =
   | typeof runSteps
   | typeof runEvents
   | typeof artifacts
+  | typeof workspaceCredentials
+  | typeof authProfiles
+  | typeof routerPolicies
+  | typeof routerPolicyCandidates
   | typeof workspaceLeases;
 
 export type RepositoryTestState = {
@@ -32,6 +40,10 @@ export type RepositoryTestState = {
   runSteps: TableRecord[];
   runEvents: TableRecord[];
   artifacts: TableRecord[];
+  workspaceCredentials: TableRecord[];
+  authProfiles: TableRecord[];
+  routerPolicies: TableRecord[];
+  routerPolicyCandidates: TableRecord[];
   workspaceLeases: TableRecord[];
 };
 
@@ -39,6 +51,7 @@ export type RepositoryTestDb = {
   insert: (table: SupportedTable) => {
     values: (values: TableRecord | TableRecord[]) => {
       returning: () => Promise<TableRecord[]>;
+      onConflictDoNothing: () => Promise<void>;
     };
   };
   select: () => {
@@ -49,6 +62,11 @@ export type RepositoryTestDb = {
       where: (expression: { queryChunks?: Array<{ name?: string; value?: unknown }> }) => {
         returning: () => Promise<TableRecord[]>;
       };
+    };
+  };
+  delete: (table: SupportedTable) => {
+    where: (expression: { queryChunks?: Array<{ name?: string; value?: unknown }> }) => {
+      returning: () => Promise<TableRecord[]>;
     };
   };
   transaction: <T>(callback: (transaction: RepositoryTestDb) => Promise<T>) => Promise<T>;
@@ -83,6 +101,10 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
     runSteps: [],
     runEvents: [],
     artifacts: [],
+    workspaceCredentials: [],
+    authProfiles: [],
+    routerPolicies: [],
+    routerPolicyCandidates: [],
     workspaceLeases: []
   };
 
@@ -119,6 +141,22 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
       return "artifacts";
     }
 
+    if (table === workspaceCredentials) {
+      return "workspace_credentials";
+    }
+
+    if (table === authProfiles) {
+      return "auth_profiles";
+    }
+
+    if (table === routerPolicies) {
+      return "router_policies";
+    }
+
+    if (table === routerPolicyCandidates) {
+      return "router_policy_candidates";
+    }
+
     return "workspace_leases";
   }
 
@@ -140,6 +178,14 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
         return state.runEvents;
       case "artifacts":
         return state.artifacts;
+      case "workspace_credentials":
+        return state.workspaceCredentials;
+      case "auth_profiles":
+        return state.authProfiles;
+      case "router_policies":
+        return state.routerPolicies;
+      case "router_policy_candidates":
+        return state.routerPolicyCandidates;
       case "workspace_leases":
         return state.workspaceLeases;
       default:
@@ -225,7 +271,112 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
       return row.runId;
     }
 
+    if (tableName === "router_policies") {
+      return row.workspaceId;
+    }
+
     return row.id;
+  }
+
+  function insertOrUpdateForeignKeyError(tableName: string, constraint: string) {
+    return new Error(
+      `insert or update on table "${tableName}" violates foreign key constraint "${constraint}"`
+    );
+  }
+
+  function deleteForeignKeyError(
+    tableName: string,
+    constraint: string,
+    referencingTable: string
+  ) {
+    return new Error(
+      `update or delete on table "${tableName}" violates foreign key constraint "${constraint}" on table "${referencingTable}"`
+    );
+  }
+
+  function hasWorkspaceCredential(
+    credentialId: unknown,
+    pendingRows: TableRecord[] = []
+  ) {
+    if (typeof credentialId !== "string" || credentialId.length === 0) {
+      return false;
+    }
+
+    return (
+      pendingRows.some((row) => row.id === credentialId) ||
+      state.workspaceCredentials.some((row) => row.id === credentialId)
+    );
+  }
+
+  function hasAuthProfile(authProfileId: unknown, pendingRows: TableRecord[] = []) {
+    if (typeof authProfileId !== "string" || authProfileId.length === 0) {
+      return false;
+    }
+
+    return (
+      pendingRows.some((row) => row.id === authProfileId) ||
+      state.authProfiles.some((row) => row.id === authProfileId)
+    );
+  }
+
+  function assertRoutingForeignKeysForRow(
+    tableName: string,
+    row: TableRecord,
+    pendingRows: TableRecord[] = []
+  ) {
+    if (
+      tableName === "auth_profiles" &&
+      !hasWorkspaceCredential(row.credentialId, pendingRows)
+    ) {
+      throw insertOrUpdateForeignKeyError(
+        "auth_profiles",
+        "auth_profiles_credential_id_fkey"
+      );
+    }
+
+    if (
+      tableName === "router_policy_candidates" &&
+      row.authProfileId !== null &&
+      row.authProfileId !== undefined &&
+      !hasAuthProfile(row.authProfileId, pendingRows)
+    ) {
+      throw insertOrUpdateForeignKeyError(
+        "router_policy_candidates",
+        "router_policy_candidates_auth_profile_id_fkey"
+      );
+    }
+  }
+
+  function assertDeleteAllowed(tableName: string, rows: TableRecord[]) {
+    if (tableName === "workspace_credentials") {
+      for (const row of rows) {
+        if (
+          state.authProfiles.some((profile) => profile.credentialId === row.id)
+        ) {
+          throw deleteForeignKeyError(
+            "workspace_credentials",
+            "auth_profiles_credential_id_fkey",
+            "auth_profiles"
+          );
+        }
+      }
+    }
+
+    if (tableName === "auth_profiles") {
+      for (const row of rows) {
+        if (
+          state.routerPolicyCandidates.some(
+            (candidate) => candidate.authProfileId === row.id
+          )
+        ) {
+          throw deleteForeignKeyError(
+            "auth_profiles",
+            "router_policy_candidates_auth_profile_id_fkey",
+            "router_policy_candidates"
+          );
+        }
+      }
+    }
   }
 
   const db = {} as RepositoryTestDb;
@@ -267,9 +418,16 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
             }
           }
 
+          for (const row of rows) {
+            assertRoutingForeignKeysForRow(tableName, row, rows);
+          }
+
           tableRows.push(...rows);
 
           return {
+            async onConflictDoNothing() {
+              return;
+            },
             async returning() {
               return rows;
             }
@@ -309,6 +467,12 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
                 throw new Error(`Simulated ${tableName} update failure.`);
               }
 
+              const nextRow = {
+                ...row,
+                ...values
+              };
+
+              assertRoutingForeignKeysForRow(tableName, nextRow);
               Object.assign(row, values);
 
               return {
@@ -316,6 +480,33 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
                   return [row];
                 }
               };
+            }
+          };
+        }
+      };
+    },
+    delete(table: SupportedTable) {
+      const tableName = getTableName(table);
+
+      return {
+        where(expression: { queryChunks?: Array<{ name?: string; value?: unknown }> }) {
+          const predicates = parsePredicates(expression);
+          const rows = getRowsForTable(tableName);
+          const removed = rows.filter((entry) =>
+            predicates.every((predicate) => rowMatchesPredicate(entry, predicate))
+          );
+          const remaining = rows.filter(
+            (entry) =>
+              !predicates.every((predicate) => rowMatchesPredicate(entry, predicate))
+          );
+
+          assertDeleteAllowed(tableName, removed);
+          rows.length = 0;
+          rows.push(...remaining);
+
+          return {
+            async returning() {
+              return removed;
             }
           };
         }
@@ -341,6 +532,10 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
         state.runSteps = snapshot.state.runSteps;
         state.runEvents = snapshot.state.runEvents;
         state.artifacts = snapshot.state.artifacts;
+        state.workspaceCredentials = snapshot.state.workspaceCredentials;
+        state.authProfiles = snapshot.state.authProfiles;
+        state.routerPolicies = snapshot.state.routerPolicies;
+        state.routerPolicyCandidates = snapshot.state.routerPolicyCandidates;
         state.workspaceLeases = snapshot.state.workspaceLeases;
         throw error;
       }
