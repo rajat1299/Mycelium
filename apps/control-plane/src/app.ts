@@ -47,7 +47,12 @@ export function buildApp(options: BuildAppOptions = {}) {
   registerRouterRoutes(app, { routerService });
   registerOutcomeRoutes(app, { repositories, eventBus });
   registerPlanRoutes(app, { repositories, eventBus });
-  registerRunRoutes(app, { repositories, eventBus, executionService });
+  registerRunRoutes(app, {
+    repositories,
+    eventBus,
+    executionService,
+    routerService
+  });
   registerArtifactRoutes(app, { repositories });
   registerOutcomeEventRoutes(app, { repositories, eventBus });
 

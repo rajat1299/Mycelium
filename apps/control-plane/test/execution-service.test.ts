@@ -4,10 +4,39 @@ import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { RunDetailSchema } from "@computer-oss/protocol";
 import { createInMemoryRepositories } from "../src/lib/repositories";
+import type { Repositories } from "../src/lib/repositories";
 import {
   createExecutionHarness,
   createOutcomeAndPlan
 } from "./execution-test-helpers";
+
+const ROUTING_TIMESTAMP = "2026-03-14T00:00:00.000Z";
+
+async function seedMissingAuthRouting(repositories: Repositories, workspaceId: string) {
+  await repositories.routerPolicy.upsert({
+    workspaceId,
+    version: 2,
+    updatedAt: ROUTING_TIMESTAMP,
+    candidates: [
+      {
+        capability: "reasoning",
+        priority: 0,
+        providerId: "anthropic",
+        modelId: "claude-opus-4.6",
+        authProfileId: null,
+        enabled: true
+      },
+      {
+        capability: "document",
+        priority: 0,
+        providerId: "anthropic",
+        modelId: "claude-opus-4.6",
+        authProfileId: null,
+        enabled: true
+      }
+    ]
+  });
+}
 
 async function createTrackingWorkspaceManager() {
   const rootPath = await mkdtemp(
@@ -199,6 +228,54 @@ describe("execution service", () => {
               runId: createdRun.id,
               relativePath: "artifacts/final-result.md"
             })
+          })
+        ])
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("keeps the local execution path running when persisted route metadata is unresolved", async () => {
+    const harness = await createExecutionHarness();
+
+    try {
+      const { app, services } = harness;
+      const { outcome, plan } = await createOutcomeAndPlan(
+        app,
+        "Local execution should ignore unresolved route metadata in M4."
+      );
+      await seedMissingAuthRouting(services.repositories, outcome.workspaceId);
+
+      const createRun = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome.id}/runs`,
+        payload: {
+          planId: plan.id
+        }
+      });
+      const createdRun = RunDetailSchema.parse(createRun.json());
+
+      await expect(
+        services.executionService.waitForRun(createdRun.id)
+      ).resolves.toBeUndefined();
+      await expect(services.repositories.runs.getById(createdRun.id)).resolves.toEqual(
+        expect.objectContaining({
+          id: createdRun.id,
+          status: "completed"
+        })
+      );
+      await expect(services.repositories.runs.listSteps(createdRun.id)).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            title: "Analyze outcome",
+            routeStatus: "missing_auth",
+            routeReason: "no_active_auth_profile"
+          }),
+          expect.objectContaining({
+            title: "Synthesize result",
+            routeStatus: "missing_auth",
+            routeReason: "no_active_auth_profile"
           })
         ])
       );

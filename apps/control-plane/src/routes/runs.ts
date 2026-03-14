@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import {
+  CapabilityFamilySchema,
   CreateRunRequestSchema,
   RunDetailSchema,
   RunLogDataSchema,
@@ -10,11 +11,13 @@ import {
 import type { EventBus } from "../lib/event-bus";
 import type { ExecutionService } from "../lib/execution-service";
 import type { Repositories } from "../lib/repositories";
+import type { RouterService } from "../lib/router-service";
 
 type RunRouteOptions = {
   repositories: Repositories;
   eventBus: EventBus;
   executionService: ExecutionService;
+  routerService: RouterService;
 };
 
 function badRequest(message: string) {
@@ -46,6 +49,36 @@ async function buildRunDetail(
     ...run,
     steps
   });
+}
+
+async function resolveAndPersistStepRoutes(
+  options: RunRouteOptions,
+  input: {
+    workspaceId: string;
+    runId: string;
+    resolvedAt: string;
+  }
+) {
+  const steps = await options.repositories.runs.listSteps(input.runId);
+
+  await Promise.all(
+    steps.map(async (step) => {
+      const route = await options.routerService.resolveRoute({
+        workspaceId: input.workspaceId,
+        capability: CapabilityFamilySchema.parse(step.capability),
+        resolvedAt: input.resolvedAt
+      });
+
+      const updated = await options.repositories.runs.updateStepRoute({
+        stepId: step.id,
+        route
+      });
+
+      if (!updated) {
+        throw new Error(`Step ${step.id} disappeared during route persistence.`);
+      }
+    })
+  );
 }
 
 export function registerRunRoutes(
@@ -94,6 +127,12 @@ export function registerRunRoutes(
 
       throw error;
     }
+
+    await resolveAndPersistStepRoutes(options, {
+      workspaceId: outcome.workspaceId,
+      runId: run.id,
+      resolvedAt: now
+    });
 
     const updatedOutcome = await options.repositories.outcomes.updateStatus({
       id: outcome.id,

@@ -1,7 +1,9 @@
 import type {
+  CapabilityFamily,
   RoutePreviewRequest,
   RoutePreviewResponse,
-  RouterPolicy
+  RouterPolicy,
+  StepRoute
 } from "@computer-oss/protocol";
 import { getProviderCatalog, resolveRoute, validateRouterPolicy } from "@computer-oss/router";
 import type { Repositories } from "./repositories";
@@ -43,6 +45,41 @@ function buildEmptyPolicy(workspaceId: string, resolvedAt: string): RouterPolicy
 export function createRouterService(options: RouterServiceOptions) {
   const now = options.now ?? (() => new Date());
 
+  async function resolvePersistedRoute(input: {
+    workspaceId: string;
+    capability: CapabilityFamily;
+    policyVersion?: number;
+    resolvedAt?: string;
+  }): Promise<StepRoute> {
+    const resolvedAt = input.resolvedAt ?? now().toISOString();
+    const policy =
+      (await options.repositories.routerPolicy.getByWorkspace(input.workspaceId)) ??
+      buildEmptyPolicy(input.workspaceId, resolvedAt);
+
+    if (
+      input.policyVersion !== undefined &&
+      input.policyVersion !== policy.version
+    ) {
+      throw new RouterPolicyVersionMismatchError(
+        input.policyVersion,
+        policy.version
+      );
+    }
+
+    const authProfiles = await options.repositories.authProfiles.listByWorkspace(
+      input.workspaceId
+    );
+
+    return resolveRoute({
+      workspaceId: input.workspaceId,
+      capability: input.capability,
+      policy,
+      catalog: getProviderCatalog(),
+      authProfiles,
+      resolvedAt
+    });
+  }
+
   return {
     getCatalog() {
       return getProviderCatalog();
@@ -67,37 +104,18 @@ export function createRouterService(options: RouterServiceOptions) {
       return options.repositories.routerPolicy.upsert(policy);
     },
     async previewRoute(request: RoutePreviewRequest): Promise<RoutePreviewResponse> {
-      const resolvedAt = now().toISOString();
-      const policy =
-        (await options.repositories.routerPolicy.getByWorkspace(request.workspaceId)) ??
-        buildEmptyPolicy(request.workspaceId, resolvedAt);
-
-      if (
-        request.policyVersion !== undefined &&
-        request.policyVersion !== policy.version
-      ) {
-        throw new RouterPolicyVersionMismatchError(
-          request.policyVersion,
-          policy.version
-        );
-      }
-
-      const authProfiles = await options.repositories.authProfiles.listByWorkspace(
-        request.workspaceId
-      );
+      const route = await resolvePersistedRoute({
+        workspaceId: request.workspaceId,
+        capability: request.capability,
+        policyVersion: request.policyVersion
+      });
 
       return {
         workspaceId: request.workspaceId,
         capability: request.capability,
-        route: resolveRoute({
-          workspaceId: request.workspaceId,
-          capability: request.capability,
-          policy,
-          catalog: getProviderCatalog(),
-          authProfiles,
-          resolvedAt
-        })
+        route
       };
-    }
+    },
+    resolveRoute: resolvePersistedRoute
   };
 }
