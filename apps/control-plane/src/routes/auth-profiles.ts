@@ -91,7 +91,11 @@ export function registerAuthProfileRoutes(
 
       return reply.code(201).send(AuthProfileSchema.parse(created));
     } catch (error) {
-      if (error instanceof Error && error.message.includes("belongs to")) {
+      if (
+        error instanceof Error &&
+        (error.message.includes("belongs to") ||
+          error.message.includes("does not exist"))
+      ) {
         return reply.code(409).send(badRequest(error.message));
       }
 

@@ -52,4 +52,29 @@ describe("auth profile routes", () => {
       authProfiles: [AuthProfileSchema.parse(created)]
     });
   });
+
+  it("returns a conflict when the selected credential no longer exists", async () => {
+    const app = buildApp({
+      services: createInMemoryServiceContainer({
+        encryptionKey: TEST_ENCRYPTION_KEY
+      })
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth-profiles",
+      payload: {
+        workspaceId: "ws_default",
+        providerId: "openai",
+        label: "OpenAI Primary",
+        credentialId: "cred_missing",
+        priority: 1
+      }
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({
+      error: "Credential cred_missing does not exist."
+    });
+  });
 });

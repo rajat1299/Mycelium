@@ -132,4 +132,58 @@ describe("RoutePreviewPanel", () => {
     expect(await screen.findByText("Missing auth")).toBeInTheDocument();
     expect(screen.getByText("No active auth profile")).toBeInTheDocument();
   });
+
+  it("clears preview results when the saved policy version changes", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          workspaceId: "ws_default",
+          capability: "reasoning",
+          route: {
+            capability: "reasoning",
+            providerId: "openai",
+            modelId: "gpt-5.4",
+            authProfileId: "profile_openai_primary",
+            policyVersion: 1,
+            status: "resolved",
+            reason: null,
+            resolvedAt: "2026-03-14T00:30:00.000Z"
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const view = render(
+      <RoutePreviewPanel
+        workspaceId="ws_default"
+        policyVersion={1}
+        authProfiles={authProfiles}
+        isPolicyDirty={false}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /preview reasoning route/i })
+    );
+
+    expect(await screen.findByText("Resolved")).toBeInTheDocument();
+
+    view.rerender(
+      <RoutePreviewPanel
+        workspaceId="ws_default"
+        policyVersion={2}
+        authProfiles={authProfiles}
+        isPolicyDirty={false}
+      />
+    );
+
+    expect(screen.queryByText("Resolved")).not.toBeInTheDocument();
+    expect(screen.getAllByText("No preview yet.").length).toBeGreaterThan(0);
+  });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   RoutePreviewResponseSchema,
   type AuthProfile,
@@ -60,6 +60,10 @@ export function RoutePreviewPanel({
   const [previews, setPreviews] = useState<
     Partial<Record<CapabilityFamily, PreviewState>>
   >({});
+
+  useEffect(() => {
+    setPreviews({});
+  }, [policyVersion, workspaceId]);
 
   async function previewCapability(capability: CapabilityFamily) {
     setPreviews((current) => ({
