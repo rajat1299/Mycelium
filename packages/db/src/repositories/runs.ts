@@ -99,6 +99,16 @@ export type UpdateRunLifecycleStatusInput = {
   updatedAt: string;
 };
 
+export type UpdateApprovalResolutionLifecycleInput = {
+  runId: string;
+  outcomeId: string;
+  stepId: string;
+  stepStatus: RunStepRow["status"];
+  runStatus: RunRow["status"];
+  outcomeStatus: OutcomeRow["status"];
+  updatedAt: string;
+};
+
 export type ReleaseReadyDependentsInput = {
   runId: string;
   completedStepId: string;
@@ -300,6 +310,13 @@ export class RunRepository {
       .map(mapRunRow);
   }
 
+  async getStepById(stepId: string): Promise<StoredRunStep | null> {
+    const rows = await this.db.select().from(runSteps);
+    const found = rows.find((row) => row.id === stepId);
+
+    return found ? mapRunStepRow(found) : null;
+  }
+
   async listSteps(runId: string): Promise<StoredRunStep[]> {
     const rows = await this.db.select().from(runSteps);
     return rows
@@ -451,6 +468,81 @@ export class RunRepository {
       .returning();
 
     return updated ? mapRunStepRow(updated) : null;
+  }
+
+  async updateApprovalResolutionLifecycle(
+    input: UpdateApprovalResolutionLifecycleInput
+  ): Promise<
+    { step: StoredRunStep; run: StoredRun; outcome: StoredOutcome } | null
+  > {
+    return this.db.transaction(async (transaction) => {
+      const [runRows, stepRows] = await Promise.all([
+        transaction.select().from(outcomeRuns),
+        transaction.select().from(runSteps)
+      ]);
+      const existingRun = runRows.find((row) => row.id === input.runId);
+
+      if (!existingRun) {
+        return null;
+      }
+
+      if (existingRun.outcomeId !== input.outcomeId) {
+        throw new Error(
+          `Run ${input.runId} belongs to ${existingRun.outcomeId}, not ${input.outcomeId}.`
+        );
+      }
+
+      const existingStep = stepRows.find((row) => row.id === input.stepId);
+
+      if (!existingStep) {
+        throw new Error(`Step ${input.stepId} does not exist.`);
+      }
+
+      if (existingStep.runId !== input.runId) {
+        throw new Error(
+          `Step ${input.stepId} belongs to ${existingStep.runId}, not ${input.runId}.`
+        );
+      }
+
+      const [updatedStep] = await transaction
+        .update(runSteps)
+        .set({
+          status: input.stepStatus,
+          updatedAt: new Date(input.updatedAt)
+        })
+        .where(eq(runSteps.id, input.stepId))
+        .returning();
+
+      const [updatedRun] = await transaction
+        .update(outcomeRuns)
+        .set({
+          status: input.runStatus,
+          updatedAt: new Date(input.updatedAt)
+        })
+        .where(eq(outcomeRuns.id, input.runId))
+        .returning();
+
+      const [updatedOutcome] = await transaction
+        .update(outcomes)
+        .set({
+          status: input.outcomeStatus,
+          updatedAt: new Date(input.updatedAt)
+        })
+        .where(eq(outcomes.id, input.outcomeId))
+        .returning();
+
+      if (!updatedOutcome) {
+        throw new Error(
+          `Outcome ${input.outcomeId} disappeared during lifecycle update.`
+        );
+      }
+
+      return {
+        step: mapRunStepRow(updatedStep),
+        run: mapRunRow(updatedRun),
+        outcome: mapOutcomeRow(updatedOutcome)
+      };
+    });
   }
 
   async releaseReadyDependents(

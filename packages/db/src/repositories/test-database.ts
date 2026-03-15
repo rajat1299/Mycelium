@@ -1,4 +1,6 @@
 import {
+  approvals,
+  artifactLineageEdges,
   authProfiles,
   artifacts,
   outcomes,
@@ -25,6 +27,8 @@ type SupportedTable =
   | typeof runSteps
   | typeof runEvents
   | typeof artifacts
+  | typeof approvals
+  | typeof artifactLineageEdges
   | typeof workspaceCredentials
   | typeof authProfiles
   | typeof routerPolicies
@@ -40,6 +44,8 @@ export type RepositoryTestState = {
   runSteps: TableRecord[];
   runEvents: TableRecord[];
   artifacts: TableRecord[];
+  approvals: TableRecord[];
+  artifactLineageEdges: TableRecord[];
   workspaceCredentials: TableRecord[];
   authProfiles: TableRecord[];
   routerPolicies: TableRecord[];
@@ -101,6 +107,8 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
     runSteps: [],
     runEvents: [],
     artifacts: [],
+    approvals: [],
+    artifactLineageEdges: [],
     workspaceCredentials: [],
     authProfiles: [],
     routerPolicies: [],
@@ -141,6 +149,14 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
       return "artifacts";
     }
 
+    if (table === approvals) {
+      return "approvals";
+    }
+
+    if (table === artifactLineageEdges) {
+      return "artifact_lineage_edges";
+    }
+
     if (table === workspaceCredentials) {
       return "workspace_credentials";
     }
@@ -178,6 +194,10 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
         return state.runEvents;
       case "artifacts":
         return state.artifacts;
+      case "approvals":
+        return state.approvals;
+      case "artifact_lineage_edges":
+        return state.artifactLineageEdges;
       case "workspace_credentials":
         return state.workspaceCredentials;
       case "auth_profiles":
@@ -319,6 +339,50 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
     );
   }
 
+  function hasOutcome(outcomeId: unknown, pendingRows: TableRecord[] = []) {
+    if (typeof outcomeId !== "string" || outcomeId.length === 0) {
+      return false;
+    }
+
+    return (
+      pendingRows.some((row) => row.id === outcomeId) ||
+      state.outcomes.some((row) => row.id === outcomeId)
+    );
+  }
+
+  function hasRun(runId: unknown, pendingRows: TableRecord[] = []) {
+    if (typeof runId !== "string" || runId.length === 0) {
+      return false;
+    }
+
+    return (
+      pendingRows.some((row) => row.id === runId) ||
+      state.outcomeRuns.some((row) => row.id === runId)
+    );
+  }
+
+  function hasStep(stepId: unknown, pendingRows: TableRecord[] = []) {
+    if (typeof stepId !== "string" || stepId.length === 0) {
+      return false;
+    }
+
+    return (
+      pendingRows.some((row) => row.id === stepId) ||
+      state.runSteps.some((row) => row.id === stepId)
+    );
+  }
+
+  function hasArtifact(artifactId: unknown, pendingRows: TableRecord[] = []) {
+    if (typeof artifactId !== "string" || artifactId.length === 0) {
+      return false;
+    }
+
+    return (
+      pendingRows.some((row) => row.id === artifactId) ||
+      state.artifacts.some((row) => row.id === artifactId)
+    );
+  }
+
   function assertRoutingForeignKeysForRow(
     tableName: string,
     row: TableRecord,
@@ -344,6 +408,71 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
         "router_policy_candidates",
         "router_policy_candidates_auth_profile_id_fkey"
       );
+    }
+
+    if (tableName === "approvals") {
+      if (!hasOutcome(row.outcomeId, pendingRows)) {
+        throw insertOrUpdateForeignKeyError(
+          "approvals",
+          "approvals_outcome_id_fkey"
+        );
+      }
+
+      if (!hasRun(row.runId, pendingRows)) {
+        throw insertOrUpdateForeignKeyError("approvals", "approvals_run_id_fkey");
+      }
+
+      if (!hasStep(row.stepId, pendingRows)) {
+        throw insertOrUpdateForeignKeyError("approvals", "approvals_step_id_fkey");
+      }
+
+      const artifactIds = Array.isArray(row.artifactIds) ? row.artifactIds : [];
+
+      for (const artifactId of artifactIds) {
+        if (!hasArtifact(artifactId, pendingRows)) {
+          throw insertOrUpdateForeignKeyError(
+            "approvals",
+            "approvals_artifact_ids_fkey"
+          );
+        }
+      }
+    }
+
+    if (tableName === "artifact_lineage_edges") {
+      if (!hasRun(row.runId, pendingRows)) {
+        throw insertOrUpdateForeignKeyError(
+          "artifact_lineage_edges",
+          "artifact_lineage_edges_run_id_fkey"
+        );
+      }
+
+      if (!hasArtifact(row.parentArtifactId, pendingRows)) {
+        throw insertOrUpdateForeignKeyError(
+          "artifact_lineage_edges",
+          "artifact_lineage_edges_parent_artifact_id_fkey"
+        );
+      }
+
+      if (!hasArtifact(row.childArtifactId, pendingRows)) {
+        throw insertOrUpdateForeignKeyError(
+          "artifact_lineage_edges",
+          "artifact_lineage_edges_child_artifact_id_fkey"
+        );
+      }
+
+      if (!hasStep(row.parentStepId, pendingRows)) {
+        throw insertOrUpdateForeignKeyError(
+          "artifact_lineage_edges",
+          "artifact_lineage_edges_parent_step_id_fkey"
+        );
+      }
+
+      if (!hasStep(row.childStepId, pendingRows)) {
+        throw insertOrUpdateForeignKeyError(
+          "artifact_lineage_edges",
+          "artifact_lineage_edges_child_step_id_fkey"
+        );
+      }
     }
   }
 
@@ -373,6 +502,81 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
             "auth_profiles",
             "router_policy_candidates_auth_profile_id_fkey",
             "router_policy_candidates"
+          );
+        }
+      }
+    }
+
+    if (tableName === "artifacts") {
+      for (const row of rows) {
+        if (
+          state.artifactLineageEdges.some(
+            (edge) =>
+              edge.parentArtifactId === row.id || edge.childArtifactId === row.id
+          )
+        ) {
+          throw deleteForeignKeyError(
+            "artifacts",
+            "artifact_lineage_edges_parent_artifact_id_fkey",
+            "artifact_lineage_edges"
+          );
+        }
+      }
+    }
+
+    if (tableName === "run_steps") {
+      for (const row of rows) {
+        if (state.approvals.some((approval) => approval.stepId === row.id)) {
+          throw deleteForeignKeyError(
+            "run_steps",
+            "approvals_step_id_fkey",
+            "approvals"
+          );
+        }
+
+        if (
+          state.artifactLineageEdges.some(
+            (edge) => edge.parentStepId === row.id || edge.childStepId === row.id
+          )
+        ) {
+          throw deleteForeignKeyError(
+            "run_steps",
+            "artifact_lineage_edges_parent_step_id_fkey",
+            "artifact_lineage_edges"
+          );
+        }
+      }
+    }
+
+    if (tableName === "outcome_runs") {
+      for (const row of rows) {
+        if (state.approvals.some((approval) => approval.runId === row.id)) {
+          throw deleteForeignKeyError(
+            "outcome_runs",
+            "approvals_run_id_fkey",
+            "approvals"
+          );
+        }
+
+        if (
+          state.artifactLineageEdges.some((edge) => edge.runId === row.id)
+        ) {
+          throw deleteForeignKeyError(
+            "outcome_runs",
+            "artifact_lineage_edges_run_id_fkey",
+            "artifact_lineage_edges"
+          );
+        }
+      }
+    }
+
+    if (tableName === "outcomes") {
+      for (const row of rows) {
+        if (state.approvals.some((approval) => approval.outcomeId === row.id)) {
+          throw deleteForeignKeyError(
+            "outcomes",
+            "approvals_outcome_id_fkey",
+            "approvals"
           );
         }
       }
@@ -532,6 +736,8 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
         state.runSteps = snapshot.state.runSteps;
         state.runEvents = snapshot.state.runEvents;
         state.artifacts = snapshot.state.artifacts;
+        state.approvals = snapshot.state.approvals;
+        state.artifactLineageEdges = snapshot.state.artifactLineageEdges;
         state.workspaceCredentials = snapshot.state.workspaceCredentials;
         state.authProfiles = snapshot.state.authProfiles;
         state.routerPolicies = snapshot.state.routerPolicies;

@@ -4,6 +4,8 @@ export * from "./repositories/outcomes";
 export * from "./repositories/plans";
 export * from "./repositories/runs";
 export * from "./repositories/artifacts";
+export * from "./repositories/approvals";
+export * from "./repositories/artifact-lineage";
 export * from "./repositories/workspace-leases";
 export * from "./repositories/workspace-credentials";
 export * from "./repositories/auth-profiles";

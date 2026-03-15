@@ -121,11 +121,41 @@ export class ArtifactRepository {
       .map(mapArtifactRow);
   }
 
+  async listByStep(stepId: string): Promise<StoredArtifact[]> {
+    const rows = await this.db.select().from(artifacts);
+
+    return rows
+      .filter((row) => row.stepId === stepId)
+      .sort(compareArtifactRows)
+      .map(mapArtifactRow);
+  }
+
   async listByOutcome(outcomeId: string): Promise<StoredArtifact[]> {
     const rows = await this.db.select().from(artifacts);
 
     return rows
       .filter((row) => row.outcomeId === outcomeId)
+      .sort(compareArtifactRows)
+      .map(mapArtifactRow);
+  }
+
+  async getById(id: string): Promise<StoredArtifact | null> {
+    const rows = await this.db.select().from(artifacts);
+    const found = rows.find((row) => row.id === id);
+
+    return found ? mapArtifactRow(found) : null;
+  }
+
+  async listByIds(ids: string[]): Promise<StoredArtifact[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+
+    const idSet = new Set(ids);
+    const rows = await this.db.select().from(artifacts);
+
+    return rows
+      .filter((row) => idSet.has(row.id))
       .sort(compareArtifactRows)
       .map(mapArtifactRow);
   }

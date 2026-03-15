@@ -22,6 +22,11 @@ export const outcomeStatusValues = [
 
 export const approvalStatusValues = [
   "pending",
+  "resolved",
+  "cancelled"
+] as const;
+
+export const approvalResolutionValues = [
   "approved",
   "rejected",
   "cancelled"
@@ -82,8 +87,14 @@ export const routeReasonValues = [
   "no_active_auth_profile"
 ] as const;
 
+export const artifactLineageRelationValues = ["derived_from"] as const;
+
 export const outcomeStatusEnum = pgEnum("outcome_status", outcomeStatusValues);
 export const approvalStatusEnum = pgEnum("approval_status", approvalStatusValues);
+export const approvalResolutionEnum = pgEnum(
+  "approval_resolution",
+  approvalResolutionValues
+);
 export const planStatusEnum = pgEnum("plan_status", planStatusValues);
 export const runStatusEnum = pgEnum("run_status", runStatusValues);
 export const stepStatusEnum = pgEnum("step_status", stepStatusValues);
@@ -97,6 +108,10 @@ export const authProfileStatusEnum = pgEnum(
 );
 export const routeStatusEnum = pgEnum("route_status", routeStatusValues);
 export const routeReasonEnum = pgEnum("route_reason", routeReasonValues);
+export const artifactLineageRelationEnum = pgEnum(
+  "artifact_lineage_relation",
+  artifactLineageRelationValues
+);
 
 export const workspaces = pgTable("workspaces", {
   id: text("id").primaryKey(),
@@ -153,13 +168,49 @@ export const artifacts = pgTable("artifacts", {
 
 export const approvals = pgTable("approvals", {
   id: text("id").primaryKey(),
+  workspaceId: text("workspace_id")
+    .notNull()
+    .references(() => workspaces.id),
   outcomeId: text("outcome_id")
     .notNull()
     .references(() => outcomes.id),
-  kind: text("kind").notNull(),
+  runId: text("run_id")
+    .notNull()
+    .references(() => outcomeRuns.id),
+  stepId: text("step_id")
+    .notNull()
+    .references(() => runSteps.id),
   status: approvalStatusEnum("status").notNull().default("pending"),
+  kind: text("kind").notNull(),
+  title: text("title").notNull(),
+  summary: text("summary"),
+  instruction: text("instruction"),
+  artifactIds: jsonb("artifact_ids").notNull().default([]),
   requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
-  resolvedAt: timestamp("resolved_at", { withTimezone: true })
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  resolution: approvalResolutionEnum("resolution"),
+  resolutionNote: text("resolution_note")
+});
+
+export const artifactLineageEdges = pgTable("artifact_lineage_edges", {
+  id: text("id").primaryKey(),
+  runId: text("run_id")
+    .notNull()
+    .references(() => outcomeRuns.id),
+  parentArtifactId: text("parent_artifact_id")
+    .notNull()
+    .references(() => artifacts.id),
+  childArtifactId: text("child_artifact_id")
+    .notNull()
+    .references(() => artifacts.id),
+  parentStepId: text("parent_step_id")
+    .notNull()
+    .references(() => runSteps.id),
+  childStepId: text("child_step_id")
+    .notNull()
+    .references(() => runSteps.id),
+  relation: artifactLineageRelationEnum("relation").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
 });
 
 export const workspaceCredentials = pgTable("workspace_credentials", {
