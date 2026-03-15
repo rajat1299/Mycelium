@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApprovalRepository } from "./approvals";
 import { createRepositoryTestDatabase } from "./test-database";
+import { approvals } from "../schema";
 
 function seedApprovalContext(
   state: ReturnType<typeof createRepositoryTestDatabase>["state"]
@@ -93,6 +94,39 @@ function seedApprovalContext(
 }
 
 describe("ApprovalRepository", () => {
+  it("does not invent a foreign key for jsonb artifact ids in the fake db", async () => {
+    const { db, state } = createRepositoryTestDatabase();
+    seedApprovalContext(state);
+
+    await expect(
+      db
+        .insert(approvals)
+        .values({
+          id: "approval_json_only",
+          workspaceId: "ws_123",
+          outcomeId: "outcome_123",
+          runId: "run_123",
+          stepId: "step_123",
+          status: "pending",
+          kind: "output_review_required",
+          title: "Review final result",
+          summary: null,
+          instruction: null,
+          artifactIds: ["artifact_missing"],
+          requestedAt: new Date("2026-03-14T00:10:00.000Z"),
+          resolvedAt: null,
+          resolution: null,
+          resolutionNote: null
+        })
+        .returning()
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: "approval_json_only",
+        artifactIds: ["artifact_missing"]
+      })
+    ]);
+  });
+
   it("creates pending approvals and lists them by workspace and status", async () => {
     const { db, state } = createRepositoryTestDatabase();
     seedApprovalContext(state);

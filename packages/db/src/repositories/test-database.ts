@@ -425,17 +425,6 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
       if (!hasStep(row.stepId, pendingRows)) {
         throw insertOrUpdateForeignKeyError("approvals", "approvals_step_id_fkey");
       }
-
-      const artifactIds = Array.isArray(row.artifactIds) ? row.artifactIds : [];
-
-      for (const artifactId of artifactIds) {
-        if (!hasArtifact(artifactId, pendingRows)) {
-          throw insertOrUpdateForeignKeyError(
-            "approvals",
-            "approvals_artifact_ids_fkey"
-          );
-        }
-      }
     }
 
     if (tableName === "artifact_lineage_edges") {
