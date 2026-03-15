@@ -207,6 +207,85 @@ async function createReviewBlockedParentPlan(
   });
 }
 
+async function createMixedBlockedSiblingsPlan(
+  repositories: Repositories,
+  outcomeId: string
+) {
+  const createdAt = "2026-03-12T00:00:00.000Z";
+
+  return repositories.plans.create({
+    id: `plan_${outcomeId}_mixed_block`,
+    outcomeId,
+    status: "draft",
+    createdAt,
+    updatedAt: createdAt,
+    nodes: [
+      {
+        id: `plan_${outcomeId}_mixed_block:root`,
+        kind: "root",
+        title: "Analyze outcome",
+        capability: "reasoning",
+        instruction: "Inspect the outcome prompt and capture execution notes.",
+        template: "analyze_outcome",
+        expectedArtifactPath: "artifacts/analyze-outcome.md",
+        expectedArtifactKind: "analysis"
+      },
+      {
+        id: `plan_${outcomeId}_mixed_block:review-branch`,
+        kind: "task",
+        title: "Review branch",
+        capability: "document",
+        instruction: "Draft the reviewable branch artifact.",
+        approvalRequirement: {
+          kind: "output_review_required",
+          title: "Review branch artifact",
+          summary: "Approve this branch before any more sibling work runs.",
+          instruction: "Approve to resume the blocked run."
+        },
+        expectedArtifactPath: "artifacts/review-branch.md",
+        expectedArtifactKind: "brief"
+      },
+      {
+        id: `plan_${outcomeId}_mixed_block:normal-branch`,
+        kind: "task",
+        title: "Normal branch",
+        capability: "document",
+        instruction: "Draft the normal branch artifact.",
+        template: "draft_operator_summary",
+        expectedArtifactPath: "artifacts/normal-branch.md",
+        expectedArtifactKind: "operator_summary"
+      },
+      {
+        id: `plan_${outcomeId}_mixed_block:tail`,
+        kind: "synthesis",
+        title: "Tail task",
+        capability: "document",
+        instruction: "Only run after the normal branch completes.",
+        template: "synthesize_result",
+        expectedArtifactPath: "artifacts/tail.md",
+        expectedArtifactKind: "result"
+      }
+    ],
+    edges: [
+      {
+        id: `plan_${outcomeId}_mixed_block:edge-root-review`,
+        from: `plan_${outcomeId}_mixed_block:root`,
+        to: `plan_${outcomeId}_mixed_block:review-branch`
+      },
+      {
+        id: `plan_${outcomeId}_mixed_block:edge-root-normal`,
+        from: `plan_${outcomeId}_mixed_block:root`,
+        to: `plan_${outcomeId}_mixed_block:normal-branch`
+      },
+      {
+        id: `plan_${outcomeId}_mixed_block:edge-normal-tail`,
+        from: `plan_${outcomeId}_mixed_block:normal-branch`,
+        to: `plan_${outcomeId}_mixed_block:tail`
+      }
+    ]
+  });
+}
+
 describe("execution service", () => {
   it("blocks the run after the review-required synthesis step, creates an approval, and records lineage edges", async () => {
     const startedSiblingNodeIds = new Set<string>();
@@ -437,6 +516,59 @@ describe("execution service", () => {
             routeReason: "no_active_auth_profile"
           })
         ])
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("stops scheduling additional ready work once any branch blocks on approval", async () => {
+    const harness = await createExecutionHarness();
+
+    try {
+      const { app, services, fakeSandbox } = harness;
+      const createOutcome = await app.inject({
+        method: "POST",
+        url: "/api/outcomes",
+        payload: {
+          workspaceId: "ws_123",
+          userId: "user_123",
+          prompt: "Block one branch and make sure sibling-ready work stops.",
+          source: "web"
+        }
+      });
+      const outcome = createOutcome.json();
+      const plan = await createMixedBlockedSiblingsPlan(
+        services.repositories,
+        outcome.id
+      );
+
+      const createRun = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome.id}/runs`,
+        payload: {
+          planId: plan.id
+        }
+      });
+      const createdRun = RunDetailSchema.parse(createRun.json());
+
+      await services.executionService.waitForRun(createdRun.id);
+
+      expect(fakeSandbox.startedPlanNodeIds).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining(":root"),
+          expect.stringContaining(":review-branch"),
+          expect.stringContaining(":normal-branch")
+        ])
+      );
+      expect(fakeSandbox.startedPlanNodeIds).not.toEqual(
+        expect.arrayContaining([expect.stringContaining(":tail")])
+      );
+      await expect(services.repositories.runs.getById(createdRun.id)).resolves.toEqual(
+        expect.objectContaining({
+          id: createdRun.id,
+          status: "blocked"
+        })
       );
     } finally {
       await harness.cleanup();

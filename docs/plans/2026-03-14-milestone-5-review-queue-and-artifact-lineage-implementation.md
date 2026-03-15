@@ -63,12 +63,14 @@ Lock these before touching code:
 ### Task 2
 
 - `/Users/rajattiwari/swarm/terragon-oss/packages/shared/src/db/schema.ts`
-- `/Users/rajattiwari/swarm/terragon-oss/apps/www/src/server-lib/artifacts.ts`
+- `/Users/rajattiwari/swarm/terragon-oss/apps/www/src/server-lib/r2-file-upload.ts`
+- `/Users/rajattiwari/swarm/terragon-oss/packages/r2/r2.ts`
+- `/Users/rajattiwari/swarm/_codex_notes/terragon-oss-engineering.md`
 
 ### Task 3
 
 - `/Users/rajattiwari/swarm/middleman/apps/backend/src/swarm/swarm-manager.ts`
-- `/Users/rajattiwari/swarm/terragon-oss/apps/www/src/server-lib/runs.ts`
+- `/Users/rajattiwari/swarm/_codex_notes/terragon-oss-engineering.md`
 
 ### Task 4
 

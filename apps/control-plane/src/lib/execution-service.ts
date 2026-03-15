@@ -186,6 +186,10 @@ async function executeRun(options: ExecuteRunOptions): Promise<void> {
         });
         return;
       }
+
+      if (results.some((result) => result.status === "blocked")) {
+        return;
+      }
     }
   } catch (error) {
     await emitBestEffortRunLog(options, {
