@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { buildApp } from "../src/app";
+import { createApprovalService } from "../src/lib/approval-service";
 import { createEncryptionService } from "../src/lib/encryption";
 import { createEventBus } from "../src/lib/event-bus";
 import { createExecutionService } from "../src/lib/execution-service";
@@ -135,8 +136,14 @@ export async function createExecutionHarness(
       eventBus,
       sandboxProvider: fakeSandbox.provider as never,
       workspaceManager: workspaceManager as never
-    })
+    }),
+    approvalService: undefined as never
   };
+  services.approvalService = createApprovalService({
+    repositories,
+    eventBus,
+    executionService: services.executionService
+  });
   const events: Array<{ outcomeId: string; type: string; data: unknown }> = [];
   const unsubscribe = eventBus.subscribeAll((event) => {
     events.push(event);

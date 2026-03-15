@@ -85,6 +85,7 @@ export function registerPlanRoutes(
           capability: node.capability,
           instruction: node.instruction,
           template: node.template,
+          approvalRequirement: node.approvalRequirement,
           expectedArtifactPath: node.expectedArtifactPath,
           expectedArtifactKind: node.expectedArtifactKind
         })),

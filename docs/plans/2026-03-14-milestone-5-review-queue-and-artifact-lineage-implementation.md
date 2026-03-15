@@ -375,6 +375,13 @@ git add packages/orchestrator apps/control-plane
 git commit -m "feat: add approval-aware execution flow"
 ```
 
+Status:
+
+- Completed on `2026-03-15`.
+- Final synthesis is now tagged `output_review_required`.
+- Execution persists artifact-lineage edges, creates pending approvals, pauses runs in `blocked` / `blocked_on_approval`, and resumes or fails deterministically through the new approval service.
+- Verified with `pnpm --filter @computer-oss/control-plane test`, `pnpm --filter @computer-oss/control-plane typecheck`, `pnpm --filter @computer-oss/orchestrator test`, `pnpm --filter @computer-oss/orchestrator typecheck`, `pnpm --filter @computer-oss/orchestrator build`, `pnpm --filter @computer-oss/db test`, `pnpm --filter @computer-oss/db typecheck`, `pnpm --filter @computer-oss/db build`, and workspace `pnpm test`, `pnpm typecheck`, `pnpm build`.
+
 ---
 
 ## Task 4: Add approval and lineage APIs plus event streaming

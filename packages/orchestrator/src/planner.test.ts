@@ -50,6 +50,12 @@ describe("deterministic draft planner", () => {
         title: "Synthesize result",
         capability: "document",
         instruction: "Combine the brief and operator summary into the final result.",
+        approvalRequirement: {
+          kind: "output_review_required",
+          title: "Review final result",
+          summary: "Inspect the final artifact before marking the run complete.",
+          instruction: "Approve to complete the run or reject to fail it."
+        },
         template: "synthesize_result",
         expectedArtifactPath: "artifacts/final-result.md",
         expectedArtifactKind: "result"

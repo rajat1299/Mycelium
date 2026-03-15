@@ -113,8 +113,52 @@ function createBackgroundTransitionFailureRepositories() {
   };
 }
 
+async function createNonReviewPlan(
+  repositories: Repositories,
+  outcomeId: string
+) {
+  const createdAt = "2026-03-12T00:00:00.000Z";
+
+  return repositories.plans.create({
+    id: `plan_${outcomeId}_no_review`,
+    outcomeId,
+    status: "draft",
+    createdAt,
+    updatedAt: createdAt,
+    nodes: [
+      {
+        id: `plan_${outcomeId}_no_review:analyze-outcome`,
+        kind: "root",
+        title: "Analyze outcome",
+        capability: "reasoning",
+        instruction: "Inspect the outcome prompt and capture execution notes.",
+        template: "analyze_outcome",
+        expectedArtifactPath: "artifacts/analyze-outcome.md",
+        expectedArtifactKind: "analysis"
+      },
+      {
+        id: `plan_${outcomeId}_no_review:synthesize-result`,
+        kind: "synthesis",
+        title: "Synthesize result",
+        capability: "document",
+        instruction: "Combine the brief and operator summary into the final result.",
+        template: "synthesize_result",
+        expectedArtifactPath: "artifacts/final-result.md",
+        expectedArtifactKind: "result"
+      }
+    ],
+    edges: [
+      {
+        id: `plan_${outcomeId}_no_review:edge-analyze-synthesize`,
+        from: `plan_${outcomeId}_no_review:analyze-outcome`,
+        to: `plan_${outcomeId}_no_review:synthesize-result`
+      }
+    ]
+  });
+}
+
 describe("execution service", () => {
-  it("runs ready sibling steps before synthesis and emits logs plus artifacts", async () => {
+  it("blocks the run after the review-required synthesis step, creates an approval, and records lineage edges", async () => {
     const startedSiblingNodeIds = new Set<string>();
     let releaseSiblings: (() => void) | null = null;
     const siblingsStarted = new Promise<void>((resolve) => {
@@ -176,7 +220,7 @@ describe("execution service", () => {
       await expect(services.repositories.runs.getById(createdRun.id)).resolves.toEqual(
         expect.objectContaining({
           id: createdRun.id,
-          status: "completed"
+          status: "blocked"
         })
       );
       await expect(
@@ -184,9 +228,40 @@ describe("execution service", () => {
       ).resolves.toEqual(
         expect.objectContaining({
           id: outcome.id,
-          status: "completed"
+          status: "blocked_on_approval"
         })
       );
+      await expect(services.repositories.runs.listSteps(createdRun.id)).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            title: "Synthesize result",
+            status: "blocked",
+            approvalRequirement: {
+              kind: "output_review_required",
+              title: "Review final result",
+              summary: "Inspect the final artifact before marking the run complete.",
+              instruction: "Approve to complete the run or reject to fail it."
+            }
+          })
+        ])
+      );
+
+      await expect(
+        services.repositories.approvals.listByWorkspace({
+          workspaceId: outcome.workspaceId,
+          status: "pending"
+        })
+      ).resolves.toEqual([
+        expect.objectContaining({
+          workspaceId: outcome.workspaceId,
+          outcomeId: outcome.id,
+          runId: createdRun.id,
+          status: "pending",
+          kind: "output_review_required",
+          artifactIds: expect.arrayContaining([expect.any(String)])
+        })
+      ]);
+
       const artifacts = await services.repositories.artifacts.listByRun(createdRun.id);
 
       expect(artifacts).toHaveLength(4);
@@ -210,6 +285,24 @@ describe("execution service", () => {
           })
         ])
       );
+      await expect(
+        services.repositories.artifactLineage.listByRun(createdRun.id)
+      ).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            relation: "derived_from",
+            childStepId: expect.stringContaining("draft-brief")
+          }),
+          expect.objectContaining({
+            relation: "derived_from",
+            childStepId: expect.stringContaining("draft-operator-summary")
+          }),
+          expect.objectContaining({
+            relation: "derived_from",
+            childStepId: expect.stringContaining("synthesize-result")
+          })
+        ])
+      );
 
       expect(events).toEqual(
         expect.arrayContaining([
@@ -228,6 +321,14 @@ describe("execution service", () => {
               runId: createdRun.id,
               relativePath: "artifacts/final-result.md"
             })
+          }),
+          expect.objectContaining({
+            outcomeId: outcome.id,
+            type: "approval.requested",
+            data: expect.objectContaining({
+              runId: createdRun.id,
+              status: "pending"
+            })
           })
         ])
       );
@@ -241,10 +342,18 @@ describe("execution service", () => {
 
     try {
       const { app, services } = harness;
-      const { outcome, plan } = await createOutcomeAndPlan(
-        app,
-        "Local execution should ignore unresolved route metadata in M4."
-      );
+      const createOutcome = await app.inject({
+        method: "POST",
+        url: "/api/outcomes",
+        payload: {
+          workspaceId: "ws_123",
+          userId: "user_123",
+          prompt: "Local execution should ignore unresolved route metadata in M4.",
+          source: "web"
+        }
+      });
+      const outcome = createOutcome.json();
+      const plan = await createNonReviewPlan(services.repositories, outcome.id);
       await seedMissingAuthRouting(services.repositories, outcome.workspaceId);
 
       const createRun = await app.inject({
@@ -279,6 +388,214 @@ describe("execution service", () => {
           })
         ])
       );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("approves blocked review-required work and completes the run", async () => {
+    const harness = await createExecutionHarness();
+
+    try {
+      const { app, services, events } = harness;
+      const { outcome, plan } = await createOutcomeAndPlan(app);
+      const createRun = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome.id}/runs`,
+        payload: {
+          planId: plan.id
+        }
+      });
+      const createdRun = RunDetailSchema.parse(createRun.json());
+
+      await services.executionService.waitForRun(createdRun.id);
+
+      const [approval] = await services.repositories.approvals.listByWorkspace({
+        workspaceId: outcome.workspaceId,
+        status: "pending"
+      });
+
+      await services.approvalService.resolveApproval({
+        approvalId: approval.id,
+        resolution: "approved",
+        resolutionNote: "Looks good."
+      });
+
+      await services.executionService.waitForRun(createdRun.id);
+
+      await expect(services.repositories.runs.getById(createdRun.id)).resolves.toEqual(
+        expect.objectContaining({
+          id: createdRun.id,
+          status: "completed"
+        })
+      );
+      await expect(
+        services.repositories.outcomes.getById(outcome.id)
+      ).resolves.toEqual(
+        expect.objectContaining({
+          id: outcome.id,
+          status: "completed"
+        })
+      );
+      await expect(services.repositories.runs.listSteps(createdRun.id)).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            title: "Synthesize result",
+            status: "completed"
+          })
+        ])
+      );
+      await expect(services.repositories.approvals.getById(approval.id)).resolves.toEqual(
+        expect.objectContaining({
+          id: approval.id,
+          status: "resolved",
+          resolution: "approved",
+          resolutionNote: "Looks good."
+        })
+      );
+      expect(events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            outcomeId: outcome.id,
+            type: "approval.resolved",
+            data: expect.objectContaining({
+              id: approval.id,
+              resolution: "approved"
+            })
+          })
+        ])
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("rejects blocked review-required work and fails the run", async () => {
+    const harness = await createExecutionHarness();
+
+    try {
+      const { app, services, events } = harness;
+      const { outcome, plan } = await createOutcomeAndPlan(app);
+      const createRun = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome.id}/runs`,
+        payload: {
+          planId: plan.id
+        }
+      });
+      const createdRun = RunDetailSchema.parse(createRun.json());
+
+      await services.executionService.waitForRun(createdRun.id);
+
+      const [approval] = await services.repositories.approvals.listByWorkspace({
+        workspaceId: outcome.workspaceId,
+        status: "pending"
+      });
+
+      await services.approvalService.resolveApproval({
+        approvalId: approval.id,
+        resolution: "rejected",
+        resolutionNote: "Needs changes."
+      });
+
+      await services.executionService.waitForRun(createdRun.id);
+
+      await expect(services.repositories.runs.getById(createdRun.id)).resolves.toEqual(
+        expect.objectContaining({
+          id: createdRun.id,
+          status: "failed"
+        })
+      );
+      await expect(
+        services.repositories.outcomes.getById(outcome.id)
+      ).resolves.toEqual(
+        expect.objectContaining({
+          id: outcome.id,
+          status: "failed"
+        })
+      );
+      await expect(services.repositories.runs.listSteps(createdRun.id)).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            title: "Synthesize result",
+            status: "failed"
+          })
+        ])
+      );
+      await expect(services.repositories.approvals.getById(approval.id)).resolves.toEqual(
+        expect.objectContaining({
+          id: approval.id,
+          status: "resolved",
+          resolution: "rejected",
+          resolutionNote: "Needs changes."
+        })
+      );
+      expect(events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            outcomeId: outcome.id,
+            type: "approval.resolved",
+            data: expect.objectContaining({
+              id: approval.id,
+              resolution: "rejected"
+            })
+          })
+        ])
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("keeps non-review-required plans unchanged", async () => {
+    const harness = await createExecutionHarness();
+
+    try {
+      const { app, services } = harness;
+      const createOutcome = await app.inject({
+        method: "POST",
+        url: "/api/outcomes",
+        payload: {
+          workspaceId: "ws_123",
+          userId: "user_123",
+          prompt: "Ship the launch brief and summary.",
+          source: "web"
+        }
+      });
+      const outcome = createOutcome.json();
+      const plan = await createNonReviewPlan(services.repositories, outcome.id);
+
+      const createRun = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome.id}/runs`,
+        payload: {
+          planId: plan.id
+        }
+      });
+      const createdRun = RunDetailSchema.parse(createRun.json());
+
+      await services.executionService.waitForRun(createdRun.id);
+
+      await expect(services.repositories.runs.getById(createdRun.id)).resolves.toEqual(
+        expect.objectContaining({
+          id: createdRun.id,
+          status: "completed"
+        })
+      );
+      await expect(
+        services.repositories.outcomes.getById(outcome.id)
+      ).resolves.toEqual(
+        expect.objectContaining({
+          id: outcome.id,
+          status: "completed"
+        })
+      );
+      await expect(
+        services.repositories.approvals.listByWorkspace({
+          workspaceId: outcome.workspaceId,
+          status: "pending"
+        })
+      ).resolves.toEqual([]);
     } finally {
       await harness.cleanup();
     }
@@ -371,7 +688,18 @@ describe("execution service", () => {
 
     try {
       const { app, services, events } = harness;
-      const { outcome, plan } = await createOutcomeAndPlan(app);
+      const createOutcome = await app.inject({
+        method: "POST",
+        url: "/api/outcomes",
+        payload: {
+          workspaceId: "ws_123",
+          userId: "user_123",
+          prompt: "Ship the launch brief and summary.",
+          source: "web"
+        }
+      });
+      const outcome = createOutcome.json();
+      const plan = await createNonReviewPlan(services.repositories, outcome.id);
 
       const createRun = await app.inject({
         method: "POST",

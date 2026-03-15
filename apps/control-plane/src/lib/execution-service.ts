@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { LocalArtifactStore } from "@computer-oss/artifacts";
 import { isRunTerminal } from "@computer-oss/orchestrator";
 import {
+  ApprovalSchema,
   ArtifactSchema,
   OutcomeSchema,
   RunLogDataSchema,
@@ -143,6 +144,10 @@ async function executeRun(options: ExecuteRunOptions): Promise<void> {
           return;
         }
 
+        if (steps.some((step) => step.status === "blocked")) {
+          return;
+        }
+
         await updateLifecycleStatus(options, {
           runId: run.id,
           outcomeId: outcome.id,
@@ -163,6 +168,8 @@ async function executeRun(options: ExecuteRunOptions): Promise<void> {
           executeReadyStep(options, {
             runId: run.id,
             outcomeId: outcome.id,
+            workspaceId: outcome.workspaceId,
+            planId: run.planId,
             outcomePrompt: outcome.prompt,
             lease: lease!,
             step
@@ -206,11 +213,13 @@ async function executeReadyStep(
   input: {
     runId: string;
     outcomeId: string;
+    workspaceId: string;
+    planId: string;
     outcomePrompt: string;
     lease: RuntimeWorkspaceLease;
     step: Awaited<ReturnType<Repositories["runs"]["listReadySteps"]>>[number];
   }
-): Promise<{ status: "completed" | "failed" }> {
+): Promise<{ status: "completed" | "failed" | "blocked" }> {
   const runningAt = options.now().toISOString();
   const runningStep = await options.repositories.runs.updateStepStatus({
     stepId: input.step.id,
@@ -269,6 +278,9 @@ async function executeReadyStep(
     const artifactStore = new LocalArtifactStore({
       rootPath: input.lease.paths.rootPath
     });
+    const createdArtifacts: Array<
+      Awaited<ReturnType<Repositories["artifacts"]["create"]>>
+    > = [];
 
     for (const relativePath of result.producedArtifactPaths) {
       const body = await artifactStore.read(relativePath);
@@ -288,6 +300,71 @@ async function executeReadyStep(
       });
 
       await emitArtifactCreated(options, input.outcomeId, artifact);
+      createdArtifacts.push(artifact);
+    }
+
+    await createArtifactLineage(options, {
+      runId: input.runId,
+      planId: input.planId,
+      stepId: runningStep.id,
+      planNodeId: runningStep.planNodeId,
+      childArtifacts: createdArtifacts
+    });
+
+    if (runningStep.approvalRequirement) {
+      const blockedAt = options.now().toISOString();
+      const blockedStep = await options.repositories.runs.updateStepStatus({
+        stepId: runningStep.id,
+        status: "blocked",
+        updatedAt: blockedAt
+      });
+
+      if (!blockedStep) {
+        throw new Error(`Blocked step ${runningStep.id} disappeared during update.`);
+      }
+
+      await emitRunStepUpdated(options, input.outcomeId, blockedStep);
+
+      const approval = await options.repositories.approvals.createPending({
+        id: `approval_${randomUUID()}`,
+        workspaceId: input.workspaceId,
+        outcomeId: input.outcomeId,
+        runId: input.runId,
+        stepId: runningStep.id,
+        kind: runningStep.approvalRequirement.kind,
+        title: runningStep.approvalRequirement.title,
+        summary: runningStep.approvalRequirement.summary,
+        instruction: runningStep.approvalRequirement.instruction,
+        artifactIds: createdArtifacts.map((artifact) => artifact.id),
+        requestedAt: blockedAt
+      });
+
+      await emitApprovalRequested(options, input.outcomeId, approval);
+
+      const updatedLifecycle = await options.repositories.runs.updateLifecycleStatus({
+        runId: input.runId,
+        outcomeId: input.outcomeId,
+        runStatus: "blocked",
+        outcomeStatus: "blocked_on_approval",
+        updatedAt: blockedAt
+      });
+
+      if (!updatedLifecycle) {
+        throw new Error("Failed to update run or outcome lifecycle state.");
+      }
+
+      await emitRunUpdated(options, input.outcomeId, updatedLifecycle.run);
+      await emitOutcomeUpdated(options, updatedLifecycle.outcome);
+      await emitRunLog(options, {
+        outcomeId: input.outcomeId,
+        runId: input.runId,
+        stepId: blockedStep.id,
+        stepTitle: blockedStep.title,
+        level: "info",
+        message: `Blocked ${blockedStep.title} awaiting approval`
+      });
+
+      return { status: "blocked" };
     }
 
     const completedAt = options.now().toISOString();
@@ -432,8 +509,8 @@ async function updateLifecycleStatus(
   input: {
     runId: string;
     outcomeId: string;
-    runStatus: "running" | "completed" | "failed";
-    outcomeStatus: "running" | "completed" | "failed";
+    runStatus: "running" | "blocked" | "completed" | "failed";
+    outcomeStatus: "running" | "blocked_on_approval" | "completed" | "failed";
   }
 ) {
   const updatedLifecycle = await options.repositories.runs.updateLifecycleStatus({
@@ -583,6 +660,84 @@ async function emitArtifactCreated(
     type: "artifact.created",
     data
   });
+}
+
+async function emitApprovalRequested(
+  options: ExecuteRunOptions,
+  outcomeId: string,
+  approval: Awaited<ReturnType<Repositories["approvals"]["createPending"]>>
+) {
+  const data = ApprovalSchema.parse(approval);
+
+  await options.repositories.runs.appendEvent({
+    id: `event_${randomUUID()}`,
+    runId: data.runId,
+    eventType: "approval.requested",
+    payload: data,
+    createdAt: data.requestedAt
+  });
+
+  options.eventBus.publish({
+    outcomeId,
+    type: "approval.requested",
+    data
+  });
+}
+
+async function createArtifactLineage(
+  options: ExecuteRunOptions,
+  input: {
+    runId: string;
+    planId: string;
+    stepId: string;
+    planNodeId: string;
+    childArtifacts: Array<
+      Awaited<ReturnType<Repositories["artifacts"]["create"]>>
+    >;
+  }
+) {
+  if (input.childArtifacts.length === 0) {
+    return;
+  }
+
+  const [steps, edges, artifacts] = await Promise.all([
+    options.repositories.runs.listSteps(input.runId),
+    options.repositories.plans.listEdges(input.planId),
+    options.repositories.artifacts.listByRun(input.runId)
+  ]);
+  const parentNodeIds = edges
+    .filter((edge) => edge.to === input.planNodeId)
+    .map((edge) => edge.from);
+
+  if (parentNodeIds.length === 0) {
+    return;
+  }
+
+  const parentStepIds = steps
+    .filter((step) => parentNodeIds.includes(step.planNodeId))
+    .map((step) => step.id);
+  const parentArtifacts = artifacts.filter(
+    (artifact) => artifact.stepId && parentStepIds.includes(artifact.stepId)
+  );
+
+  if (parentArtifacts.length === 0) {
+    return;
+  }
+
+  await options.repositories.artifactLineage.createMany(
+    parentArtifacts.flatMap((parentArtifact) =>
+      input.childArtifacts.map((childArtifact) => ({
+        id: `lineage_${randomUUID()}`,
+        runId: input.runId,
+        parentArtifactId: parentArtifact.id,
+        childArtifactId: childArtifact.id,
+        parentStepId: parentArtifact.stepId!,
+        childStepId: input.stepId,
+        relation: "derived_from",
+        createdAt: options.now().toISOString()
+      }))
+    )
+  );
 }
 
 async function emitSandboxLogs(

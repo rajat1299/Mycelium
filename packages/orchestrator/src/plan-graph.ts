@@ -30,6 +30,13 @@ export const ArtifactKindSchema = z.enum([
   "result"
 ]);
 
+export const ApprovalRequirementSchema = z.object({
+  kind: z.literal("output_review_required"),
+  title: z.string().min(1),
+  summary: z.string().min(1).nullable().default(null),
+  instruction: z.string().min(1).nullable().default(null)
+});
+
 export const PlanNodeSchema = z.object({
   id: z.string(),
   kind: PlanNodeKindSchema,
@@ -37,6 +44,7 @@ export const PlanNodeSchema = z.object({
   capability: PlanNodeCapabilitySchema,
   instruction: z.string().min(1).optional(),
   template: PlanNodeTemplateSchema.optional(),
+  approvalRequirement: ApprovalRequirementSchema.optional(),
   expectedArtifactPath: z.string().min(1).optional(),
   expectedArtifactKind: ArtifactKindSchema.optional()
 });

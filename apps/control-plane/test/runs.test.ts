@@ -90,8 +90,52 @@ async function seedMissingAuthRouting(repositories: Repositories, workspaceId: s
   });
 }
 
+async function createNonReviewPlan(
+  repositories: Repositories,
+  outcomeId: string
+) {
+  const createdAt = "2026-03-12T00:00:00.000Z";
+
+  return repositories.plans.create({
+    id: `plan_${outcomeId}_no_review`,
+    outcomeId,
+    status: "draft",
+    createdAt,
+    updatedAt: createdAt,
+    nodes: [
+      {
+        id: `plan_${outcomeId}_no_review:analyze-outcome`,
+        kind: "root",
+        title: "Analyze outcome",
+        capability: "reasoning",
+        instruction: "Inspect the outcome prompt and capture execution notes.",
+        template: "analyze_outcome",
+        expectedArtifactPath: "artifacts/analyze-outcome.md",
+        expectedArtifactKind: "analysis"
+      },
+      {
+        id: `plan_${outcomeId}_no_review:synthesize-result`,
+        kind: "synthesis",
+        title: "Synthesize result",
+        capability: "document",
+        instruction: "Combine the brief and operator summary into the final result.",
+        template: "synthesize_result",
+        expectedArtifactPath: "artifacts/final-result.md",
+        expectedArtifactKind: "result"
+      }
+    ],
+    edges: [
+      {
+        id: `plan_${outcomeId}_no_review:edge-analyze-synthesize`,
+        from: `plan_${outcomeId}_no_review:analyze-outcome`,
+        to: `plan_${outcomeId}_no_review:synthesize-result`
+      }
+    ]
+  });
+}
+
 describe("run routes", () => {
-  it("creates a run, returns the queued snapshot, and execution completes in the background", async () => {
+  it("creates a run, returns the queued snapshot, and execution blocks on the review-required final step", async () => {
     const harness = await createExecutionHarness();
 
     try {
@@ -135,6 +179,12 @@ describe("run routes", () => {
         expect.objectContaining({
           title: "Synthesize result",
           status: "pending",
+          approvalRequirement: {
+            kind: "output_review_required",
+            title: "Review final result",
+            summary: "Inspect the final artifact before marking the run complete.",
+            instruction: "Approve to complete the run or reject to fail it."
+          },
           expectedArtifactPath: "artifacts/final-result.md",
           expectedArtifactKind: "result"
         })
@@ -151,7 +201,7 @@ describe("run routes", () => {
       expect(RunDetailSchema.parse(readRun.json())).toEqual(
         expect.objectContaining({
           id: run.id,
-          status: "completed",
+          status: "blocked",
           steps: [
             expect.objectContaining({
               title: "Analyze outcome",
@@ -167,7 +217,7 @@ describe("run routes", () => {
             }),
             expect.objectContaining({
               title: "Synthesize result",
-              status: "completed"
+              status: "blocked"
             })
           ]
         })
@@ -342,7 +392,7 @@ describe("run routes", () => {
       expect(RunDetailSchema.parse(latestRun.json())).toEqual(
         expect.objectContaining({
           id: createdRun.id,
-          status: "completed"
+          status: "blocked"
         })
       );
     } finally {
@@ -350,7 +400,7 @@ describe("run routes", () => {
     }
   });
 
-  it("publishes queued, running, and completed lifecycle events when a run is created", async () => {
+  it("publishes queued, running, blocked, and approval events when a run is created", async () => {
     const harness = await createExecutionHarness();
 
     try {
@@ -377,7 +427,7 @@ describe("run routes", () => {
       });
 
       expect(readOutcome.statusCode).toBe(200);
-      expect(OutcomeSchema.parse(readOutcome.json()).status).toBe("completed");
+      expect(OutcomeSchema.parse(readOutcome.json()).status).toBe("blocked_on_approval");
 
       expect(events).toEqual(
         expect.arrayContaining([
@@ -402,7 +452,7 @@ describe("run routes", () => {
             type: "outcome.updated",
             data: expect.objectContaining({
               id: outcome.id,
-              status: "completed"
+              status: "blocked_on_approval"
             })
           }),
           expect.objectContaining({
@@ -427,7 +477,15 @@ describe("run routes", () => {
             type: "run.updated",
             data: expect.objectContaining({
               id: createdRun.id,
-              status: "completed"
+              status: "blocked"
+            })
+          }),
+          expect.objectContaining({
+            outcomeId: outcome.id,
+            type: "approval.requested",
+            data: expect.objectContaining({
+              runId: createdRun.id,
+              status: "pending"
             })
           })
         ])
@@ -442,10 +500,18 @@ describe("run routes", () => {
 
     try {
       const { app, services } = harness;
-      const { outcome, plan } = await createOutcomeAndPlan(
-        app,
-        "Reopen the operator log panel after execution."
-      );
+      const createOutcome = await app.inject({
+        method: "POST",
+        url: "/api/outcomes",
+        payload: {
+          workspaceId: "ws_123",
+          userId: "user_123",
+          prompt: "Reopen the operator log panel after execution.",
+          source: "web"
+        }
+      });
+      const outcome = createOutcome.json();
+      const plan = await createNonReviewPlan(services.repositories, outcome.id);
 
       const createRun = await app.inject({
         method: "POST",

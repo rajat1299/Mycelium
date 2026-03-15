@@ -72,7 +72,13 @@ function buildPlanInput(overrides: Partial<Record<string, unknown>> = {}) {
         id: `${planId}:execute-outcome`,
         kind: "task" as const,
         title: "Execute outcome",
-        capability: "coding" as const
+        capability: "coding" as const,
+        approvalRequirement: {
+          kind: "output_review_required" as const,
+          title: "Review final result",
+          summary: "Inspect the final artifact before release.",
+          instruction: "Approve to complete the run or reject to fail it."
+        }
       }
     ],
     edges: [
@@ -319,6 +325,10 @@ describe("plan and run repositories", () => {
             kind: "task",
             title: "Execute outcome",
             capability: "coding",
+            approvalKind: "output_review_required",
+            approvalTitle: "Review final result",
+            approvalSummary: "Inspect the final artifact before release.",
+            approvalInstruction: "Approve to complete the run or reject to fail it.",
             position: 1
           }
         ]
@@ -418,6 +428,12 @@ describe("plan and run repositories", () => {
         runId: "run_123",
         planNodeId: "plan_123:execute-outcome",
         title: "Execute outcome",
+        approvalRequirement: {
+          kind: "output_review_required",
+          title: "Review final result",
+          summary: "Inspect the final artifact before release.",
+          instruction: "Approve to complete the run or reject to fail it."
+        },
         status: "pending"
       })
     ]);

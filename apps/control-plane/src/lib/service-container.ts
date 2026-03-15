@@ -13,6 +13,10 @@ import {
 } from "./encryption";
 import { createEventBus, type EventBus } from "./event-bus";
 import {
+  createApprovalService,
+  type ApprovalService
+} from "./approval-service";
+import {
   createExecutionService,
   type ExecutionService
 } from "./execution-service";
@@ -30,6 +34,7 @@ export type ServiceContainer = {
   repositories: Repositories;
   eventBus: EventBus;
   executionService: ExecutionService;
+  approvalService: ApprovalService;
   encryption: EncryptionService;
   routerService: RouterService;
 };
@@ -67,11 +72,18 @@ export function createInMemoryServiceContainer(
     workspaceManager,
     ...(options.now ? { now: options.now } : {})
   });
+  const approvalService = createApprovalService({
+    repositories,
+    eventBus,
+    executionService,
+    ...(options.now ? { now: options.now } : {})
+  });
 
   return {
     repositories,
     eventBus,
     executionService,
+    approvalService,
     encryption,
     routerService
   };
@@ -94,11 +106,17 @@ export async function createServiceContainer(env: AppEnv): Promise<ServiceContai
     sandboxProvider,
     workspaceManager
   });
+  const approvalService = createApprovalService({
+    repositories,
+    eventBus,
+    executionService
+  });
 
   return {
     repositories,
     eventBus,
     executionService,
+    approvalService,
     encryption,
     routerService
   };

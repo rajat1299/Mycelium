@@ -1,9 +1,28 @@
+import type { ApprovalRequirement } from "@computer-oss/protocol";
 import type { DatabaseClient } from "../client";
 import { outcomePlans, planEdges, planNodes } from "../schema";
 
 type PlanRow = typeof outcomePlans.$inferSelect;
 type PlanNodeRow = typeof planNodes.$inferSelect;
 type PlanEdgeRow = typeof planEdges.$inferSelect;
+
+function mapApprovalRequirement(
+  row: Pick<
+    PlanNodeRow,
+    "approvalKind" | "approvalTitle" | "approvalSummary" | "approvalInstruction"
+  >
+): ApprovalRequirement | undefined {
+  if (!row.approvalKind || !row.approvalTitle) {
+    return undefined;
+  }
+
+  return {
+    kind: row.approvalKind as ApprovalRequirement["kind"],
+    title: row.approvalTitle,
+    summary: row.approvalSummary ?? null,
+    instruction: row.approvalInstruction ?? null
+  };
+}
 
 export type StoredPlan = {
   id: string;
@@ -21,6 +40,7 @@ export type StoredPlanNode = {
   capability: string;
   instruction?: string;
   template?: string;
+  approvalRequirement?: ApprovalRequirement;
   expectedArtifactPath?: string;
   expectedArtifactKind?: string;
   position: number;
@@ -48,6 +68,7 @@ export type CreatePlanInput = {
       | "capability"
       | "instruction"
       | "template"
+      | "approvalRequirement"
       | "expectedArtifactPath"
       | "expectedArtifactKind"
     >
@@ -66,6 +87,8 @@ function mapPlanRow(row: PlanRow): StoredPlan {
 }
 
 function mapPlanNodeRow(row: PlanNodeRow): StoredPlanNode {
+  const approvalRequirement = mapApprovalRequirement(row);
+
   return {
     id: row.id,
     planId: row.planId,
@@ -74,6 +97,7 @@ function mapPlanNodeRow(row: PlanNodeRow): StoredPlanNode {
     capability: row.capability,
     ...(row.instruction ? { instruction: row.instruction } : {}),
     ...(row.template ? { template: row.template } : {}),
+    ...(approvalRequirement ? { approvalRequirement } : {}),
     ...(row.expectedArtifactPath
       ? { expectedArtifactPath: row.expectedArtifactPath }
       : {}),
@@ -135,6 +159,14 @@ export class PlanRepository {
             capability: node.capability,
             ...(node.instruction ? { instruction: node.instruction } : {}),
             ...(node.template ? { template: node.template } : {}),
+            ...(node.approvalRequirement
+              ? {
+                  approvalKind: node.approvalRequirement.kind,
+                  approvalTitle: node.approvalRequirement.title,
+                  approvalSummary: node.approvalRequirement.summary,
+                  approvalInstruction: node.approvalRequirement.instruction
+                }
+              : {}),
             ...(node.expectedArtifactPath
               ? { expectedArtifactPath: node.expectedArtifactPath }
               : {}),

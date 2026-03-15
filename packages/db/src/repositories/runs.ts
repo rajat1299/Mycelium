@@ -1,5 +1,9 @@
 import { and, eq } from "drizzle-orm";
-import { StepRouteSchema, type StepRoute } from "@computer-oss/protocol";
+import {
+  type ApprovalRequirement,
+  StepRouteSchema,
+  type StepRoute
+} from "@computer-oss/protocol";
 import type { DatabaseClient } from "../client";
 import {
   outcomes,
@@ -16,6 +20,24 @@ type RunRow = typeof outcomeRuns.$inferSelect;
 type RunStepRow = typeof runSteps.$inferSelect;
 type OutcomeRow = typeof outcomes.$inferSelect;
 type RunEventRow = typeof runEvents.$inferSelect;
+
+function mapApprovalRequirement(
+  row: Pick<
+    RunStepRow,
+    "approvalKind" | "approvalTitle" | "approvalSummary" | "approvalInstruction"
+  >
+): ApprovalRequirement | undefined {
+  if (!row.approvalKind || !row.approvalTitle) {
+    return undefined;
+  }
+
+  return {
+    kind: row.approvalKind as ApprovalRequirement["kind"],
+    title: row.approvalTitle,
+    summary: row.approvalSummary ?? null,
+    instruction: row.approvalInstruction ?? null
+  };
+}
 
 export type StoredRun = {
   id: string;
@@ -35,6 +57,7 @@ export type StoredRunStep = {
   capability: string;
   instruction?: string;
   template?: string;
+  approvalRequirement?: ApprovalRequirement;
   expectedArtifactPath?: string;
   expectedArtifactKind?: string;
   routeProviderId?: string | null;
@@ -127,6 +150,8 @@ function mapRunRow(row: RunRow): StoredRun {
 }
 
 function mapRunStepRow(row: RunStepRow): StoredRunStep {
+  const approvalRequirement = mapApprovalRequirement(row);
+
   return {
     id: row.id,
     runId: row.runId,
@@ -136,6 +161,7 @@ function mapRunStepRow(row: RunStepRow): StoredRunStep {
     capability: row.capability,
     ...(row.instruction ? { instruction: row.instruction } : {}),
     ...(row.template ? { template: row.template } : {}),
+    ...(approvalRequirement ? { approvalRequirement } : {}),
     ...(row.expectedArtifactPath
       ? { expectedArtifactPath: row.expectedArtifactPath }
       : {}),
@@ -261,6 +287,14 @@ export class RunRepository {
           capability: node.capability,
           ...(node.instruction ? { instruction: node.instruction } : {}),
           ...(node.template ? { template: node.template } : {}),
+          ...(node.approvalKind && node.approvalTitle
+            ? {
+                approvalKind: node.approvalKind,
+                approvalTitle: node.approvalTitle,
+                approvalSummary: node.approvalSummary,
+                approvalInstruction: node.approvalInstruction
+              }
+            : {}),
           ...(node.expectedArtifactPath
             ? { expectedArtifactPath: node.expectedArtifactPath }
             : {}),

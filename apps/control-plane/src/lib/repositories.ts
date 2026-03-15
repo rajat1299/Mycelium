@@ -1,14 +1,20 @@
 import type {
+  CreateArtifactLineageEdgeInput,
   AcquireWorkspaceLeaseInput,
   AppendRunEventInput,
+  CreatePendingApprovalInput,
   CreateAuthProfileInput,
   CreateArtifactInput,
   CreatePlanInput,
   CreateRunFromPlanInput,
+  ListApprovalsInput,
   CreateWorkspaceCredentialInput,
   ReleaseReadyDependentsInput,
   ReleaseWorkspaceLeaseInput,
+  ResolveApprovalInput,
+  StoredApproval,
   StoredArtifact,
+  StoredArtifactLineageEdge,
   StoredPlan,
   StoredPlanEdge,
   StoredPlanNode,
@@ -87,6 +93,31 @@ export type ArtifactStore = {
   listByOutcome(outcomeId: string): Promise<StoredArtifact[]>;
 };
 
+export type ApprovalStore = {
+  createPending(input: CreatePendingApprovalInput): Promise<StoredApproval>;
+  getById(id: string): Promise<StoredApproval | null>;
+  listByWorkspace(input: ListApprovalsInput): Promise<StoredApproval[]>;
+  resolve(
+    input: ResolveApprovalInput
+  ): Promise<
+    | {
+        approval: StoredApproval;
+        step: StoredRunStep;
+        run: StoredRun;
+        outcome: Outcome;
+      }
+    | null
+  >;
+};
+
+export type ArtifactLineageStore = {
+  createMany(
+    inputs: CreateArtifactLineageEdgeInput[]
+  ): Promise<StoredArtifactLineageEdge[]>;
+  listByRun(runId: string): Promise<StoredArtifactLineageEdge[]>;
+  listByArtifact(artifactId: string): Promise<StoredArtifactLineageEdge[]>;
+};
+
 export type WorkspaceLeaseStore = {
   acquire(input: AcquireWorkspaceLeaseInput): Promise<StoredWorkspaceLease>;
   getActiveByRun(runId: string): Promise<StoredWorkspaceLease | null>;
@@ -122,6 +153,8 @@ export type Repositories = {
   plans: PlanStore;
   runs: RunStore;
   artifacts: ArtifactStore;
+  approvals: ApprovalStore;
+  artifactLineage: ArtifactLineageStore;
   workspaceLeases: WorkspaceLeaseStore;
   workspaceCredentials: WorkspaceCredentialStore;
   authProfiles: AuthProfileStore;
@@ -131,6 +164,8 @@ export type Repositories = {
 type InMemoryState = ReturnType<typeof createInMemoryRepositoriesState>;
 type InMemoryDataState = {
   runStepsByRunId: Map<string, StoredRunStep[]>;
+  approvalsById: Map<string, StoredApproval>;
+  artifactLineageEdgesById: Map<string, StoredArtifactLineageEdge>;
   workspaceCredentialsById: Map<string, CreateWorkspaceCredentialInput>;
   authProfilesById: Map<string, AuthProfile>;
   routerPoliciesByWorkspaceId: Map<string, RouterPolicy>;
@@ -155,6 +190,31 @@ function compareRuns(left: StoredRun, right: StoredRun) {
 }
 
 function compareArtifacts(left: StoredArtifact, right: StoredArtifact) {
+  const createdDelta =
+    new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+
+  if (createdDelta !== 0) {
+    return createdDelta;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
+function compareApprovals(left: StoredApproval, right: StoredApproval) {
+  const requestedDelta =
+    new Date(left.requestedAt).getTime() - new Date(right.requestedAt).getTime();
+
+  if (requestedDelta !== 0) {
+    return requestedDelta;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
+function compareArtifactLineageEdges(
+  left: StoredArtifactLineageEdge,
+  right: StoredArtifactLineageEdge
+) {
   const createdDelta =
     new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
 
@@ -282,6 +342,8 @@ function createInMemoryRepositoriesState() {
   const runsById = new Map<string, StoredRun>();
   const runStepsByRunId = new Map<string, StoredRunStep[]>();
   const artifacts = new Map<string, StoredArtifact>();
+  const approvalsById = new Map<string, StoredApproval>();
+  const artifactLineageEdgesById = new Map<string, StoredArtifactLineageEdge>();
   const workspaceLeasesByRunId = new Map<string, StoredWorkspaceLease>();
   const workspaceCredentialsById = new Map<string, CreateWorkspaceCredentialInput>();
   const authProfilesById = new Map<string, AuthProfile>();
@@ -296,6 +358,8 @@ function createInMemoryRepositoriesState() {
     runsById,
     runStepsByRunId,
     artifacts,
+    approvalsById,
+    artifactLineageEdgesById,
     workspaceLeasesByRunId,
     workspaceCredentialsById,
     authProfilesById,
@@ -377,6 +441,9 @@ function createInMemoryRepositoriesState() {
         capability: node.capability,
         ...(node.instruction ? { instruction: node.instruction } : {}),
         ...(node.template ? { template: node.template } : {}),
+        ...(node.approvalRequirement
+          ? { approvalRequirement: node.approvalRequirement }
+          : {}),
         ...(node.expectedArtifactPath
           ? { expectedArtifactPath: node.expectedArtifactPath }
           : {}),
@@ -450,6 +517,9 @@ function createInMemoryRepositoriesState() {
         capability: node.capability,
         ...(node.instruction ? { instruction: node.instruction } : {}),
         ...(node.template ? { template: node.template } : {}),
+        ...(node.approvalRequirement
+          ? { approvalRequirement: node.approvalRequirement }
+          : {}),
         ...(node.expectedArtifactPath
           ? { expectedArtifactPath: node.expectedArtifactPath }
           : {}),
@@ -806,6 +876,271 @@ function createInMemoryRepositoriesState() {
     }
   };
 
+  const approvalsStore: ApprovalStore = {
+    async createPending(input) {
+      if (approvalsById.has(input.id)) {
+        throw new Error('duplicate key value violates unique constraint "approvals_pkey"');
+      }
+
+      const outcome = outcomes.get(input.outcomeId);
+
+      if (!outcome) {
+        throw new Error(`Outcome ${input.outcomeId} does not exist.`);
+      }
+
+      if (outcome.workspaceId !== input.workspaceId) {
+        throw new Error(
+          `Outcome ${input.outcomeId} belongs to ${outcome.workspaceId}, not ${input.workspaceId}.`
+        );
+      }
+
+      const run = runsById.get(input.runId);
+
+      if (!run) {
+        throw new Error(`Run ${input.runId} does not exist.`);
+      }
+
+      if (run.outcomeId !== input.outcomeId) {
+        throw new Error(
+          `Run ${input.runId} belongs to ${run.outcomeId}, not ${input.outcomeId}.`
+        );
+      }
+
+      const located = getStoredRunStep(state, input.stepId);
+
+      if (!located) {
+        throw new Error(`Step ${input.stepId} does not exist.`);
+      }
+
+      if (located.runId !== input.runId) {
+        throw new Error(
+          `Step ${input.stepId} belongs to ${located.runId}, not ${input.runId}.`
+        );
+      }
+
+      for (const artifactId of input.artifactIds) {
+        const artifact = artifacts.get(artifactId);
+
+        if (!artifact) {
+          throw new Error(`Artifact ${artifactId} does not exist.`);
+        }
+
+        if (
+          artifact.outcomeId !== input.outcomeId ||
+          artifact.runId !== input.runId ||
+          artifact.stepId !== input.stepId
+        ) {
+          throw new Error(
+            `Artifact ${artifactId} does not belong to approval step ${input.stepId} in run ${input.runId}.`
+          );
+        }
+      }
+
+      const approval: StoredApproval = {
+        id: input.id,
+        workspaceId: input.workspaceId,
+        outcomeId: input.outcomeId,
+        runId: input.runId,
+        stepId: input.stepId,
+        status: "pending",
+        kind: input.kind,
+        title: input.title,
+        summary: input.summary,
+        instruction: input.instruction,
+        artifactIds: [...input.artifactIds],
+        requestedAt: input.requestedAt,
+        resolvedAt: null,
+        resolution: null,
+        resolutionNote: null
+      };
+
+      approvalsById.set(approval.id, approval);
+      return approval;
+    },
+    async getById(id) {
+      return approvalsById.get(id) ?? null;
+    },
+    async listByWorkspace(input) {
+      return Array.from(approvalsById.values())
+        .filter(
+          (approval) =>
+            approval.workspaceId === input.workspaceId &&
+            (input.status ? approval.status === input.status : true)
+        )
+        .sort(compareApprovals);
+    },
+    async resolve(input) {
+      const existing = approvalsById.get(input.approvalId);
+
+      if (!existing) {
+        return null;
+      }
+
+      if (existing.status !== "pending") {
+        throw new Error(`Approval ${input.approvalId} is already resolved.`);
+      }
+
+      const run = runsById.get(existing.runId);
+
+      if (!run) {
+        throw new Error(`Run ${existing.runId} does not exist.`);
+      }
+
+      if (run.outcomeId !== existing.outcomeId) {
+        throw new Error(
+          `Run ${existing.runId} belongs to ${run.outcomeId}, not ${existing.outcomeId}.`
+        );
+      }
+
+      const located = getStoredRunStep(state, existing.stepId);
+
+      if (!located) {
+        throw new Error(`Step ${existing.stepId} does not exist.`);
+      }
+
+      if (located.runId !== existing.runId) {
+        throw new Error(
+          `Step ${existing.stepId} belongs to ${located.runId}, not ${existing.runId}.`
+        );
+      }
+
+      const outcome = outcomes.get(existing.outcomeId);
+
+      if (!outcome) {
+        throw new Error(`Outcome ${existing.outcomeId} does not exist.`);
+      }
+
+      if (outcome.workspaceId !== existing.workspaceId) {
+        throw new Error(
+          `Outcome ${existing.outcomeId} belongs to ${outcome.workspaceId}, not ${existing.workspaceId}.`
+        );
+      }
+
+      const updatedApproval: StoredApproval = {
+        ...existing,
+        status: input.resolution === "cancelled" ? "cancelled" : "resolved",
+        resolvedAt: input.resolvedAt,
+        resolution: input.resolution,
+        resolutionNote: input.resolutionNote
+      };
+      const updatedStep: StoredRunStep = {
+        ...located.step,
+        status: input.stepStatus,
+        updatedAt: input.updatedAt
+      };
+      const updatedRun: StoredRun = {
+        ...run,
+        status: input.runStatus,
+        updatedAt: input.updatedAt
+      };
+      const updatedOutcome: Outcome = {
+        ...outcome,
+        status: input.outcomeStatus,
+        updatedAt: input.updatedAt
+      };
+
+      approvalsById.set(updatedApproval.id, updatedApproval);
+      runsById.set(updatedRun.id, updatedRun);
+      outcomes.set(updatedOutcome.id, updatedOutcome);
+      runStepsByRunId.set(
+        located.runId,
+        (runStepsByRunId.get(located.runId) ?? []).map((candidate) =>
+          candidate.id === updatedStep.id ? updatedStep : candidate
+        )
+      );
+
+      return {
+        approval: updatedApproval,
+        step: updatedStep,
+        run: updatedRun,
+        outcome: updatedOutcome
+      };
+    }
+  };
+
+  const artifactLineageStore: ArtifactLineageStore = {
+    async createMany(inputs) {
+      const edges: StoredArtifactLineageEdge[] = [];
+
+      for (const input of inputs) {
+        const run = runsById.get(input.runId);
+
+        if (!run) {
+          throw new Error(`Run ${input.runId} does not exist.`);
+        }
+
+        const parentArtifact = artifacts.get(input.parentArtifactId);
+        const childArtifact = artifacts.get(input.childArtifactId);
+
+        if (!parentArtifact) {
+          throw new Error(`Artifact ${input.parentArtifactId} does not exist.`);
+        }
+
+        if (!childArtifact) {
+          throw new Error(`Artifact ${input.childArtifactId} does not exist.`);
+        }
+
+        const parentStep = getStoredRunStep(state, input.parentStepId);
+        const childStep = getStoredRunStep(state, input.childStepId);
+
+        if (!parentStep) {
+          throw new Error(`Step ${input.parentStepId} does not exist.`);
+        }
+
+        if (!childStep) {
+          throw new Error(`Step ${input.childStepId} does not exist.`);
+        }
+
+        if (
+          parentArtifact.runId !== input.runId ||
+          childArtifact.runId !== input.runId ||
+          parentStep.runId !== input.runId ||
+          childStep.runId !== input.runId
+        ) {
+          throw new Error(`Artifact-lineage edges must stay within run ${input.runId}.`);
+        }
+
+        if (
+          parentArtifact.stepId !== input.parentStepId ||
+          childArtifact.stepId !== input.childStepId
+        ) {
+          throw new Error(
+            "Artifact-lineage edges must match their parent and child step context."
+          );
+        }
+
+        const edge: StoredArtifactLineageEdge = {
+          id: input.id,
+          runId: input.runId,
+          parentArtifactId: input.parentArtifactId,
+          childArtifactId: input.childArtifactId,
+          parentStepId: input.parentStepId,
+          childStepId: input.childStepId,
+          relation: input.relation,
+          createdAt: input.createdAt
+        };
+
+        artifactLineageEdgesById.set(edge.id, edge);
+        edges.push(edge);
+      }
+
+      return edges.sort(compareArtifactLineageEdges);
+    },
+    async listByRun(runId) {
+      return Array.from(artifactLineageEdgesById.values())
+        .filter((edge) => edge.runId === runId)
+        .sort(compareArtifactLineageEdges);
+    },
+    async listByArtifact(artifactId) {
+      return Array.from(artifactLineageEdgesById.values())
+        .filter(
+          (edge) =>
+            edge.parentArtifactId === artifactId || edge.childArtifactId === artifactId
+        )
+        .sort(compareArtifactLineageEdges);
+    }
+  };
+
   const workspaceCredentialsStore: WorkspaceCredentialStore = {
     async create(input) {
       if (workspaceCredentialsById.has(input.id)) {
@@ -1004,6 +1339,8 @@ function createInMemoryRepositoriesState() {
     plansStore,
     runsStore,
     artifactsStore,
+    approvalsStore,
+    artifactLineageStore,
     workspaceLeasesStore,
     workspaceCredentialsStore,
     authProfilesStore,
@@ -1019,6 +1356,8 @@ export function createInMemoryRepositories(): Repositories {
     plans: state.plansStore,
     runs: state.runsStore,
     artifacts: state.artifactsStore,
+    approvals: state.approvalsStore,
+    artifactLineage: state.artifactLineageStore,
     workspaceLeases: state.workspaceLeasesStore,
     workspaceCredentials: state.workspaceCredentialsStore,
     authProfiles: state.authProfilesStore,
@@ -1030,8 +1369,10 @@ export async function createDatabaseRepositories(
   connectionString: string
 ): Promise<Repositories> {
   const {
+    ApprovalRepository,
     AuthProfileRepository,
     ArtifactRepository,
+    ArtifactLineageRepository,
     OutcomeRepository,
     PlanRepository,
     RouterPolicyRepository,
@@ -1047,6 +1388,8 @@ export async function createDatabaseRepositories(
     plans: new PlanRepository(db),
     runs: new RunRepository(db),
     artifacts: new ArtifactRepository(db),
+    approvals: new ApprovalRepository(db),
+    artifactLineage: new ArtifactLineageRepository(db),
     workspaceLeases: new WorkspaceLeaseRepository(db),
     workspaceCredentials: new WorkspaceCredentialRepository(db),
     authProfiles: new AuthProfileRepository(db),
