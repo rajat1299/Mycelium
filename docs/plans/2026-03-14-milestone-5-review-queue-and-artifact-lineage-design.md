@@ -155,8 +155,8 @@ Do not inherit:
 Read:
 
 - `/Users/rajattiwari/swarm/terragon-oss/packages/shared/src/db/schema.ts`
-- `/Users/rajattiwari/swarm/terragon-oss/apps/www/src/server-lib/runs.ts`
-- `/Users/rajattiwari/swarm/terragon-oss/apps/www/src/server-lib/artifacts.ts`
+- `/Users/rajattiwari/swarm/terragon-oss/apps/www/src/server-lib/r2-file-upload.ts`
+- `/Users/rajattiwari/swarm/terragon-oss/packages/r2/r2.ts`
 - [terragon-oss-engineering.md](/Users/rajattiwari/swarm/_codex_notes/terragon-oss-engineering.md)
 
 Extract:

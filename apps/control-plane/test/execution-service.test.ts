@@ -575,6 +575,86 @@ describe("execution service", () => {
     }
   });
 
+  it("resumes already-ready sibling work after approving a blocked branch", async () => {
+    const harness = await createExecutionHarness();
+
+    try {
+      const { app, services, fakeSandbox } = harness;
+      const createOutcome = await app.inject({
+        method: "POST",
+        url: "/api/outcomes",
+        payload: {
+          workspaceId: "ws_123",
+          userId: "user_123",
+          prompt: "Resume sibling-ready work after approval.",
+          source: "web"
+        }
+      });
+      const outcome = createOutcome.json();
+      const plan = await createMixedBlockedSiblingsPlan(
+        services.repositories,
+        outcome.id
+      );
+
+      const createRun = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome.id}/runs`,
+        payload: {
+          planId: plan.id
+        }
+      });
+      const createdRun = RunDetailSchema.parse(createRun.json());
+
+      await services.executionService.waitForRun(createdRun.id);
+
+      await expect(services.repositories.runs.listSteps(createdRun.id)).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            title: "Tail task",
+            status: "ready"
+          }),
+          expect.objectContaining({
+            title: "Review branch",
+            status: "blocked"
+          })
+        ])
+      );
+
+      const [approval] = await services.repositories.approvals.listByWorkspace({
+        workspaceId: outcome.workspaceId,
+        status: "pending"
+      });
+
+      await services.approvalService.resolveApproval({
+        approvalId: approval.id,
+        resolution: "approved",
+        resolutionNote: "Resume."
+      });
+
+      await services.executionService.waitForRun(createdRun.id);
+
+      expect(fakeSandbox.startedPlanNodeIds).toEqual(
+        expect.arrayContaining([expect.stringContaining(":tail")])
+      );
+      await expect(services.repositories.runs.getById(createdRun.id)).resolves.toEqual(
+        expect.objectContaining({
+          id: createdRun.id,
+          status: "completed"
+        })
+      );
+      await expect(
+        services.repositories.outcomes.getById(outcome.id)
+      ).resolves.toEqual(
+        expect.objectContaining({
+          id: outcome.id,
+          status: "completed"
+        })
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   it("approves blocked review-required work and completes the run", async () => {
     const harness = await createExecutionHarness();
 

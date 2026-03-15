@@ -104,24 +104,29 @@ export function createApprovalService(
           await emitRunStepUpdated(options, approval.outcomeId, step);
         }
 
-        const resumedLifecycle = await options.repositories.runs.updateLifecycleStatus({
-          runId: resolved.run.id,
-          outcomeId: approval.outcomeId,
-          runStatus: "running",
-          outcomeStatus: "running",
-          updatedAt
-        });
+        const readySteps = await options.repositories.runs.listReadySteps(resolved.run.id);
 
-        if (!resumedLifecycle) {
-          throw new Error("Failed to resume run or outcome lifecycle state.");
-        }
+        if (readySteps.length > 0) {
+          const resumedLifecycle = await options.repositories.runs.updateLifecycleStatus({
+            runId: resolved.run.id,
+            outcomeId: approval.outcomeId,
+            runStatus: "running",
+            outcomeStatus: "running",
+            updatedAt
+          });
 
-        await emitRunUpdated(options, approval.outcomeId, resumedLifecycle.run);
-        await emitOutcomeUpdated(options, resumedLifecycle.outcome);
-        await emitApprovalResolved(options, approval.outcomeId, resolved.approval);
+          if (!resumedLifecycle) {
+            throw new Error("Failed to resume run or outcome lifecycle state.");
+          }
 
-        if (newlyReady.length > 0) {
+          await emitRunUpdated(options, approval.outcomeId, resumedLifecycle.run);
+          await emitOutcomeUpdated(options, resumedLifecycle.outcome);
+          await emitApprovalResolved(options, approval.outcomeId, resolved.approval);
           options.executionService.startRun(resolved.run.id);
+        } else {
+          await emitRunUpdated(options, approval.outcomeId, resolved.run);
+          await emitOutcomeUpdated(options, resolved.outcome);
+          await emitApprovalResolved(options, approval.outcomeId, resolved.approval);
         }
       } else {
         await emitRunUpdated(options, approval.outcomeId, resolved.run);
