@@ -97,6 +97,11 @@ export type ApprovalStore = {
   createPending(input: CreatePendingApprovalInput): Promise<StoredApproval>;
   getById(id: string): Promise<StoredApproval | null>;
   listByWorkspace(input: ListApprovalsInput): Promise<StoredApproval[]>;
+  cancel(input: {
+    approvalId: string;
+    resolvedAt: string;
+    resolutionNote: string | null;
+  }): Promise<StoredApproval | null>;
   resolve(
     input: ResolveApprovalInput
   ): Promise<
@@ -968,6 +973,24 @@ function createInMemoryRepositoriesState() {
             (input.status ? approval.status === input.status : true)
         )
         .sort(compareApprovals);
+    },
+    async cancel(input) {
+      const existing = approvalsById.get(input.approvalId);
+
+      if (!existing || existing.status !== "pending") {
+        return null;
+      }
+
+      const cancelled: StoredApproval = {
+        ...existing,
+        status: "cancelled",
+        resolution: "cancelled",
+        resolutionNote: input.resolutionNote,
+        resolvedAt: input.resolvedAt
+      };
+
+      approvalsById.set(cancelled.id, cancelled);
+      return cancelled;
     },
     async resolve(input) {
       const existing = approvalsById.get(input.approvalId);

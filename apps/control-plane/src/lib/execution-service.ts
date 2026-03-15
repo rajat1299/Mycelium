@@ -313,58 +313,79 @@ async function executeReadyStep(
 
     if (runningStep.approvalRequirement) {
       const blockedAt = options.now().toISOString();
-      const blockedStep = await options.repositories.runs.updateStepStatus({
-        stepId: runningStep.id,
-        status: "blocked",
-        updatedAt: blockedAt
-      });
+      let blockedStep: Awaited<
+        ReturnType<Repositories["runs"]["updateStepStatus"]>
+      > | null = null;
+      let approval: Awaited<
+        ReturnType<Repositories["approvals"]["createPending"]>
+      > | null = null;
 
-      if (!blockedStep) {
-        throw new Error(`Blocked step ${runningStep.id} disappeared during update.`);
+      try {
+        blockedStep = await options.repositories.runs.updateStepStatus({
+          stepId: runningStep.id,
+          status: "blocked",
+          updatedAt: blockedAt
+        });
+
+        if (!blockedStep) {
+          throw new Error(`Blocked step ${runningStep.id} disappeared during update.`);
+        }
+
+        approval = await options.repositories.approvals.createPending({
+          id: `approval_${randomUUID()}`,
+          workspaceId: input.workspaceId,
+          outcomeId: input.outcomeId,
+          runId: input.runId,
+          stepId: runningStep.id,
+          kind: runningStep.approvalRequirement.kind,
+          title: runningStep.approvalRequirement.title,
+          summary: runningStep.approvalRequirement.summary,
+          instruction: runningStep.approvalRequirement.instruction,
+          artifactIds: createdArtifacts.map((artifact) => artifact.id),
+          requestedAt: blockedAt
+        });
+
+        const updatedLifecycle = await options.repositories.runs.updateLifecycleStatus({
+          runId: input.runId,
+          outcomeId: input.outcomeId,
+          runStatus: "blocked",
+          outcomeStatus: "blocked_on_approval",
+          updatedAt: blockedAt
+        });
+
+        if (!updatedLifecycle) {
+          throw new Error("Failed to update run or outcome lifecycle state.");
+        }
+
+        await emitRunStepUpdated(options, input.outcomeId, blockedStep);
+        await emitRunUpdated(options, input.outcomeId, updatedLifecycle.run);
+        await emitOutcomeUpdated(options, updatedLifecycle.outcome);
+        await emitApprovalRequested(options, input.outcomeId, approval);
+        await emitRunLog(options, {
+          outcomeId: input.outcomeId,
+          runId: input.runId,
+          stepId: blockedStep.id,
+          stepTitle: blockedStep.title,
+          level: "info",
+          message: `Blocked ${blockedStep.title} awaiting approval`
+        });
+
+        return { status: "blocked" };
+      } catch (error) {
+        if (approval) {
+          const cancelledApproval = await options.repositories.approvals.cancel({
+            approvalId: approval.id,
+            resolvedAt: options.now().toISOString(),
+            resolutionNote: `Block transition failed: ${toErrorMessage(error)}`
+          });
+
+          if (cancelledApproval) {
+            await emitApprovalResolved(options, input.outcomeId, cancelledApproval);
+          }
+        }
+
+        throw error;
       }
-
-      await emitRunStepUpdated(options, input.outcomeId, blockedStep);
-
-      const approval = await options.repositories.approvals.createPending({
-        id: `approval_${randomUUID()}`,
-        workspaceId: input.workspaceId,
-        outcomeId: input.outcomeId,
-        runId: input.runId,
-        stepId: runningStep.id,
-        kind: runningStep.approvalRequirement.kind,
-        title: runningStep.approvalRequirement.title,
-        summary: runningStep.approvalRequirement.summary,
-        instruction: runningStep.approvalRequirement.instruction,
-        artifactIds: createdArtifacts.map((artifact) => artifact.id),
-        requestedAt: blockedAt
-      });
-
-      await emitApprovalRequested(options, input.outcomeId, approval);
-
-      const updatedLifecycle = await options.repositories.runs.updateLifecycleStatus({
-        runId: input.runId,
-        outcomeId: input.outcomeId,
-        runStatus: "blocked",
-        outcomeStatus: "blocked_on_approval",
-        updatedAt: blockedAt
-      });
-
-      if (!updatedLifecycle) {
-        throw new Error("Failed to update run or outcome lifecycle state.");
-      }
-
-      await emitRunUpdated(options, input.outcomeId, updatedLifecycle.run);
-      await emitOutcomeUpdated(options, updatedLifecycle.outcome);
-      await emitRunLog(options, {
-        outcomeId: input.outcomeId,
-        runId: input.runId,
-        stepId: blockedStep.id,
-        stepTitle: blockedStep.title,
-        level: "info",
-        message: `Blocked ${blockedStep.title} awaiting approval`
-      });
-
-      return { status: "blocked" };
     }
 
     const completedAt = options.now().toISOString();
@@ -680,6 +701,28 @@ async function emitApprovalRequested(
   options.eventBus.publish({
     outcomeId,
     type: "approval.requested",
+    data
+  });
+}
+
+async function emitApprovalResolved(
+  options: ExecuteRunOptions,
+  outcomeId: string,
+  approval: Awaited<ReturnType<Repositories["approvals"]["getById"]>> & {}
+) {
+  const data = ApprovalSchema.parse(approval);
+
+  await options.repositories.runs.appendEvent({
+    id: `event_${randomUUID()}`,
+    runId: data.runId,
+    eventType: "approval.resolved",
+    payload: data,
+    createdAt: data.resolvedAt ?? data.requestedAt
+  });
+
+  options.eventBus.publish({
+    outcomeId,
+    type: "approval.resolved",
     data
   });
 }

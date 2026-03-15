@@ -64,24 +64,26 @@ export function createApprovalService(
           status: step.status
         }))
       );
+      const targetRunStatus =
+        input.resolution === "approved"
+          ? runIsTerminal
+            ? "completed"
+            : "blocked"
+          : "failed";
+      const targetOutcomeStatus =
+        input.resolution === "approved"
+          ? runIsTerminal
+            ? "completed"
+            : "blocked_on_approval"
+          : "failed";
       const resolved = await options.repositories.approvals.resolve({
         approvalId: input.approvalId,
         resolution: input.resolution,
         resolutionNote: input.resolutionNote,
         resolvedAt: updatedAt,
         stepStatus: targetStepStatus,
-        runStatus:
-          input.resolution === "approved"
-            ? runIsTerminal
-              ? "completed"
-              : "running"
-            : "failed",
-        outcomeStatus:
-          input.resolution === "approved"
-            ? runIsTerminal
-              ? "completed"
-              : "running"
-            : "failed",
+        runStatus: targetRunStatus,
+        outcomeStatus: targetOutcomeStatus,
         updatedAt
       });
 
@@ -90,11 +92,8 @@ export function createApprovalService(
       }
 
       await emitRunStepUpdated(options, approval.outcomeId, resolved.step);
-      await emitRunUpdated(options, approval.outcomeId, resolved.run);
-      await emitOutcomeUpdated(options, resolved.outcome);
-      await emitApprovalResolved(options, approval.outcomeId, resolved.approval);
 
-      if (input.resolution === "approved" && resolved.run.status === "running") {
+      if (input.resolution === "approved" && !runIsTerminal) {
         const newlyReady = await options.repositories.runs.releaseReadyDependents({
           runId: resolved.run.id,
           completedStepId: resolved.step.id,
@@ -105,9 +104,29 @@ export function createApprovalService(
           await emitRunStepUpdated(options, approval.outcomeId, step);
         }
 
+        const resumedLifecycle = await options.repositories.runs.updateLifecycleStatus({
+          runId: resolved.run.id,
+          outcomeId: approval.outcomeId,
+          runStatus: "running",
+          outcomeStatus: "running",
+          updatedAt
+        });
+
+        if (!resumedLifecycle) {
+          throw new Error("Failed to resume run or outcome lifecycle state.");
+        }
+
+        await emitRunUpdated(options, approval.outcomeId, resumedLifecycle.run);
+        await emitOutcomeUpdated(options, resumedLifecycle.outcome);
+        await emitApprovalResolved(options, approval.outcomeId, resolved.approval);
+
         if (newlyReady.length > 0) {
           options.executionService.startRun(resolved.run.id);
         }
+      } else {
+        await emitRunUpdated(options, approval.outcomeId, resolved.run);
+        await emitOutcomeUpdated(options, resolved.outcome);
+        await emitApprovalResolved(options, approval.outcomeId, resolved.approval);
       }
 
       return {

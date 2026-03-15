@@ -256,6 +256,59 @@ describe("ApprovalRepository", () => {
     ).rejects.toThrow("Approval approval_123 is already resolved.");
   });
 
+  it("cancels a pending approval without mutating run, step, or outcome state", async () => {
+    const { db, state } = createRepositoryTestDatabase();
+    seedApprovalContext(state);
+    const repository = new ApprovalRepository(db as never);
+
+    await repository.createPending({
+      id: "approval_123",
+      workspaceId: "ws_123",
+      outcomeId: "outcome_123",
+      runId: "run_123",
+      stepId: "step_123",
+      kind: "output_review_required",
+      title: "Review final result",
+      summary: null,
+      instruction: "Verify the claims and format.",
+      artifactIds: ["artifact_result"],
+      requestedAt: "2026-03-14T00:10:00.000Z"
+    });
+
+    await expect(
+      repository.cancel({
+        approvalId: "approval_123",
+        resolvedAt: "2026-03-14T00:11:00.000Z",
+        resolutionNote: "Execution failed before the block transition completed."
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        id: "approval_123",
+        status: "cancelled",
+        resolution: "cancelled"
+      })
+    );
+
+    expect(state.runSteps.find((row) => row.id === "step_123")).toEqual(
+      expect.objectContaining({
+        id: "step_123",
+        status: "blocked"
+      })
+    );
+    expect(state.outcomeRuns.find((row) => row.id === "run_123")).toEqual(
+      expect.objectContaining({
+        id: "run_123",
+        status: "blocked"
+      })
+    );
+    expect(state.outcomes.find((row) => row.id === "outcome_123")).toEqual(
+      expect.objectContaining({
+        id: "outcome_123",
+        status: "blocked_on_approval"
+      })
+    );
+  });
+
   it("rolls back approval resolution when a paired lifecycle update fails", async () => {
     const { db, state } = createRepositoryTestDatabase({
       failOnUpdateTables: ["outcomes"]

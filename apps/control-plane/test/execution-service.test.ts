@@ -157,6 +157,56 @@ async function createNonReviewPlan(
   });
 }
 
+async function createReviewBlockedParentPlan(
+  repositories: Repositories,
+  outcomeId: string
+) {
+  const createdAt = "2026-03-12T00:00:00.000Z";
+
+  return repositories.plans.create({
+    id: `plan_${outcomeId}_review_parent`,
+    outcomeId,
+    status: "draft",
+    createdAt,
+    updatedAt: createdAt,
+    nodes: [
+      {
+        id: `plan_${outcomeId}_review_parent:analyze-outcome`,
+        kind: "root",
+        title: "Analyze outcome",
+        capability: "reasoning",
+        instruction: "Inspect the outcome prompt and capture execution notes.",
+        template: "analyze_outcome",
+        approvalRequirement: {
+          kind: "output_review_required",
+          title: "Review analysis",
+          summary: "Inspect the analysis artifact before the final step runs.",
+          instruction: "Approve to release the dependent synthesis step."
+        },
+        expectedArtifactPath: "artifacts/analyze-outcome.md",
+        expectedArtifactKind: "analysis"
+      },
+      {
+        id: `plan_${outcomeId}_review_parent:synthesize-result`,
+        kind: "synthesis",
+        title: "Synthesize result",
+        capability: "document",
+        instruction: "Combine the brief and operator summary into the final result.",
+        template: "synthesize_result",
+        expectedArtifactPath: "artifacts/final-result.md",
+        expectedArtifactKind: "result"
+      }
+    ],
+    edges: [
+      {
+        id: `plan_${outcomeId}_review_parent:edge-analyze-synthesize`,
+        from: `plan_${outcomeId}_review_parent:analyze-outcome`,
+        to: `plan_${outcomeId}_review_parent:synthesize-result`
+      }
+    ]
+  });
+}
+
 describe("execution service", () => {
   it("blocks the run after the review-required synthesis step, creates an approval, and records lineage edges", async () => {
     const startedSiblingNodeIds = new Set<string>();
@@ -541,6 +591,154 @@ describe("execution service", () => {
             })
           })
         ])
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("cancels the pending approval if the block lifecycle transition fails", async () => {
+    const repositories = createInMemoryRepositories();
+    const blockTransitionError = new Error("block lifecycle transition failed");
+    const harness = await createExecutionHarness({
+      repositories: {
+        ...repositories,
+        runs: {
+        ...repositories.runs,
+          async updateLifecycleStatus(
+            input: Parameters<typeof repositories.runs.updateLifecycleStatus>[0]
+          ) {
+            if (
+              input.runStatus === "blocked" &&
+              input.outcomeStatus === "blocked_on_approval"
+            ) {
+              throw blockTransitionError;
+            }
+
+            return repositories.runs.updateLifecycleStatus(input);
+          }
+        }
+      } as never
+    });
+
+    try {
+      const { app, services } = harness;
+      const { outcome, plan } = await createOutcomeAndPlan(app);
+      const createRun = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome.id}/runs`,
+        payload: {
+          planId: plan.id
+        }
+      });
+      const createdRun = RunDetailSchema.parse(createRun.json());
+
+      await services.executionService.waitForRun(createdRun.id);
+
+      await expect(services.repositories.runs.getById(createdRun.id)).resolves.toEqual(
+        expect.objectContaining({
+          id: createdRun.id,
+          status: "failed"
+        })
+      );
+      await expect(
+        services.repositories.outcomes.getById(outcome.id)
+      ).resolves.toEqual(
+        expect.objectContaining({
+          id: outcome.id,
+          status: "failed"
+        })
+      );
+      await expect(
+        services.repositories.approvals.listByWorkspace({
+          workspaceId: outcome.workspaceId,
+          status: "pending"
+        })
+      ).resolves.toEqual([]);
+      await expect(
+        services.repositories.approvals.listByWorkspace({
+          workspaceId: outcome.workspaceId
+        })
+      ).resolves.toEqual([
+        expect.objectContaining({
+          status: "cancelled",
+          resolution: "cancelled"
+        })
+      ]);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("keeps the run blocked if approval resolution cannot release dependent steps", async () => {
+    const repositories = createInMemoryRepositories();
+    const releaseError = new Error("release ready dependents failed");
+    const harness = await createExecutionHarness({
+      repositories: {
+        ...repositories,
+        runs: {
+        ...repositories.runs,
+          async releaseReadyDependents(
+            input: Parameters<typeof repositories.runs.releaseReadyDependents>[0]
+          ) {
+            throw releaseError;
+          }
+        }
+      } as never
+    });
+
+    try {
+      const { app, services } = harness;
+      const createOutcome = await app.inject({
+        method: "POST",
+        url: "/api/outcomes",
+        payload: {
+          workspaceId: "ws_123",
+          userId: "user_123",
+          prompt: "Pause after analysis before continuing.",
+          source: "web"
+        }
+      });
+      const outcome = createOutcome.json();
+      const plan = await createReviewBlockedParentPlan(services.repositories, outcome.id);
+
+      const createRun = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome.id}/runs`,
+        payload: {
+          planId: plan.id
+        }
+      });
+      const createdRun = RunDetailSchema.parse(createRun.json());
+
+      await services.executionService.waitForRun(createdRun.id);
+
+      const [approval] = await services.repositories.approvals.listByWorkspace({
+        workspaceId: outcome.workspaceId,
+        status: "pending"
+      });
+
+      await expect(
+        services.approvalService.resolveApproval({
+          approvalId: approval.id,
+          resolution: "approved",
+          resolutionNote: "Proceed."
+        })
+      ).rejects.toThrow(releaseError.message);
+
+      await expect(services.repositories.runs.getById(createdRun.id)).resolves.toEqual(
+        expect.objectContaining({
+          id: createdRun.id,
+          status: "blocked"
+        })
+      );
+      await expect(
+        services.repositories.outcomes.getById(outcome.id)
+      ).resolves.toEqual(
+        expect.objectContaining({
+          id: outcome.id,
+          status: "blocked_on_approval"
+        })
       );
     } finally {
       await harness.cleanup();

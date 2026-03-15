@@ -55,6 +55,12 @@ export type ResolveApprovalInput = {
   updatedAt: string;
 };
 
+export type CancelApprovalInput = {
+  approvalId: string;
+  resolvedAt: string;
+  resolutionNote: string | null;
+};
+
 function mapApprovalRow(row: ApprovalRow): StoredApproval {
   return {
     id: row.id,
@@ -341,5 +347,20 @@ export class ApprovalRepository {
         }
       };
     });
+  }
+
+  async cancel(input: CancelApprovalInput): Promise<StoredApproval | null> {
+    const [updated] = await this.db
+      .update(approvals)
+      .set({
+        status: "cancelled",
+        resolution: "cancelled",
+        resolutionNote: input.resolutionNote,
+        resolvedAt: new Date(input.resolvedAt)
+      })
+      .where(and(eq(approvals.id, input.approvalId), eq(approvals.status, "pending")))
+      .returning();
+
+    return updated ? mapApprovalRow(updated) : null;
   }
 }
