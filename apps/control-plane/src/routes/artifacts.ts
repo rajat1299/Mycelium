@@ -1,5 +1,8 @@
 import type { FastifyInstance } from "fastify";
-import { ArtifactListResponseSchema } from "@computer-oss/protocol";
+import {
+  ArtifactLineageListResponseSchema,
+  ArtifactListResponseSchema
+} from "@computer-oss/protocol";
 import type { Repositories } from "../lib/repositories";
 
 type ArtifactRouteOptions = {
@@ -34,6 +37,28 @@ export function registerArtifactRoutes(
     return reply.code(200).send(
       ArtifactListResponseSchema.parse({
         artifacts
+      })
+    );
+  });
+
+  app.get("/api/runs/:runId/artifact-lineage", async (request, reply) => {
+    const params = request.params as { runId?: string };
+
+    if (!params.runId) {
+      return reply.code(400).send(badRequest("Run id is required."));
+    }
+
+    const run = await options.repositories.runs.getById(params.runId);
+
+    if (!run) {
+      return reply.code(404).send(badRequest("Run not found."));
+    }
+
+    const edges = await options.repositories.artifactLineage.listByRun(params.runId);
+
+    return reply.code(200).send(
+      ArtifactLineageListResponseSchema.parse({
+        edges
       })
     );
   });

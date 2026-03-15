@@ -6,6 +6,7 @@ import {
   createInMemoryServiceContainer,
   type ServiceContainer
 } from "./lib/service-container";
+import { registerApprovalRoutes } from "./routes/approvals";
 import { registerAuthProfileRoutes } from "./routes/auth-profiles";
 import { registerArtifactRoutes } from "./routes/artifacts";
 import { registerHealthRoutes } from "./routes/health";
@@ -37,11 +38,13 @@ export function buildApp(options: BuildAppOptions = {}) {
   const eventBus = options.eventBus ?? services.eventBus;
   const executionService =
     options.executionService ?? services.executionService;
+  const approvalService = services.approvalService;
   const encryption = services.encryption;
   const routerService = services.routerService;
 
   registerHealthRoutes(app);
   registerProviderRoutes(app);
+  registerApprovalRoutes(app, { repositories, approvalService });
   registerWorkspaceCredentialRoutes(app, { repositories, encryption });
   registerAuthProfileRoutes(app, { repositories, encryption });
   registerRouterRoutes(app, { routerService });
