@@ -220,4 +220,94 @@ describe("subscribeToOutcomeEvents", () => {
 
     unsubscribe();
   });
+
+  it("forwards remote worker lifecycle SSE events to subscribers", () => {
+    vi.stubGlobal("EventSource", FakeEventSource as unknown as typeof EventSource);
+
+    const handler = vi.fn();
+    const unsubscribe = subscribeToOutcomeEvents("outcome_worker", handler);
+
+    FakeEventSource.instances[0]?.emit("worker.connected", {
+      id: "worker_1",
+      sessionId: "worker_session_1",
+      workspaceId: "ws_default",
+      label: "Primary remote worker",
+      daemonVersion: "1.0.0",
+      availability: "available",
+      capabilities: {
+        capabilityFamilies: ["coding", "terminal", "document"],
+        supportsArtifacts: true,
+        supportsCheckpoints: true,
+        supportsLogs: true
+      },
+      health: {
+        status: "healthy",
+        lastHeartbeatAt: "2026-03-16T16:00:00.000Z"
+      },
+      connectedAt: "2026-03-16T15:59:00.000Z",
+      disconnectedAt: null,
+      updatedAt: "2026-03-16T16:00:00.000Z"
+    });
+
+    FakeEventSource.instances[0]?.emit("remote.step.updated", {
+      runId: "run_123",
+      stepId: "step_123",
+      status: "running",
+      assignment: {
+        executionTarget: "remote_worker",
+        workerId: "worker_1",
+        workerSessionId: "worker_session_1",
+        attemptId: "attempt_1",
+        assignedAt: "2026-03-16T16:00:00.000Z"
+      },
+      message: "Worker accepted the step.",
+      occurredAt: "2026-03-16T16:00:05.000Z"
+    });
+
+    FakeEventSource.instances[0]?.emit("worker.disconnected", {
+      id: "worker_1",
+      sessionId: "worker_session_1",
+      workspaceId: "ws_default",
+      label: "Primary remote worker",
+      daemonVersion: "1.0.0",
+      availability: "offline",
+      capabilities: {
+        capabilityFamilies: ["coding", "terminal", "document"],
+        supportsArtifacts: true,
+        supportsCheckpoints: true,
+        supportsLogs: true
+      },
+      health: {
+        status: "offline",
+        lastHeartbeatAt: "2026-03-16T16:00:10.000Z"
+      },
+      connectedAt: "2026-03-16T15:59:00.000Z",
+      disconnectedAt: "2026-03-16T16:00:10.000Z",
+      updatedAt: "2026-03-16T16:00:10.000Z"
+    });
+
+    expect(handler).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        outcomeId: "outcome_worker",
+        type: "worker.connected"
+      })
+    );
+    expect(handler).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        outcomeId: "outcome_worker",
+        type: "remote.step.updated"
+      })
+    );
+    expect(handler).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        outcomeId: "outcome_worker",
+        type: "worker.disconnected"
+      })
+    );
+
+    unsubscribe();
+  });
 });

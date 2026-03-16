@@ -5,6 +5,8 @@ import {
   MessageCreatedDataSchema,
   OutcomeSchema,
   PlanSchema,
+  RemoteStepLifecycleEventDataSchema,
+  RemoteWorkerSchema,
   ResumeRunResponseSchema,
   RunInterruptedDataSchema,
   RunLogDataSchema,
@@ -73,6 +75,15 @@ export function subscribeToOutcomeEvents(
     registerListener("run.step.updated", (payload) => RunStepSchema.parse(payload));
     registerListener("approval.requested", (payload) => ApprovalSchema.parse(payload));
     registerListener("approval.resolved", (payload) => ApprovalSchema.parse(payload));
+    registerListener("worker.connected", (payload) =>
+      RemoteWorkerSchema.parse(payload)
+    );
+    registerListener("worker.disconnected", (payload) =>
+      RemoteWorkerSchema.parse(payload)
+    );
+    registerListener("remote.step.updated", (payload) =>
+      RemoteStepLifecycleEventDataSchema.parse(payload)
+    );
     registerListener("run.interrupted", (payload) =>
       RunInterruptedDataSchema.parse(payload)
     );

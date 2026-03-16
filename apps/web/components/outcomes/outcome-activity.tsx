@@ -128,6 +128,35 @@ function createEntryFromEvent(event: OutcomeStreamEvent): ActivityEntry {
             : "warning"
         };
       }
+    case "worker.connected":
+      return {
+        id: `${event.data.id}:connected:${event.data.updatedAt}`,
+        title: "Worker connected",
+        body: `${event.data.label} is now ${event.data.availability}.`,
+        timestamp: event.data.updatedAt,
+        tone: "success"
+      };
+    case "worker.disconnected":
+      return {
+        id: `${event.data.id}:disconnected:${event.data.updatedAt}`,
+        title: "Worker disconnected",
+        body: `${event.data.label} went offline.`,
+        timestamp: event.data.updatedAt,
+        tone: "warning"
+      };
+    case "remote.step.updated":
+      return {
+        id: `${event.data.stepId}:${event.data.status}:${event.data.occurredAt}`,
+        title: `Remote step ${event.data.status}`,
+        body: `Step ${event.data.stepId} is ${event.data.status} on worker ${event.data.assignment.workerId}.${event.data.message ? ` ${event.data.message}` : ""}`,
+        timestamp: event.data.occurredAt,
+        tone:
+          event.data.status === "completed"
+            ? "success"
+            : event.data.status === "failed" || event.data.status === "interrupted"
+              ? "warning"
+              : "accent"
+      };
     case "run.interrupted":
       return {
         id: `${event.data.run.id}:interrupted:${event.data.run.updatedAt}`,
@@ -145,6 +174,9 @@ function createEntryFromEvent(event: OutcomeStreamEvent): ActivityEntry {
         tone: "success"
       };
   }
+
+  const exhaustive: never = event;
+  throw new Error(`Unhandled outcome activity event: ${exhaustive}`);
 }
 
 export function OutcomeActivity({ outcome }: OutcomeActivityProps) {

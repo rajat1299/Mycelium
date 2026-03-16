@@ -199,4 +199,113 @@ describe("OutcomeActivity", () => {
       screen.getByText("Checkpoint step_completed (#3) was persisted for the run.")
     ).toBeInTheDocument();
   });
+
+  it("renders remote worker lifecycle events in the live activity feed", () => {
+    render(
+      <OutcomeActivity
+        outcome={{
+          id: "outcome_123",
+          workspaceId: "ws_default",
+          userId: "user_123",
+          prompt: "Draft a launch brief",
+          source: "web",
+          status: "running",
+          createdAt: "2026-03-14T11:55:00.000Z",
+          updatedAt: "2026-03-14T11:55:00.000Z"
+        }}
+      />
+    );
+
+    act(() => {
+      for (const handler of eventStream.handlers) {
+        handler({
+          outcomeId: "outcome_123",
+          type: "worker.connected",
+          data: {
+            id: "worker_1",
+            sessionId: "worker_session_1",
+            workspaceId: "ws_default",
+            label: "Primary remote worker",
+            daemonVersion: "1.0.0",
+            availability: "available",
+            capabilities: {
+              capabilityFamilies: ["coding", "terminal", "document"],
+              supportsArtifacts: true,
+              supportsCheckpoints: true,
+              supportsLogs: true
+            },
+            health: {
+              status: "healthy",
+              lastHeartbeatAt: "2026-03-16T16:00:00.000Z"
+            },
+            connectedAt: "2026-03-16T15:59:00.000Z",
+            disconnectedAt: null,
+            updatedAt: "2026-03-16T16:00:00.000Z"
+          }
+        });
+      }
+
+      for (const handler of eventStream.handlers) {
+        handler({
+          outcomeId: "outcome_123",
+          type: "remote.step.updated",
+          data: {
+            runId: "run_123",
+            stepId: "step_123",
+            status: "running",
+            assignment: {
+              executionTarget: "remote_worker",
+              workerId: "worker_1",
+              workerSessionId: "worker_session_1",
+              attemptId: "attempt_1",
+              assignedAt: "2026-03-16T16:00:00.000Z"
+            },
+            message: "Worker accepted the step.",
+            occurredAt: "2026-03-16T16:00:05.000Z"
+          }
+        });
+      }
+
+      for (const handler of eventStream.handlers) {
+        handler({
+          outcomeId: "outcome_123",
+          type: "worker.disconnected",
+          data: {
+            id: "worker_1",
+            sessionId: "worker_session_1",
+            workspaceId: "ws_default",
+            label: "Primary remote worker",
+            daemonVersion: "1.0.0",
+            availability: "offline",
+            capabilities: {
+              capabilityFamilies: ["coding", "terminal", "document"],
+              supportsArtifacts: true,
+              supportsCheckpoints: true,
+              supportsLogs: true
+            },
+            health: {
+              status: "offline",
+              lastHeartbeatAt: "2026-03-16T16:00:10.000Z"
+            },
+            connectedAt: "2026-03-16T15:59:00.000Z",
+            disconnectedAt: "2026-03-16T16:00:10.000Z",
+            updatedAt: "2026-03-16T16:00:10.000Z"
+          }
+        });
+      }
+    });
+
+    expect(screen.getByText("Worker connected")).toBeInTheDocument();
+    expect(
+      screen.getByText("Primary remote worker is now available.")
+    ).toBeInTheDocument();
+    expect(screen.getByText("Remote step running")).toBeInTheDocument();
+    expect(
+      screen.getByText("Step step_123 is running on worker worker_1. Worker accepted the step.")
+    ).toBeInTheDocument();
+    expect(screen.getByText("Worker disconnected")).toBeInTheDocument();
+    expect(
+      screen.getByText("Primary remote worker went offline.")
+    ).toBeInTheDocument();
+  });
 });
