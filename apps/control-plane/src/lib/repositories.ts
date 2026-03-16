@@ -1,13 +1,16 @@
 import type {
+  AppendAuditEventInput,
   CreateArtifactLineageEdgeInput,
   AcquireWorkspaceLeaseInput,
   AppendRunEventInput,
   CreatePendingApprovalInput,
   CreateAuthProfileInput,
   CreateArtifactInput,
+  CreateCheckpointInput,
   CreatePlanInput,
   CreateRunFromPlanInput,
   ListApprovalsInput,
+  RestoreFromCheckpointInput,
   CreateWorkspaceCredentialInput,
   ReleaseReadyDependentsInput,
   ReleaseWorkspaceLeaseInput,
@@ -15,6 +18,8 @@ import type {
   StoredApproval,
   StoredArtifact,
   StoredArtifactLineageEdge,
+  StoredAuditEvent,
+  StoredCheckpoint,
   StoredPlan,
   StoredPlanEdge,
   StoredPlanNode,
@@ -72,6 +77,7 @@ export type RunStore = {
   createFromPlan(input: CreateRunFromPlanInput): Promise<StoredRun>;
   getById(id: string): Promise<StoredRun | null>;
   getLatestByOutcome(outcomeId: string): Promise<StoredRun | null>;
+  listByStatuses(statuses: StoredRun["status"][]): Promise<StoredRun[]>;
   listSteps(runId: string): Promise<StoredRunStep[]>;
   listReadySteps(runId: string): Promise<StoredRunStep[]>;
   appendEvent(input: AppendRunEventInput): Promise<void>;
@@ -85,6 +91,9 @@ export type RunStore = {
   releaseReadyDependents(
     input: ReleaseReadyDependentsInput
   ): Promise<StoredRunStep[]>;
+  restoreFromCheckpoint(
+    input: RestoreFromCheckpointInput
+  ): Promise<{ run: StoredRun; steps: StoredRunStep[] } | null>;
 };
 
 export type ArtifactStore = {
@@ -123,6 +132,18 @@ export type ArtifactLineageStore = {
   listByArtifact(artifactId: string): Promise<StoredArtifactLineageEdge[]>;
 };
 
+export type CheckpointRepositoryStore = {
+  create(input: CreateCheckpointInput): Promise<StoredCheckpoint>;
+  getById(id: string): Promise<StoredCheckpoint | null>;
+  listByRun(runId: string): Promise<StoredCheckpoint[]>;
+  getLatestResumableByRun(runId: string): Promise<StoredCheckpoint | null>;
+};
+
+export type AuditEventStore = {
+  append(input: AppendAuditEventInput): Promise<StoredAuditEvent>;
+  listByRun(runId: string): Promise<StoredAuditEvent[]>;
+};
+
 export type WorkspaceLeaseStore = {
   acquire(input: AcquireWorkspaceLeaseInput): Promise<StoredWorkspaceLease>;
   getActiveByRun(runId: string): Promise<StoredWorkspaceLease | null>;
@@ -158,6 +179,8 @@ export type Repositories = {
   plans: PlanStore;
   runs: RunStore;
   artifacts: ArtifactStore;
+  checkpoints: CheckpointRepositoryStore;
+  auditEvents: AuditEventStore;
   approvals: ApprovalStore;
   artifactLineage: ArtifactLineageStore;
   workspaceLeases: WorkspaceLeaseStore;
@@ -169,6 +192,8 @@ export type Repositories = {
 type InMemoryState = ReturnType<typeof createInMemoryRepositoriesState>;
 type InMemoryDataState = {
   runStepsByRunId: Map<string, StoredRunStep[]>;
+  checkpointsById: Map<string, StoredCheckpoint>;
+  auditEventsById: Map<string, StoredAuditEvent>;
   approvalsById: Map<string, StoredApproval>;
   artifactLineageEdgesById: Map<string, StoredArtifactLineageEdge>;
   workspaceCredentialsById: Map<string, CreateWorkspaceCredentialInput>;
@@ -195,6 +220,40 @@ function compareRuns(left: StoredRun, right: StoredRun) {
 }
 
 function compareArtifacts(left: StoredArtifact, right: StoredArtifact) {
+  const createdDelta =
+    new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+
+  if (createdDelta !== 0) {
+    return createdDelta;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
+function compareCheckpointsNewestFirst(left: StoredCheckpoint, right: StoredCheckpoint) {
+  const sequenceDelta = right.sequence - left.sequence;
+
+  if (sequenceDelta !== 0) {
+    return sequenceDelta;
+  }
+
+  const createdDelta =
+    new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+
+  if (createdDelta !== 0) {
+    return createdDelta;
+  }
+
+  return right.id.localeCompare(left.id);
+}
+
+function compareAuditEvents(left: StoredAuditEvent, right: StoredAuditEvent) {
+  const sequenceDelta = left.sequence - right.sequence;
+
+  if (sequenceDelta !== 0) {
+    return sequenceDelta;
+  }
+
   const createdDelta =
     new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
 
@@ -347,6 +406,8 @@ function createInMemoryRepositoriesState() {
   const runsById = new Map<string, StoredRun>();
   const runStepsByRunId = new Map<string, StoredRunStep[]>();
   const artifacts = new Map<string, StoredArtifact>();
+  const checkpointsById = new Map<string, StoredCheckpoint>();
+  const auditEventsById = new Map<string, StoredAuditEvent>();
   const approvalsById = new Map<string, StoredApproval>();
   const artifactLineageEdgesById = new Map<string, StoredArtifactLineageEdge>();
   const workspaceLeasesByRunId = new Map<string, StoredWorkspaceLease>();
@@ -363,6 +424,8 @@ function createInMemoryRepositoriesState() {
     runsById,
     runStepsByRunId,
     artifacts,
+    checkpointsById,
+    auditEventsById,
     approvalsById,
     artifactLineageEdgesById,
     workspaceLeasesByRunId,
@@ -504,6 +567,8 @@ function createInMemoryRepositoriesState() {
         outcomeId: plan.outcomeId,
         planId: plan.id,
         status: "queued",
+        latestCheckpointId: null,
+        resumable: false,
         createdAt: input.createdAt,
         updatedAt: input.updatedAt
       };
@@ -552,6 +617,13 @@ function createInMemoryRepositoriesState() {
           .sort(compareRuns)
           .at(-1) ?? null
       );
+    },
+    async listByStatuses(statuses) {
+      const allowed = new Set(statuses);
+
+      return Array.from(runsById.values())
+        .filter((run) => allowed.has(run.status))
+        .sort(compareRuns);
     },
     async listSteps(runId) {
       return [...(runStepsByRunId.get(runId) ?? [])].sort(
@@ -767,6 +839,94 @@ function createInMemoryRepositoriesState() {
       }
 
       return releasedSteps.sort((left, right) => left.position - right.position);
+    },
+    async restoreFromCheckpoint(input) {
+      const run = runsById.get(input.runId);
+
+      if (!run) {
+        return null;
+      }
+
+      const checkpoint = checkpointsById.get(input.checkpointId);
+
+      if (!checkpoint) {
+        throw new Error(`Checkpoint ${input.checkpointId} does not exist.`);
+      }
+
+      if (checkpoint.runId !== input.runId) {
+        throw new Error(
+          `Checkpoint ${input.checkpointId} belongs to ${checkpoint.runId}, not ${input.runId}.`
+        );
+      }
+
+      const payload = input.payload as {
+        run: { id: string; outcomeId: string; workspaceId: string };
+        steps: Array<{ stepId: string; status: StoredRunStep["status"] }>;
+      };
+      const outcome = outcomes.get(run.outcomeId);
+
+      if (!outcome) {
+        throw new Error(`Outcome ${run.outcomeId} does not exist.`);
+      }
+
+      if (payload.run.id !== input.runId) {
+        throw new Error(
+          `Checkpoint payload belongs to ${payload.run.id}, not ${input.runId}.`
+        );
+      }
+
+      if (payload.run.outcomeId !== run.outcomeId) {
+        throw new Error(
+          `Checkpoint payload outcome ${payload.run.outcomeId} does not match ${run.outcomeId}.`
+        );
+      }
+
+      if (payload.run.workspaceId !== outcome.workspaceId) {
+        throw new Error(
+          `Checkpoint payload workspace ${payload.run.workspaceId} does not match ${outcome.workspaceId}.`
+        );
+      }
+
+      const existingSteps = [...(runStepsByRunId.get(input.runId) ?? [])];
+      const payloadStepIds = new Set(payload.steps.map((step) => step.stepId));
+
+      if (existingSteps.some((step) => !payloadStepIds.has(step.id))) {
+        throw new Error(
+          `Checkpoint payload for run ${input.runId} does not cover every persisted step.`
+        );
+      }
+
+      const restoredSteps = existingSteps.map((step) => {
+        const payloadStep = payload.steps.find(
+          (candidate) => candidate.stepId === step.id
+        );
+
+        if (!payloadStep) {
+          throw new Error(
+            `Checkpoint payload step ${step.id} does not belong to run ${input.runId}.`
+          );
+        }
+
+        return {
+          ...step,
+          status: payloadStep.status,
+          updatedAt: input.updatedAt
+        };
+      });
+      const restoredRun: StoredRun = {
+        ...run,
+        latestCheckpointId: input.checkpointId,
+        resumable: checkpoint.resumable,
+        updatedAt: input.updatedAt
+      };
+
+      runStepsByRunId.set(input.runId, restoredSteps);
+      runsById.set(input.runId, restoredRun);
+
+      return {
+        run: restoredRun,
+        steps: restoredSteps.sort((left, right) => left.position - right.position)
+      };
     }
   };
 
@@ -826,6 +986,152 @@ function createInMemoryRepositoriesState() {
       return Array.from(artifacts.values())
         .filter((artifact) => artifact.outcomeId === outcomeId)
         .sort(compareArtifacts);
+    }
+  };
+
+  const checkpointsStore: CheckpointRepositoryStore = {
+    async create(input) {
+      const run = runsById.get(input.runId);
+
+      if (!run) {
+        throw new Error(`Run ${input.runId} does not exist.`);
+      }
+
+      if (run.outcomeId !== input.outcomeId) {
+        throw new Error(
+          `Run ${input.runId} belongs to ${run.outcomeId}, not ${input.outcomeId}.`
+        );
+      }
+
+      const outcome = outcomes.get(input.outcomeId);
+
+      if (!outcome) {
+        throw new Error(`Outcome ${input.outcomeId} does not exist.`);
+      }
+
+      if (outcome.workspaceId !== input.workspaceId) {
+        throw new Error(
+          `Outcome ${input.outcomeId} belongs to ${outcome.workspaceId}, not ${input.workspaceId}.`
+        );
+      }
+
+      if (input.stepId) {
+        const located = getStoredRunStep(state, input.stepId);
+
+        if (!located) {
+          throw new Error(`Step ${input.stepId} does not exist.`);
+        }
+
+        if (located.runId !== input.runId) {
+          throw new Error(
+            `Step ${input.stepId} belongs to ${located.runId}, not ${input.runId}.`
+          );
+        }
+      }
+
+      const latestRecordedCheckpoint = Array.from(checkpointsById.values())
+        .filter((checkpoint) => checkpoint.runId === input.runId)
+        .sort(compareCheckpointsNewestFirst)
+        .at(0);
+      const created: StoredCheckpoint = {
+        ...input
+      };
+
+      checkpointsById.set(created.id, created);
+
+      if (
+        !latestRecordedCheckpoint ||
+        created.sequence > latestRecordedCheckpoint.sequence
+      ) {
+        runsById.set(input.runId, {
+          ...run,
+          latestCheckpointId: created.id,
+          resumable: created.resumable,
+          updatedAt: input.createdAt
+        });
+      }
+
+      return created;
+    },
+    async getById(id) {
+      return checkpointsById.get(id) ?? null;
+    },
+    async listByRun(runId) {
+      return Array.from(checkpointsById.values())
+        .filter((checkpoint) => checkpoint.runId === runId)
+        .sort(compareCheckpointsNewestFirst);
+    },
+    async getLatestResumableByRun(runId) {
+      return (
+        Array.from(checkpointsById.values())
+          .filter((checkpoint) => checkpoint.runId === runId && checkpoint.resumable)
+          .sort(compareCheckpointsNewestFirst)
+          .at(0) ?? null
+      );
+    }
+  };
+
+  const auditEventsStore: AuditEventStore = {
+    async append(input) {
+      const run = runsById.get(input.runId);
+
+      if (!run) {
+        throw new Error(`Run ${input.runId} does not exist.`);
+      }
+
+      if (run.outcomeId !== input.outcomeId) {
+        throw new Error(
+          `Run ${input.runId} belongs to ${run.outcomeId}, not ${input.outcomeId}.`
+        );
+      }
+
+      const outcome = outcomes.get(input.outcomeId);
+
+      if (!outcome) {
+        throw new Error(`Outcome ${input.outcomeId} does not exist.`);
+      }
+
+      if (outcome.workspaceId !== input.workspaceId) {
+        throw new Error(
+          `Outcome ${input.outcomeId} belongs to ${outcome.workspaceId}, not ${input.workspaceId}.`
+        );
+      }
+
+      if (input.stepId) {
+        const located = getStoredRunStep(state, input.stepId);
+
+        if (!located) {
+          throw new Error(`Step ${input.stepId} does not exist.`);
+        }
+
+        if (located.runId !== input.runId) {
+          throw new Error(
+            `Step ${input.stepId} belongs to ${located.runId}, not ${input.runId}.`
+          );
+        }
+      }
+
+      if (input.checkpointId) {
+        const checkpoint = checkpointsById.get(input.checkpointId);
+
+        if (!checkpoint) {
+          throw new Error(`Checkpoint ${input.checkpointId} does not exist.`);
+        }
+
+        if (checkpoint.runId !== input.runId) {
+          throw new Error(
+            `Checkpoint ${input.checkpointId} belongs to ${checkpoint.runId}, not ${input.runId}.`
+          );
+        }
+      }
+
+      auditEventsById.set(input.id, input);
+      return input;
+    },
+    async listByRun(runId) {
+      return Array.from(auditEventsById.values())
+        .filter((event) => event.runId === runId)
+        .sort(compareAuditEvents);
     }
   };
 
@@ -1362,6 +1668,8 @@ function createInMemoryRepositoriesState() {
     plansStore,
     runsStore,
     artifactsStore,
+    checkpointsStore,
+    auditEventsStore,
     approvalsStore,
     artifactLineageStore,
     workspaceLeasesStore,
@@ -1379,6 +1687,8 @@ export function createInMemoryRepositories(): Repositories {
     plans: state.plansStore,
     runs: state.runsStore,
     artifacts: state.artifactsStore,
+    checkpoints: state.checkpointsStore,
+    auditEvents: state.auditEventsStore,
     approvals: state.approvalsStore,
     artifactLineage: state.artifactLineageStore,
     workspaceLeases: state.workspaceLeasesStore,
@@ -1393,9 +1703,11 @@ export async function createDatabaseRepositories(
 ): Promise<Repositories> {
   const {
     ApprovalRepository,
+    AuditEventRepository,
     AuthProfileRepository,
     ArtifactRepository,
     ArtifactLineageRepository,
+    CheckpointRepository,
     OutcomeRepository,
     PlanRepository,
     RouterPolicyRepository,
@@ -1411,6 +1723,8 @@ export async function createDatabaseRepositories(
     plans: new PlanRepository(db),
     runs: new RunRepository(db),
     artifacts: new ArtifactRepository(db),
+    checkpoints: new CheckpointRepository(db),
+    auditEvents: new AuditEventRepository(db),
     approvals: new ApprovalRepository(db),
     artifactLineage: new ArtifactLineageRepository(db),
     workspaceLeases: new WorkspaceLeaseRepository(db),

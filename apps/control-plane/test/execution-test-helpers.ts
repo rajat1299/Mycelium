@@ -3,10 +3,12 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { buildApp } from "../src/app";
 import { createApprovalService } from "../src/lib/approval-service";
+import { createCheckpointService } from "../src/lib/checkpoint-service";
 import { createEncryptionService } from "../src/lib/encryption";
 import { createEventBus } from "../src/lib/event-bus";
 import { createExecutionService } from "../src/lib/execution-service";
 import { createRouterService } from "../src/lib/router-service";
+import { LocalFilesystemCheckpointStore } from "@computer-oss/checkpoints";
 import {
   createInMemoryRepositories,
   type Repositories
@@ -126,24 +128,35 @@ export async function createExecutionHarness(
         return;
       }
     };
+  const checkpointService = createCheckpointService({
+    repositories,
+    eventBus,
+    checkpointStore: new LocalFilesystemCheckpointStore({
+      rootDir: resolve(workspaceRootPath, ".checkpoints")
+    })
+  });
+  const executionService = createExecutionService({
+    repositories,
+    eventBus,
+    checkpointService,
+    sandboxProvider: fakeSandbox.provider as never,
+    workspaceManager: workspaceManager as never
+  });
+  const approvalService = createApprovalService({
+    repositories,
+    eventBus,
+    checkpointService,
+    executionService
+  });
   const services: ServiceContainer = {
     repositories,
     eventBus,
     encryption: createEncryptionService(TEST_ENCRYPTION_KEY),
     routerService: createRouterService({ repositories }),
-    executionService: createExecutionService({
-      repositories,
-      eventBus,
-      sandboxProvider: fakeSandbox.provider as never,
-      workspaceManager: workspaceManager as never
-    }),
-    approvalService: undefined as never
+    checkpointService,
+    executionService,
+    approvalService
   };
-  services.approvalService = createApprovalService({
-    repositories,
-    eventBus,
-    executionService: services.executionService
-  });
   const events: Array<{ outcomeId: string; type: string; data: unknown }> = [];
   const unsubscribe = eventBus.subscribeAll((event) => {
     events.push(event);

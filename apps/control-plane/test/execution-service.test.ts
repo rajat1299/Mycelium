@@ -732,6 +732,332 @@ describe("execution service", () => {
     }
   });
 
+  it("captures checkpoints only at durable execution boundaries", async () => {
+    const harness = await createExecutionHarness();
+
+    try {
+      const { app, services } = harness;
+      const { outcome, plan } = await createOutcomeAndPlan(app);
+      const createRun = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome.id}/runs`,
+        payload: {
+          planId: plan.id
+        }
+      });
+      const createdRun = RunDetailSchema.parse(createRun.json());
+
+      await services.executionService.waitForRun(createdRun.id);
+
+      const blockedCheckpoints = await services.repositories.checkpoints.listByRun(
+        createdRun.id
+      );
+
+      expect(blockedCheckpoints).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: "step_blocked_on_approval",
+            resumable: false
+          }),
+          expect.objectContaining({
+            kind: "run_started",
+            resumable: true
+          })
+        ])
+      );
+      expect(
+        blockedCheckpoints.every(
+          (checkpoint) =>
+            checkpoint.kind === "step_completed" ||
+            checkpoint.kind === "step_blocked_on_approval" ||
+            checkpoint.kind === "run_started"
+        )
+      ).toBe(true);
+
+      const [approval] = await services.repositories.approvals.listByWorkspace({
+        workspaceId: outcome.workspaceId,
+        status: "pending"
+      });
+      await services.approvalService.resolveApproval({
+        approvalId: approval.id,
+        resolution: "approved",
+        resolutionNote: "Resume."
+      });
+      await services.executionService.waitForRun(createdRun.id);
+
+      await expect(
+        services.repositories.checkpoints.listByRun(createdRun.id)
+      ).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: "approval_resolved"
+          }),
+          expect.objectContaining({
+            kind: "run_completed",
+            resumable: false
+          })
+        ])
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("marks stranded active runs interrupted from their latest resumable checkpoint", async () => {
+    const harness = await createExecutionHarness();
+
+    try {
+      const { app, services, events } = harness;
+      const createOutcome = await app.inject({
+        method: "POST",
+        url: "/api/outcomes",
+        payload: {
+          workspaceId: "ws_123",
+          userId: "user_123",
+          prompt: "Recover a stranded run.",
+          source: "web"
+        }
+      });
+      const outcome = createOutcome.json();
+      const plan = await createNonReviewPlan(services.repositories, outcome.id);
+      const run = await services.repositories.runs.createFromPlan({
+        id: `run_${outcome.id}_recover`,
+        outcomeId: outcome.id,
+        planId: plan.id,
+        createdAt: "2026-03-16T11:00:00.000Z",
+        updatedAt: "2026-03-16T11:00:00.000Z"
+      });
+      const steps = await services.repositories.runs.listSteps(run.id);
+      const rootStep = steps.find((step) => step.position === 0)!;
+      const synthStep = steps.find((step) => step.position === 1)!;
+
+      await services.repositories.workspaceLeases.acquire({
+        runId: run.id,
+        rootPath: `/tmp/${run.id}`,
+        inputPath: `/tmp/${run.id}/input`,
+        artifactsPath: `/tmp/${run.id}/artifacts`,
+        logsPath: `/tmp/${run.id}/logs`,
+        acquiredAt: "2026-03-16T11:00:01.000Z"
+      });
+      await services.repositories.runs.updateLifecycleStatus({
+        runId: run.id,
+        outcomeId: outcome.id,
+        runStatus: "running",
+        outcomeStatus: "running",
+        updatedAt: "2026-03-16T11:00:02.000Z"
+      });
+      await services.repositories.runs.updateStepStatus({
+        stepId: rootStep.id,
+        status: "completed",
+        updatedAt: "2026-03-16T11:00:03.000Z"
+      });
+      await services.repositories.runs.updateStepStatus({
+        stepId: synthStep.id,
+        status: "ready",
+        updatedAt: "2026-03-16T11:00:03.000Z"
+      });
+      await services.checkpointService.createCheckpoint({
+        runId: run.id,
+        kind: "step_completed",
+        stepId: rootStep.id
+      });
+      await services.repositories.workspaceLeases.release({
+        runId: run.id,
+        releasedAt: "2026-03-16T11:00:04.000Z"
+      });
+
+      await services.executionService.recoverInterruptedRuns();
+
+      await expect(services.repositories.runs.getById(run.id)).resolves.toEqual(
+        expect.objectContaining({
+          id: run.id,
+          status: "interrupted",
+          resumable: true
+        })
+      );
+      expect(events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            outcomeId: outcome.id,
+            type: "run.interrupted",
+            data: expect.objectContaining({
+              run: expect.objectContaining({
+                id: run.id,
+                status: "interrupted"
+              })
+            })
+          })
+        ])
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("keeps approval-blocked runs blocked during recovery scans", async () => {
+    const harness = await createExecutionHarness();
+
+    try {
+      const { app, services } = harness;
+      const { outcome, plan } = await createOutcomeAndPlan(app);
+      const createRun = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome.id}/runs`,
+        payload: {
+          planId: plan.id
+        }
+      });
+      const createdRun = RunDetailSchema.parse(createRun.json());
+
+      await services.executionService.waitForRun(createdRun.id);
+      await services.executionService.recoverInterruptedRuns();
+
+      await expect(services.repositories.runs.getById(createdRun.id)).resolves.toEqual(
+        expect.objectContaining({
+          id: createdRun.id,
+          status: "blocked"
+        })
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("rejects resume requests for approval-blocked runs", async () => {
+    const harness = await createExecutionHarness();
+
+    try {
+      const { app, services } = harness;
+      const { outcome, plan } = await createOutcomeAndPlan(app);
+      const createRun = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome.id}/runs`,
+        payload: {
+          planId: plan.id
+        }
+      });
+      const createdRun = RunDetailSchema.parse(createRun.json());
+
+      await services.executionService.waitForRun(createdRun.id);
+
+      await expect(
+        services.executionService.resumeRun({ runId: createdRun.id })
+      ).rejects.toThrow(/blocked.*approval/i);
+      await expect(
+        services.repositories.approvals.listByWorkspace({
+          workspaceId: outcome.workspaceId,
+          status: "pending"
+        })
+      ).resolves.toHaveLength(1);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("restores step state from the latest checkpoint and resumes only unfinished work", async () => {
+    const harness = await createExecutionHarness();
+
+    try {
+      const { app, services, fakeSandbox } = harness;
+      const createOutcome = await app.inject({
+        method: "POST",
+        url: "/api/outcomes",
+        payload: {
+          workspaceId: "ws_123",
+          userId: "user_123",
+          prompt: "Resume from a durable checkpoint.",
+          source: "web"
+        }
+      });
+      const outcome = createOutcome.json();
+      const plan = await createNonReviewPlan(services.repositories, outcome.id);
+      const run = await services.repositories.runs.createFromPlan({
+        id: `run_${outcome.id}_resume`,
+        outcomeId: outcome.id,
+        planId: plan.id,
+        createdAt: "2026-03-16T12:00:00.000Z",
+        updatedAt: "2026-03-16T12:00:00.000Z"
+      });
+      const steps = await services.repositories.runs.listSteps(run.id);
+      const rootStep = steps.find((step) => step.position === 0)!;
+      const synthStep = steps.find((step) => step.position === 1)!;
+
+      await services.repositories.workspaceLeases.acquire({
+        runId: run.id,
+        rootPath: `/tmp/${run.id}`,
+        inputPath: `/tmp/${run.id}/input`,
+        artifactsPath: `/tmp/${run.id}/artifacts`,
+        logsPath: `/tmp/${run.id}/logs`,
+        acquiredAt: "2026-03-16T12:00:01.000Z"
+      });
+      await services.repositories.runs.updateLifecycleStatus({
+        runId: run.id,
+        outcomeId: outcome.id,
+        runStatus: "running",
+        outcomeStatus: "running",
+        updatedAt: "2026-03-16T12:00:02.000Z"
+      });
+      await services.repositories.runs.updateStepStatus({
+        stepId: rootStep.id,
+        status: "completed",
+        updatedAt: "2026-03-16T12:00:03.000Z"
+      });
+      await services.repositories.runs.updateStepStatus({
+        stepId: synthStep.id,
+        status: "ready",
+        updatedAt: "2026-03-16T12:00:03.000Z"
+      });
+      await services.checkpointService.createCheckpoint({
+        runId: run.id,
+        kind: "step_completed",
+        stepId: rootStep.id
+      });
+      await services.repositories.workspaceLeases.release({
+        runId: run.id,
+        releasedAt: "2026-03-16T12:00:04.000Z"
+      });
+      await services.repositories.runs.updateStepStatus({
+        stepId: rootStep.id,
+        status: "running",
+        updatedAt: "2026-03-16T12:00:05.000Z"
+      });
+      await services.repositories.runs.updateStepStatus({
+        stepId: synthStep.id,
+        status: "pending",
+        updatedAt: "2026-03-16T12:00:05.000Z"
+      });
+      await services.repositories.runs.updateStatus({
+        runId: run.id,
+        status: "interrupted",
+        updatedAt: "2026-03-16T12:00:05.000Z"
+      });
+
+      await services.executionService.resumeRun({ runId: run.id });
+      await services.executionService.waitForRun(run.id);
+
+      expect(fakeSandbox.startedPlanNodeIds).not.toEqual(
+        expect.arrayContaining([rootStep.planNodeId])
+      );
+      expect(fakeSandbox.startedPlanNodeIds).toEqual(
+        expect.arrayContaining([synthStep.planNodeId])
+      );
+      await expect(services.repositories.runs.listSteps(run.id)).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: rootStep.id,
+            status: "completed"
+          }),
+          expect.objectContaining({
+            id: synthStep.id,
+            status: "completed"
+          })
+        ])
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   it("rejects blocked review-required work and fails the run", async () => {
     const harness = await createExecutionHarness();
 

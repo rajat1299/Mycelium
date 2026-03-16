@@ -5,6 +5,7 @@ const EnvSchema = z.object({
   HOST: z.string().default("0.0.0.0"),
   PORT: z.coerce.number().int().positive().default(4000),
   WORKSPACE_ROOT: z.string().min(1).default(".mycelium/workspaces"),
+  CHECKPOINT_ROOT: z.string().min(1).default(".mycelium/checkpoints"),
   SANDBOX_IMAGE: z.string().min(1).optional(),
   MYCELIUM_ENCRYPTION_KEY: z.string().min(1).optional()
 });

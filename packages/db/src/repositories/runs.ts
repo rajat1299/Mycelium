@@ -350,6 +350,16 @@ export class RunRepository {
     return found ? mapRunRow(found) : null;
   }
 
+  async listByStatuses(statuses: StoredRun["status"][]): Promise<StoredRun[]> {
+    const allowed = new Set(statuses);
+    const rows = await this.db.select().from(outcomeRuns);
+
+    return rows
+      .filter((row) => allowed.has(row.status))
+      .sort(compareRunRows)
+      .map(mapRunRow);
+  }
+
   async listByOutcome(outcomeId: string): Promise<StoredRun[]> {
     const rows = await this.db.select().from(outcomeRuns);
 

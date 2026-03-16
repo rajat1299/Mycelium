@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { LocalFilesystemCheckpointStore } from "@computer-oss/checkpoints";
 import type { SandboxProvider } from "@computer-oss/sandbox";
 import {
   LocalDockerProvider,
@@ -16,6 +17,10 @@ import {
   createApprovalService,
   type ApprovalService
 } from "./approval-service";
+import {
+  createCheckpointService,
+  type CheckpointService
+} from "./checkpoint-service";
 import {
   createExecutionService,
   type ExecutionService
@@ -35,6 +40,7 @@ export type ServiceContainer = {
   eventBus: EventBus;
   executionService: ExecutionService;
   approvalService: ApprovalService;
+  checkpointService: CheckpointService;
   encryption: EncryptionService;
   routerService: RouterService;
 };
@@ -65,9 +71,22 @@ export function createInMemoryServiceContainer(
     ...(options.now ? { now: options.now } : {})
   });
   const sandboxProvider = options.sandboxProvider ?? createInlineSandboxProvider();
+  const checkpointService = createCheckpointService({
+    repositories,
+    eventBus,
+    checkpointStore: new LocalFilesystemCheckpointStore({
+      rootDir: join(
+        options.workspaceRootPath ??
+          join(tmpdir(), "mycelium-control-plane-workspaces"),
+        ".checkpoints"
+      )
+    }),
+    ...(options.now ? { now: options.now } : {})
+  });
   const executionService = createExecutionService({
     repositories,
     eventBus,
+    checkpointService,
     sandboxProvider,
     workspaceManager,
     ...(options.now ? { now: options.now } : {})
@@ -75,6 +94,7 @@ export function createInMemoryServiceContainer(
   const approvalService = createApprovalService({
     repositories,
     eventBus,
+    checkpointService,
     executionService,
     ...(options.now ? { now: options.now } : {})
   });
@@ -84,6 +104,7 @@ export function createInMemoryServiceContainer(
     eventBus,
     executionService,
     approvalService,
+    checkpointService,
     encryption,
     routerService
   };
@@ -97,26 +118,38 @@ export async function createServiceContainer(env: AppEnv): Promise<ServiceContai
   const workspaceManager = new WorkspaceManager({
     rootPath: env.WORKSPACE_ROOT
   });
+  const checkpointService = createCheckpointService({
+    repositories,
+    eventBus,
+    checkpointStore: new LocalFilesystemCheckpointStore({
+      rootDir: env.CHECKPOINT_ROOT
+    })
+  });
   const sandboxProvider = new LocalDockerProvider(
     env.SANDBOX_IMAGE ? { image: env.SANDBOX_IMAGE } : {}
   );
   const executionService = createExecutionService({
     repositories,
     eventBus,
+    checkpointService,
     sandboxProvider,
     workspaceManager
   });
   const approvalService = createApprovalService({
     repositories,
     eventBus,
+    checkpointService,
     executionService
   });
+
+  await executionService.recoverInterruptedRuns();
 
   return {
     repositories,
     eventBus,
     executionService,
     approvalService,
+    checkpointService,
     encryption,
     routerService
   };

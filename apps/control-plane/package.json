@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@computer-oss/artifacts": "workspace:*",
+    "@computer-oss/checkpoints": "workspace:*",
     "@computer-oss/db": "workspace:*",
     "@computer-oss/orchestrator": "workspace:*",
     "@computer-oss/protocol": "workspace:*",

@@ -8,12 +8,14 @@ import {
   RunStepSchema
 } from "@computer-oss/protocol";
 import type { EventBus } from "./event-bus";
+import type { CheckpointService } from "./checkpoint-service";
 import type { ExecutionService } from "./execution-service";
 import type { Repositories } from "./repositories";
 
 type ApprovalServiceOptions = {
   repositories: Repositories;
   eventBus: EventBus;
+  checkpointService: CheckpointService;
   executionService: ExecutionService;
   now?: () => Date;
 };
@@ -119,16 +121,38 @@ export function createApprovalService(
             throw new Error("Failed to resume run or outcome lifecycle state.");
           }
 
+          await options.checkpointService.createCheckpoint({
+            runId: resolved.run.id,
+            kind: "approval_resolved",
+            stepId: resolved.step.id
+          });
           await emitRunUpdated(options, approval.outcomeId, resumedLifecycle.run);
           await emitOutcomeUpdated(options, resumedLifecycle.outcome);
           await emitApprovalResolved(options, approval.outcomeId, resolved.approval);
           options.executionService.startRun(resolved.run.id);
         } else {
+          await options.checkpointService.createCheckpoint({
+            runId: resolved.run.id,
+            kind: "approval_resolved",
+            stepId: resolved.step.id
+          });
           await emitRunUpdated(options, approval.outcomeId, resolved.run);
           await emitOutcomeUpdated(options, resolved.outcome);
           await emitApprovalResolved(options, approval.outcomeId, resolved.approval);
         }
       } else {
+        await options.checkpointService.createCheckpoint({
+          runId: resolved.run.id,
+          kind: "approval_resolved",
+          stepId: resolved.step.id
+        });
+        if (runIsTerminal) {
+          await options.checkpointService.createCheckpoint({
+            runId: resolved.run.id,
+            kind: input.resolution === "approved" ? "run_completed" : "run_failed",
+            stepId: resolved.step.id
+          });
+        }
         await emitRunUpdated(options, approval.outcomeId, resolved.run);
         await emitOutcomeUpdated(options, resolved.outcome);
         await emitApprovalResolved(options, approval.outcomeId, resolved.approval);

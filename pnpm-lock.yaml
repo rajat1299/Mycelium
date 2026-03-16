@@ -26,6 +26,9 @@ importers:
       '@computer-oss/artifacts':
         specifier: workspace:*
         version: link:../../packages/artifacts
+      '@computer-oss/checkpoints':
+        specifier: workspace:*
+        version: link:../../packages/checkpoints
       '@computer-oss/db':
         specifier: workspace:*
         version: link:../../packages/db

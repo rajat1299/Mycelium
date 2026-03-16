@@ -6,6 +6,7 @@ import {
   ArtifactSchema,
   OutcomeSchema,
   RunLogDataSchema,
+  ResumeRunResponseSchema,
   RunSchema,
   RunStepSchema
 } from "@computer-oss/protocol";
@@ -14,12 +15,14 @@ import type {
   WorkspaceLease as RuntimeWorkspaceLease,
   WorkspaceManager
 } from "@computer-oss/sandbox";
+import type { CheckpointService } from "./checkpoint-service";
 import type { EventBus } from "./event-bus";
 import type { Repositories } from "./repositories";
 
 type ExecutionServiceOptions = {
   repositories: Repositories;
   eventBus: EventBus;
+  checkpointService: CheckpointService;
   sandboxProvider: SandboxProvider;
   workspaceManager: WorkspaceManager;
   now?: () => Date;
@@ -27,6 +30,17 @@ type ExecutionServiceOptions = {
 
 export type ExecutionService = {
   startRun(runId: string): void;
+  resumeRun(input: {
+    runId: string;
+    checkpointId?: string;
+  }): Promise<
+    | {
+        run: Awaited<ReturnType<Repositories["runs"]["getById"]>> & {};
+        resumedFromCheckpointId: string;
+      }
+    | null
+  >;
+  recoverInterruptedRuns(): Promise<void>;
   waitForRun(runId: string): Promise<void>;
 };
 
@@ -36,9 +50,7 @@ export function createExecutionService(
   const inFlightRuns = new Map<string, Promise<void>>();
   const settledRuns = new Map<string, Promise<void>>();
   const now = options.now ?? (() => new Date());
-
-  return {
-    startRun(runId) {
+  const startRun = (runId: string) => {
       if (inFlightRuns.has(runId)) {
         return;
       }
@@ -49,6 +61,7 @@ export function createExecutionService(
         runId,
         repositories: options.repositories,
         eventBus: options.eventBus,
+        checkpointService: options.checkpointService,
         sandboxProvider: options.sandboxProvider,
         workspaceManager: options.workspaceManager,
         now
@@ -66,6 +79,118 @@ export function createExecutionService(
           reportUnhandledExecutionError(runId, error);
         }
       );
+    };
+
+  return {
+    startRun,
+    async resumeRun(input) {
+      const run = await options.repositories.runs.getById(input.runId);
+
+      if (!run) {
+        return null;
+      }
+
+      if (run.status === "completed" || run.status === "failed" || run.status === "cancelled") {
+        throw new Error(`Run ${run.id} is terminal and cannot be resumed.`);
+      }
+
+      if (run.status === "blocked") {
+        throw new Error(`Run ${run.id} is blocked on approval and cannot be resumed.`);
+      }
+
+      if (run.status !== "interrupted") {
+        throw new Error(`Run ${run.id} is not interrupted and cannot be resumed.`);
+      }
+
+      const checkpoint =
+        (input.checkpointId
+          ? await options.repositories.checkpoints.getById(input.checkpointId)
+          : null) ?? (await options.repositories.checkpoints.getLatestResumableByRun(run.id));
+
+      if (!checkpoint) {
+        throw new Error(`Run ${run.id} does not have a resumable checkpoint.`);
+      }
+
+      if (!checkpoint.resumable) {
+        throw new Error(`Checkpoint ${checkpoint.id} is not resumable.`);
+      }
+
+      const detail = await options.checkpointService.readCheckpoint(checkpoint.id);
+
+      if (!detail) {
+        throw new Error(`Checkpoint ${checkpoint.id} could not be loaded.`);
+      }
+
+      const restored = await options.repositories.runs.restoreFromCheckpoint({
+        runId: run.id,
+        checkpointId: checkpoint.id,
+        payload: detail.payload,
+        updatedAt: now().toISOString()
+      });
+
+      if (!restored) {
+        return null;
+      }
+
+      const outcome = await options.repositories.outcomes.getById(run.outcomeId);
+
+      if (!outcome) {
+        throw new Error(`Outcome ${run.outcomeId} does not exist.`);
+      }
+
+      const eventPublisher = {
+        repositories: options.repositories,
+        eventBus: options.eventBus
+      };
+
+      for (const step of restored.steps) {
+        await emitRunStepUpdated(eventPublisher, outcome.id, step);
+      }
+
+      const resumedLifecycle = await options.repositories.runs.updateLifecycleStatus({
+        runId: run.id,
+        outcomeId: outcome.id,
+        runStatus: "running",
+        outcomeStatus: "running",
+        updatedAt: now().toISOString()
+      });
+
+      if (!resumedLifecycle) {
+        throw new Error("Failed to resume run or outcome lifecycle state.");
+      }
+
+      await appendSystemAuditEvent(options, {
+        workspaceId: outcome.workspaceId,
+        outcomeId: outcome.id,
+        runId: run.id,
+        stepId: checkpoint.stepId,
+        checkpointId: checkpoint.id,
+        category: "resume",
+        eventType: "run.resumed",
+        summary: "Resumed run from a durable checkpoint.",
+        payload: {
+          resumedFromCheckpointId: checkpoint.id
+        },
+        createdAt: resumedLifecycle.run.updatedAt
+      });
+
+      await emitRunUpdated(eventPublisher, outcome.id, resumedLifecycle.run);
+      await emitOutcomeUpdated(eventPublisher, resumedLifecycle.outcome);
+      await emitRunResumed(eventPublisher, {
+        outcomeId: outcome.id,
+        run: resumedLifecycle.run,
+        resumedFromCheckpointId: checkpoint.id
+      });
+
+      startRun(run.id);
+
+      return {
+        run: resumedLifecycle.run,
+        resumedFromCheckpointId: checkpoint.id
+      };
+    },
+    async recoverInterruptedRuns() {
+      await options.checkpointService.recoverInterruptedRuns();
     },
     async waitForRun(runId) {
       await (inFlightRuns.get(runId) ?? settledRuns.get(runId) ?? Promise.resolve());
@@ -77,10 +202,13 @@ type ExecuteRunOptions = {
   runId: string;
   repositories: Repositories;
   eventBus: EventBus;
+  checkpointService: CheckpointService;
   sandboxProvider: SandboxProvider;
   workspaceManager: WorkspaceManager;
   now: () => Date;
 };
+
+type EventPublisherOptions = Pick<ExecuteRunOptions, "repositories" | "eventBus">;
 
 async function executeRun(options: ExecuteRunOptions): Promise<void> {
   const run = await options.repositories.runs.getById(options.runId);
@@ -104,6 +232,11 @@ async function executeRun(options: ExecuteRunOptions): Promise<void> {
       outcomeId: outcome.id,
       runStatus: "running",
       outcomeStatus: "running"
+    });
+    await options.checkpointService.createCheckpoint({
+      runId: run.id,
+      kind: "run_started",
+      stepId: null
     });
 
     while (true) {
@@ -140,6 +273,11 @@ async function executeRun(options: ExecuteRunOptions): Promise<void> {
             outcomeId: outcome.id,
             runStatus: "completed",
             outcomeStatus: "completed"
+          });
+          await options.checkpointService.createCheckpoint({
+            runId: run.id,
+            kind: "run_completed",
+            stepId: null
           });
           return;
         }
@@ -183,6 +321,11 @@ async function executeRun(options: ExecuteRunOptions): Promise<void> {
           outcomeId: outcome.id,
           runStatus: "failed",
           outcomeStatus: "failed"
+        });
+        await options.checkpointService.createCheckpoint({
+          runId: run.id,
+          kind: "run_failed",
+          stepId: null
         });
         return;
       }
@@ -365,6 +508,11 @@ async function executeReadyStep(
         await emitRunUpdated(options, input.outcomeId, updatedLifecycle.run);
         await emitOutcomeUpdated(options, updatedLifecycle.outcome);
         await emitApprovalRequested(options, input.outcomeId, approval);
+        await options.checkpointService.createCheckpoint({
+          runId: input.runId,
+          kind: "step_blocked_on_approval",
+          stepId: blockedStep.id
+        });
         await emitRunLog(options, {
           outcomeId: input.outcomeId,
           runId: input.runId,
@@ -422,6 +570,12 @@ async function executeReadyStep(
     for (const readyStep of newlyReadySteps) {
       await emitRunStepUpdated(options, input.outcomeId, readyStep);
     }
+
+    await options.checkpointService.createCheckpoint({
+      runId: input.runId,
+      kind: "step_completed",
+      stepId: completedStep.id
+    });
 
     return { status: "completed" };
   } catch (error) {
@@ -555,7 +709,7 @@ async function updateLifecycleStatus(
 }
 
 async function emitOutcomeUpdated(
-  options: ExecuteRunOptions,
+  options: EventPublisherOptions,
   outcome: Awaited<ReturnType<Repositories["outcomes"]["getById"]>> & {}
 ) {
   const data = OutcomeSchema.parse(outcome);
@@ -568,7 +722,7 @@ async function emitOutcomeUpdated(
 }
 
 async function emitRunUpdated(
-  options: ExecuteRunOptions,
+  options: EventPublisherOptions,
   outcomeId: string,
   run: Awaited<ReturnType<Repositories["runs"]["getById"]>> & {}
 ) {
@@ -590,7 +744,7 @@ async function emitRunUpdated(
 }
 
 async function emitRunStepUpdated(
-  options: ExecuteRunOptions,
+  options: EventPublisherOptions,
   outcomeId: string,
   step: Awaited<ReturnType<Repositories["runs"]["updateStepStatus"]>> & {}
 ) {
@@ -612,7 +766,7 @@ async function emitRunStepUpdated(
 }
 
 async function emitRunLog(
-  options: ExecuteRunOptions,
+  options: EventPublisherOptions & Pick<ExecuteRunOptions, "now">,
   input: {
     outcomeId: string;
     runId: string;
@@ -648,7 +802,7 @@ async function emitRunLog(
 }
 
 async function emitBestEffortRunLog(
-  options: ExecuteRunOptions,
+  options: EventPublisherOptions & Pick<ExecuteRunOptions, "now">,
   input: {
     outcomeId: string;
     runId: string;
@@ -666,7 +820,7 @@ async function emitBestEffortRunLog(
 }
 
 async function emitArtifactCreated(
-  options: ExecuteRunOptions,
+  options: EventPublisherOptions,
   outcomeId: string,
   artifact: Awaited<ReturnType<Repositories["artifacts"]["create"]>>
 ) {
@@ -688,7 +842,7 @@ async function emitArtifactCreated(
 }
 
 async function emitApprovalRequested(
-  options: ExecuteRunOptions,
+  options: EventPublisherOptions,
   outcomeId: string,
   approval: Awaited<ReturnType<Repositories["approvals"]["createPending"]>>
 ) {
@@ -710,7 +864,7 @@ async function emitApprovalRequested(
 }
 
 async function emitApprovalResolved(
-  options: ExecuteRunOptions,
+  options: EventPublisherOptions,
   outcomeId: string,
   approval: Awaited<ReturnType<Repositories["approvals"]["getById"]>> & {}
 ) {
@@ -728,6 +882,70 @@ async function emitApprovalResolved(
     outcomeId,
     type: "approval.resolved",
     data
+  });
+}
+
+async function emitRunResumed(
+  options: EventPublisherOptions,
+  input: {
+    outcomeId: string;
+    run: Awaited<ReturnType<Repositories["runs"]["getById"]>> & {};
+    resumedFromCheckpointId: string;
+  }
+) {
+  const data = ResumeRunResponseSchema.parse({
+    run: input.run,
+    resumedFromCheckpointId: input.resumedFromCheckpointId
+  });
+
+  await options.repositories.runs.appendEvent({
+    id: `event_${randomUUID()}`,
+    runId: data.run.id,
+    eventType: "run.resumed",
+    payload: data,
+    createdAt: data.run.updatedAt
+  });
+
+  options.eventBus.publish({
+    outcomeId: input.outcomeId,
+    type: "run.resumed",
+    data
+  });
+}
+
+async function appendSystemAuditEvent(
+  options: ExecutionServiceOptions,
+  input: {
+    workspaceId: string;
+    outcomeId: string;
+    runId: string;
+    stepId: string | null;
+    checkpointId: string | null;
+    category: "resume";
+    eventType: string;
+    summary: string;
+    payload: Record<string, unknown>;
+    createdAt: string;
+  }
+) {
+  const existing = await options.repositories.auditEvents.listByRun(input.runId);
+  const sequence =
+    existing.reduce((max, event) => Math.max(max, event.sequence), 0) + 1;
+
+  await options.repositories.auditEvents.append({
+    id: `audit_${randomUUID()}`,
+    workspaceId: input.workspaceId,
+    outcomeId: input.outcomeId,
+    runId: input.runId,
+    stepId: input.stepId,
+    checkpointId: input.checkpointId,
+    sequence,
+    category: input.category,
+    eventType: input.eventType,
+    actorType: "system",
+    summary: input.summary,
+    payload: input.payload,
+    createdAt: input.createdAt
   });
 }
 
