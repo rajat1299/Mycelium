@@ -314,6 +314,164 @@ describe("ReviewQueue", () => {
     });
   });
 
+  it("refreshes artifact context for later approvals on the same run", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+
+      if (url.startsWith("/api/approvals?")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              approvals: [
+                {
+                  id: "approval_1",
+                  workspaceId: "ws_default",
+                  outcomeId: "outcome_1",
+                  runId: "run_1",
+                  stepId: "step_1",
+                  status: "pending",
+                  kind: "output_review_required",
+                  title: "Review final result",
+                  summary: "Inspect the final artifact before marking the run complete.",
+                  instruction: "Approve to complete the run or reject to fail it.",
+                  artifactIds: ["artifact_1"],
+                  requestedAt: "2026-03-15T00:00:00.000Z",
+                  resolvedAt: null,
+                  resolution: null,
+                  resolutionNote: null
+                }
+              ]
+            }),
+            { status: 200, headers: { "content-type": "application/json" } }
+          )
+        );
+      }
+
+      if (url === "/api/runs/run_1/artifacts") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              artifacts: [
+                {
+                  id: "artifact_1",
+                  outcomeId: "outcome_1",
+                  runId: "run_1",
+                  stepId: "step_1",
+                  kind: "result",
+                  relativePath: "artifacts/final-result.md",
+                  size: 256,
+                  metadata: {},
+                  createdAt: "2026-03-15T00:00:01.000Z"
+                },
+                {
+                  id: "artifact_2",
+                  outcomeId: "outcome_1",
+                  runId: "run_1",
+                  stepId: "step_2",
+                  kind: "summary",
+                  relativePath: "artifacts/review-summary.md",
+                  size: 312,
+                  metadata: {},
+                  createdAt: "2026-03-15T00:03:01.000Z"
+                }
+              ]
+            }),
+            { status: 200, headers: { "content-type": "application/json" } }
+          )
+        );
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    render(
+      <ReviewQueue
+        workspaceId="ws_default"
+        initialApprovals={[
+          {
+            id: "approval_1",
+            workspaceId: "ws_default",
+            outcomeId: "outcome_1",
+            runId: "run_1",
+            stepId: "step_1",
+            status: "pending",
+            kind: "output_review_required",
+            title: "Review final result",
+            summary: "Inspect the final artifact before marking the run complete.",
+            instruction: "Approve to complete the run or reject to fail it.",
+            artifactIds: ["artifact_1"],
+            requestedAt: "2026-03-15T00:00:00.000Z",
+            resolvedAt: null,
+            resolution: null,
+            resolutionNote: null
+          }
+        ]}
+        initialArtifactsByRunId={{
+          run_1: [
+            {
+              id: "artifact_1",
+              outcomeId: "outcome_1",
+              runId: "run_1",
+              stepId: "step_1",
+              kind: "result",
+              relativePath: "artifacts/final-result.md",
+              size: 256,
+              metadata: {},
+              createdAt: "2026-03-15T00:00:01.000Z"
+            }
+          ]
+        }}
+      />
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/approvals?workspaceId=ws_default",
+        expect.objectContaining({
+          cache: "no-store"
+        })
+      );
+    });
+
+    act(() => {
+      for (const handler of eventStream.handlers) {
+        handler({
+          outcomeId: "outcome_1",
+          type: "approval.requested",
+          data: {
+            id: "approval_2",
+            workspaceId: "ws_default",
+            outcomeId: "outcome_1",
+            runId: "run_1",
+            stepId: "step_2",
+            status: "pending",
+            kind: "output_review_required",
+            title: "Review synthesized summary",
+            summary: "Inspect the synthesized summary before completion.",
+            instruction: "Approve to continue or reject to fail the run.",
+            artifactIds: ["artifact_2"],
+            requestedAt: "2026-03-15T00:03:00.000Z",
+            resolvedAt: null,
+            resolution: null,
+            resolutionNote: null
+          }
+        });
+      }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /review synthesized summary/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/runs/run_1/artifacts", {
+        cache: "no-store"
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("artifacts/review-summary.md")).toBeInTheDocument();
+    });
+  });
+
   it("discovers approvals and artifact context even when the review desk starts empty", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const url = String(input);

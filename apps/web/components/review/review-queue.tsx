@@ -39,14 +39,25 @@ function mergeArtifactsByRunId(
   runId: string,
   artifacts: Artifact[]
 ) {
-  if (current[runId]) {
-    return current;
-  }
-
   return {
     ...current,
     [runId]: artifacts
   };
+}
+
+function hasAllArtifactIds(
+  artifactsByRunId: Record<string, Artifact[]>,
+  runId: string,
+  artifactIds: string[]
+) {
+  const artifacts = artifactsByRunId[runId];
+
+  if (!artifacts) {
+    return false;
+  }
+
+  const artifactIdSet = new Set(artifacts.map((artifact) => artifact.id));
+  return artifactIds.every((artifactId) => artifactIdSet.has(artifactId));
 }
 
 export function ReviewQueue({
@@ -63,8 +74,11 @@ export function ReviewQueue({
   const artifactsByRunIdRef = useRef(initialArtifactsByRunId);
   const loadingRunIdsRef = useRef(new Set<string>());
 
-  async function ensureArtifactsLoaded(runId: string) {
-    if (artifactsByRunIdRef.current[runId] || loadingRunIdsRef.current.has(runId)) {
+  async function ensureArtifactsLoaded(runId: string, artifactIds: string[]) {
+    if (
+      hasAllArtifactIds(artifactsByRunIdRef.current, runId, artifactIds) ||
+      loadingRunIdsRef.current.has(runId)
+    ) {
       return;
     }
 
@@ -116,7 +130,11 @@ export function ReviewQueue({
         setSelectedApprovalId((current) => selectFallbackApproval(nextApprovals, current));
       });
 
-      await Promise.all(nextApprovals.map((approval) => ensureArtifactsLoaded(approval.runId)));
+      await Promise.all(
+        nextApprovals.map((approval) =>
+          ensureArtifactsLoaded(approval.runId, approval.artifactIds)
+        )
+      );
     } catch {
       return;
     }
@@ -163,7 +181,7 @@ export function ReviewQueue({
               setSelectedApprovalId((selected) => selectFallbackApproval(next, selected));
               return sortApprovals(next);
             });
-            void ensureArtifactsLoaded(event.data.runId);
+            void ensureArtifactsLoaded(event.data.runId, event.data.artifactIds);
           }
 
           if (event.type === "approval.resolved") {
@@ -193,6 +211,14 @@ export function ReviewQueue({
         : [],
     [artifactsByRunId, selectedApproval]
   );
+
+  useEffect(() => {
+    if (!selectedApproval) {
+      return;
+    }
+
+    void ensureArtifactsLoaded(selectedApproval.runId, selectedApproval.artifactIds);
+  }, [selectedApproval]);
 
   return (
     <div className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
