@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   OutcomeSchema,
+  ResumeRunResponseSchema,
   RunDetailSchema,
   RunLogListResponseSchema
 } from "@computer-oss/protocol";
@@ -548,6 +549,180 @@ describe("run routes", () => {
           })
         ])
       );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("resumes an interrupted run from its latest durable checkpoint", async () => {
+    const harness = await createExecutionHarness();
+
+    try {
+      const { app, services } = harness;
+      const createOutcome = await app.inject({
+        method: "POST",
+        url: "/api/outcomes",
+        payload: {
+          workspaceId: "ws_123",
+          userId: "user_123",
+          prompt: "Resume interrupted work.",
+          source: "web"
+        }
+      });
+      const outcome = createOutcome.json();
+      const plan = await createNonReviewPlan(services.repositories, outcome.id);
+      const run = await services.repositories.runs.createFromPlan({
+        id: `run_${outcome.id}_resume_api`,
+        outcomeId: outcome.id,
+        planId: plan.id,
+        createdAt: "2026-03-16T15:00:00.000Z",
+        updatedAt: "2026-03-16T15:00:00.000Z"
+      });
+      const steps = await services.repositories.runs.listSteps(run.id);
+      const rootStep = steps.find((step) => step.position === 0)!;
+      const synthStep = steps.find((step) => step.position === 1)!;
+
+      await services.repositories.workspaceLeases.acquire({
+        runId: run.id,
+        rootPath: `/tmp/${run.id}`,
+        inputPath: `/tmp/${run.id}/input`,
+        artifactsPath: `/tmp/${run.id}/artifacts`,
+        logsPath: `/tmp/${run.id}/logs`,
+        acquiredAt: "2026-03-16T15:00:01.000Z"
+      });
+      await services.repositories.runs.updateLifecycleStatus({
+        runId: run.id,
+        outcomeId: outcome.id,
+        runStatus: "running",
+        outcomeStatus: "running",
+        updatedAt: "2026-03-16T15:00:02.000Z"
+      });
+      await services.repositories.runs.updateStepStatus({
+        stepId: rootStep.id,
+        status: "completed",
+        updatedAt: "2026-03-16T15:00:03.000Z"
+      });
+      await services.repositories.runs.updateStepStatus({
+        stepId: synthStep.id,
+        status: "ready",
+        updatedAt: "2026-03-16T15:00:03.000Z"
+      });
+      const checkpoint = await services.checkpointService.createCheckpoint({
+        runId: run.id,
+        kind: "step_completed",
+        stepId: rootStep.id
+      });
+      await services.repositories.workspaceLeases.release({
+        runId: run.id,
+        releasedAt: "2026-03-16T15:00:04.000Z"
+      });
+      await services.executionService.recoverInterruptedRuns();
+
+      const resume = await app.inject({
+        method: "POST",
+        url: `/api/runs/${run.id}/resume`,
+        payload: {}
+      });
+
+      expect(resume.statusCode).toBe(200);
+      expect(ResumeRunResponseSchema.parse(resume.json())).toEqual(
+        expect.objectContaining({
+          resumedFromCheckpointId: checkpoint.id,
+          run: expect.objectContaining({
+            id: run.id,
+            status: "running"
+          })
+        })
+      );
+      await services.executionService.waitForRun(run.id);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("rejects resume for blocked, terminal, and non-resumable runs", async () => {
+    const harness = await createExecutionHarness();
+
+    try {
+      const { app, services } = harness;
+      const { outcome, plan } = await createOutcomeAndPlan(app);
+      const createBlockedRun = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome.id}/runs`,
+        payload: {
+          planId: plan.id
+        }
+      });
+      const blockedRun = RunDetailSchema.parse(createBlockedRun.json());
+
+      await services.executionService.waitForRun(blockedRun.id);
+
+      const blockedResume = await app.inject({
+        method: "POST",
+        url: `/api/runs/${blockedRun.id}/resume`,
+        payload: {}
+      });
+
+      expect(blockedResume.statusCode).toBe(409);
+
+      const createOutcome2 = await app.inject({
+        method: "POST",
+        url: "/api/outcomes",
+        payload: {
+          workspaceId: "ws_123",
+          userId: "user_123",
+          prompt: "Resume completed work.",
+          source: "web"
+        }
+      });
+      const outcome2 = createOutcome2.json();
+      const plan2 = await createNonReviewPlan(services.repositories, outcome2.id);
+      const createCompletedRun = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome2.id}/runs`,
+        payload: {
+          planId: plan2.id
+        }
+      });
+      const completedRun = RunDetailSchema.parse(createCompletedRun.json());
+
+      await services.executionService.waitForRun(completedRun.id);
+
+      const terminalResume = await app.inject({
+        method: "POST",
+        url: `/api/runs/${completedRun.id}/resume`,
+        payload: {}
+      });
+
+      expect(terminalResume.statusCode).toBe(409);
+
+      const createOutcome3 = await app.inject({
+        method: "POST",
+        url: "/api/outcomes",
+        payload: {
+          workspaceId: "ws_123",
+          userId: "user_123",
+          prompt: "Resume queued work.",
+          source: "web"
+        }
+      });
+      const outcome3 = createOutcome3.json();
+      const plan3 = await createNonReviewPlan(services.repositories, outcome3.id);
+      const queuedRun = await services.repositories.runs.createFromPlan({
+        id: `run_${outcome3.id}_queued`,
+        outcomeId: outcome3.id,
+        planId: plan3.id,
+        createdAt: "2026-03-16T15:30:00.000Z",
+        updatedAt: "2026-03-16T15:30:00.000Z"
+      });
+
+      const queuedResume = await app.inject({
+        method: "POST",
+        url: `/api/runs/${queuedRun.id}/resume`,
+        payload: {}
+      });
+
+      expect(queuedResume.statusCode).toBe(409);
     } finally {
       await harness.cleanup();
     }

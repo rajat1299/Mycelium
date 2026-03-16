@@ -9,6 +9,7 @@ import {
 import { registerApprovalRoutes } from "./routes/approvals";
 import { registerAuthProfileRoutes } from "./routes/auth-profiles";
 import { registerArtifactRoutes } from "./routes/artifacts";
+import { registerCheckpointRoutes } from "./routes/checkpoints";
 import { registerHealthRoutes } from "./routes/health";
 import { registerOutcomeEventRoutes } from "./routes/outcome-events";
 import { registerOutcomeRoutes } from "./routes/outcomes";
@@ -39,6 +40,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   const executionService =
     options.executionService ?? services.executionService;
   const approvalService = services.approvalService;
+  const checkpointService = services.checkpointService;
   const encryption = services.encryption;
   const routerService = services.routerService;
 
@@ -50,6 +52,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   registerRouterRoutes(app, { routerService });
   registerOutcomeRoutes(app, { repositories, eventBus });
   registerPlanRoutes(app, { repositories, eventBus });
+  registerCheckpointRoutes(app, { repositories, checkpointService });
   registerRunRoutes(app, {
     repositories,
     eventBus,

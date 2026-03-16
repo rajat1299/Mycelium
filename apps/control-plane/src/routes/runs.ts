@@ -1,6 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import {
   CapabilityFamilySchema,
+  ResumeRunRequestSchema,
+  ResumeRunResponseSchema,
   CreateRunRequestSchema,
   RunDetailSchema,
   RunLogDataSchema,
@@ -265,5 +267,48 @@ export function registerRunRoutes(
         logs
       })
     );
+  });
+
+  app.post("/api/runs/:runId/resume", async (request, reply) => {
+    const params = request.params as { runId?: string };
+    const parsed = ResumeRunRequestSchema.safeParse(request.body ?? {});
+
+    if (!params.runId) {
+      return reply.code(400).send(badRequest("Run id is required."));
+    }
+
+    if (!parsed.success) {
+      return reply.code(400).send(badRequest("Invalid resume payload."));
+    }
+
+    const run = await options.repositories.runs.getById(params.runId);
+
+    if (!run) {
+      return reply.code(404).send(badRequest("Run not found."));
+    }
+
+    try {
+      const resumed = await options.executionService.resumeRun({
+        runId: params.runId,
+        checkpointId: parsed.data.checkpointId
+      });
+
+      if (!resumed) {
+        return reply.code(404).send(badRequest("Run not found."));
+      }
+
+      return reply.code(200).send(ResumeRunResponseSchema.parse(resumed));
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error.message.includes("cannot be resumed") ||
+          error.message.includes("resumable checkpoint") ||
+          error.message.includes("not resumable"))
+      ) {
+        return reply.code(409).send(badRequest(error.message));
+      }
+
+      throw error;
+    }
   });
 }
