@@ -1,9 +1,12 @@
 import {
   ApprovalSchema,
   ArtifactSchema,
+  CheckpointSummarySchema,
   MessageCreatedDataSchema,
   OutcomeSchema,
   PlanSchema,
+  ResumeRunResponseSchema,
+  RunInterruptedDataSchema,
   RunLogDataSchema,
   RunSchema,
   RunStepSchema,
@@ -64,9 +67,18 @@ export function subscribeToOutcomeEvents(
     registerListener("run.updated", (payload) => RunSchema.parse(payload));
     registerListener("run.log", (payload) => RunLogDataSchema.parse(payload));
     registerListener("artifact.created", (payload) => ArtifactSchema.parse(payload));
+    registerListener("checkpoint.created", (payload) =>
+      CheckpointSummarySchema.parse(payload)
+    );
     registerListener("run.step.updated", (payload) => RunStepSchema.parse(payload));
     registerListener("approval.requested", (payload) => ApprovalSchema.parse(payload));
     registerListener("approval.resolved", (payload) => ApprovalSchema.parse(payload));
+    registerListener("run.interrupted", (payload) =>
+      RunInterruptedDataSchema.parse(payload)
+    );
+    registerListener("run.resumed", (payload) =>
+      ResumeRunResponseSchema.parse(payload)
+    );
 
     sharedSource = {
       source,

@@ -82,6 +82,14 @@ function createEntryFromEvent(event: OutcomeStreamEvent): ActivityEntry {
         timestamp: event.data.createdAt,
         tone: "success"
       };
+    case "checkpoint.created":
+      return {
+        id: `${event.data.id}:created`,
+        title: "Checkpoint created",
+        body: `Checkpoint ${event.data.kind} (#${event.data.sequence}) was persisted for the run.`,
+        timestamp: event.data.createdAt,
+        tone: "accent"
+      };
     case "run.step.updated":
       return {
         id: `${event.data.id}:${event.data.updatedAt}`,
@@ -109,17 +117,33 @@ function createEntryFromEvent(event: OutcomeStreamEvent): ActivityEntry {
             ? "Approval rejected"
             : "Approval cancelled";
 
-      return {
-        id: `${event.data.id}:resolved:${event.data.resolvedAt ?? event.data.requestedAt}`,
-        title: resolutionTitle,
-        body: `${event.data.title} ${event.data.resolution}.${event.data.resolutionNote ? ` ${event.data.resolutionNote}` : ""}`,
-        timestamp: event.data.resolvedAt ?? event.data.requestedAt,
+        return {
+          id: `${event.data.id}:resolved:${event.data.resolvedAt ?? event.data.requestedAt}`,
+          title: resolutionTitle,
+          body: `${event.data.title} ${event.data.resolution}.${event.data.resolutionNote ? ` ${event.data.resolutionNote}` : ""}`,
+          timestamp: event.data.resolvedAt ?? event.data.requestedAt,
         tone:
           event.data.resolution === "approved"
             ? "success"
             : "warning"
+        };
+      }
+    case "run.interrupted":
+      return {
+        id: `${event.data.run.id}:interrupted:${event.data.run.updatedAt}`,
+        title: "Run interrupted",
+        body: `Run ${event.data.run.id} interrupted from checkpoint ${event.data.interruptedFromCheckpointId}.`,
+        timestamp: event.data.run.updatedAt,
+        tone: "warning"
       };
-    }
+    case "run.resumed":
+      return {
+        id: `${event.data.run.id}:resumed:${event.data.run.updatedAt}`,
+        title: "Run resumed",
+        body: `Run ${event.data.run.id} resumed from checkpoint ${event.data.resumedFromCheckpointId}.`,
+        timestamp: event.data.run.updatedAt,
+        tone: "success"
+      };
   }
 }
 

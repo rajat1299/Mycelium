@@ -88,7 +88,7 @@ describe("subscribeToOutcomeEvents", () => {
     vi.stubGlobal("EventSource", FakeEventSource as unknown as typeof EventSource);
 
     const handler = vi.fn();
-    subscribeToOutcomeEvents("outcome_123", handler);
+    const unsubscribe = subscribeToOutcomeEvents("outcome_approval", handler);
 
     FakeEventSource.instances[0]?.emit("approval.requested", {
       id: "approval_123",
@@ -129,16 +129,95 @@ describe("subscribeToOutcomeEvents", () => {
     expect(handler).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
-        outcomeId: "outcome_123",
+        outcomeId: "outcome_approval",
         type: "approval.requested"
       })
     );
     expect(handler).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        outcomeId: "outcome_123",
+        outcomeId: "outcome_approval",
         type: "approval.resolved"
       })
     );
+
+    unsubscribe();
+  });
+
+  it("forwards checkpoint and resume lifecycle SSE events to subscribers", () => {
+    vi.stubGlobal("EventSource", FakeEventSource as unknown as typeof EventSource);
+
+    const handler = vi.fn();
+    const unsubscribe = subscribeToOutcomeEvents("outcome_checkpoint", handler);
+
+    FakeEventSource.instances[0]?.emit("checkpoint.created", {
+      id: "checkpoint_123",
+      workspaceId: "ws_default",
+      outcomeId: "outcome_123",
+      runId: "run_123",
+      sequence: 3,
+      kind: "step_completed",
+      resumable: true,
+      storeKey: "run_123/000003-checkpoint_123.json",
+      checksum:
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      byteSize: 2048,
+      stepId: "step_456",
+      createdAt: "2026-03-16T16:00:00.000Z"
+    });
+
+    FakeEventSource.instances[0]?.emit("run.interrupted", {
+      run: {
+        id: "run_123",
+        workspaceId: "ws_default",
+        outcomeId: "outcome_123",
+        planId: "plan_123",
+        status: "interrupted",
+        createdAt: "2026-03-16T15:30:00.000Z",
+        updatedAt: "2026-03-16T16:05:00.000Z",
+        latestCheckpointId: "checkpoint_123",
+        resumable: true
+      },
+      interruptedFromCheckpointId: "checkpoint_123"
+    });
+
+    FakeEventSource.instances[0]?.emit("run.resumed", {
+      run: {
+        id: "run_123",
+        workspaceId: "ws_default",
+        outcomeId: "outcome_123",
+        planId: "plan_123",
+        status: "running",
+        createdAt: "2026-03-16T15:30:00.000Z",
+        updatedAt: "2026-03-16T16:10:00.000Z",
+        latestCheckpointId: "checkpoint_123",
+        resumable: true
+      },
+      resumedFromCheckpointId: "checkpoint_123"
+    });
+
+    expect(handler).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        outcomeId: "outcome_checkpoint",
+        type: "checkpoint.created"
+      })
+    );
+    expect(handler).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        outcomeId: "outcome_checkpoint",
+        type: "run.interrupted"
+      })
+    );
+    expect(handler).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        outcomeId: "outcome_checkpoint",
+        type: "run.resumed"
+      })
+    );
+
+    unsubscribe();
   });
 });
