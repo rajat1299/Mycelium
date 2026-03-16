@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ApprovalRequirementSchema } from "./approval";
+import { RemoteExecutionTargetSchema } from "./remote-worker";
 import {
   CapabilityFamilySchema,
   RouteReasonSchema,
@@ -142,6 +143,11 @@ export const RunStepSchema = z
     routeStatus: RouteStatusSchema.optional(),
     routeReason: RouteReasonSchema.nullable().optional(),
     routeResolvedAt: z.string().datetime().optional(),
+    executionTarget: RemoteExecutionTargetSchema.optional(),
+    remoteWorkerId: z.string().min(1).nullable().optional(),
+    remoteWorkerSessionId: z.string().min(1).nullable().optional(),
+    remoteExecutionAttemptId: z.string().min(1).nullable().optional(),
+    remoteAssignedAt: z.string().datetime().nullable().optional(),
     status: StepStatusSchema,
     position: z.number().int().nonnegative(),
     createdAt: z.string().datetime(),
@@ -226,6 +232,75 @@ export const RunStepSchema = z
         code: z.ZodIssueCode.custom,
         path: ["routeReason"],
         message: "Unresolved route metadata requires a non-null routeReason."
+      });
+    }
+
+    const hasRemoteAssignmentMetadata =
+      step.executionTarget !== undefined ||
+      step.remoteWorkerId !== undefined ||
+      step.remoteWorkerSessionId !== undefined ||
+      step.remoteExecutionAttemptId !== undefined ||
+      step.remoteAssignedAt !== undefined;
+
+    if (!hasRemoteAssignmentMetadata) {
+      return;
+    }
+
+    if (step.executionTarget === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["executionTarget"],
+        message: "executionTarget is required when remote execution metadata is present."
+      });
+      return;
+    }
+
+    if (step.executionTarget === "remote_worker") {
+      if (!step.remoteWorkerId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["remoteWorkerId"],
+          message: "Remote worker execution requires remoteWorkerId."
+        });
+      }
+
+      if (!step.remoteWorkerSessionId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["remoteWorkerSessionId"],
+          message: "Remote worker execution requires remoteWorkerSessionId."
+        });
+      }
+
+      if (!step.remoteExecutionAttemptId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["remoteExecutionAttemptId"],
+          message: "Remote worker execution requires remoteExecutionAttemptId."
+        });
+      }
+
+      if (!step.remoteAssignedAt) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["remoteAssignedAt"],
+          message: "Remote worker execution requires remoteAssignedAt."
+        });
+      }
+
+      return;
+    }
+
+    if (
+      step.remoteWorkerId != null ||
+      step.remoteWorkerSessionId != null ||
+      step.remoteExecutionAttemptId != null ||
+      step.remoteAssignedAt != null
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["executionTarget"],
+        message: "Local execution must not include remote worker assignment metadata."
       });
     }
   });

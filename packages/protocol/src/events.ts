@@ -8,6 +8,10 @@ import {
 } from "./checkpoint";
 import { OutcomeSchema } from "./outcome";
 import { PlanSchema, RunSchema, RunStepSchema } from "./plan";
+import {
+  RemoteStepLifecycleEventDataSchema,
+  RemoteWorkerSchema
+} from "./remote-worker";
 
 export const EventTypeSchema = z.enum([
   "outcome.updated",
@@ -21,6 +25,9 @@ export const EventTypeSchema = z.enum([
   "checkpoint.created",
   "approval.requested",
   "approval.resolved",
+  "worker.connected",
+  "worker.disconnected",
+  "remote.step.updated",
   "run.interrupted",
   "run.resumed",
   "schedule.fired",
@@ -119,6 +126,24 @@ export const ApprovalResolvedEventSchema = z.object({
   data: ApprovalSchema
 });
 
+export const WorkerConnectedEventSchema = z.object({
+  outcomeId: z.string(),
+  type: z.literal("worker.connected"),
+  data: RemoteWorkerSchema
+});
+
+export const WorkerDisconnectedEventSchema = z.object({
+  outcomeId: z.string(),
+  type: z.literal("worker.disconnected"),
+  data: RemoteWorkerSchema
+});
+
+export const RemoteStepUpdatedEventSchema = z.object({
+  outcomeId: z.string(),
+  type: z.literal("remote.step.updated"),
+  data: RemoteStepLifecycleEventDataSchema
+});
+
 export const RunInterruptedEventSchema = z.object({
   outcomeId: z.string(),
   type: z.literal("run.interrupted"),
@@ -143,6 +168,9 @@ export const OutcomeStreamEventSchema = z.discriminatedUnion("type", [
   CheckpointCreatedEventSchema,
   ApprovalRequestedEventSchema,
   ApprovalResolvedEventSchema,
+  WorkerConnectedEventSchema,
+  WorkerDisconnectedEventSchema,
+  RemoteStepUpdatedEventSchema,
   RunInterruptedEventSchema,
   RunResumedEventSchema
 ]);
@@ -163,6 +191,11 @@ export type ArtifactCreatedEvent = z.infer<typeof ArtifactCreatedEventSchema>;
 export type CheckpointCreatedEvent = z.infer<typeof CheckpointCreatedEventSchema>;
 export type ApprovalRequestedEvent = z.infer<typeof ApprovalRequestedEventSchema>;
 export type ApprovalResolvedEvent = z.infer<typeof ApprovalResolvedEventSchema>;
+export type WorkerConnectedEvent = z.infer<typeof WorkerConnectedEventSchema>;
+export type WorkerDisconnectedEvent = z.infer<
+  typeof WorkerDisconnectedEventSchema
+>;
+export type RemoteStepUpdatedEvent = z.infer<typeof RemoteStepUpdatedEventSchema>;
 export type RunInterruptedEvent = z.infer<typeof RunInterruptedEventSchema>;
 export type RunResumedEvent = z.infer<typeof RunResumedEventSchema>;
 export type OutcomeStreamEvent = z.infer<typeof OutcomeStreamEventSchema>;
