@@ -5,7 +5,8 @@ import {
   pgEnum,
   pgTable,
   text,
-  timestamp
+  timestamp,
+  uniqueIndex
 } from "drizzle-orm/pg-core";
 
 export const outcomeStatusValues = [
@@ -41,6 +42,7 @@ export const runStatusValues = [
   "waiting_for_worker",
   "running",
   "blocked",
+  "interrupted",
   "completed",
   "failed",
   "cancelled"
@@ -88,6 +90,22 @@ export const routeReasonValues = [
 ] as const;
 
 export const artifactLineageRelationValues = ["derived_from"] as const;
+export const checkpointKindValues = [
+  "run_started",
+  "step_completed",
+  "step_blocked_on_approval",
+  "approval_resolved",
+  "run_completed",
+  "run_failed"
+] as const;
+export const auditCategoryValues = [
+  "lifecycle",
+  "checkpoint",
+  "approval",
+  "resume",
+  "artifact"
+] as const;
+export const auditActorTypeValues = ["system", "operator"] as const;
 
 export const outcomeStatusEnum = pgEnum("outcome_status", outcomeStatusValues);
 export const approvalStatusEnum = pgEnum("approval_status", approvalStatusValues);
@@ -112,6 +130,9 @@ export const artifactLineageRelationEnum = pgEnum(
   "artifact_lineage_relation",
   artifactLineageRelationValues
 );
+export const checkpointKindEnum = pgEnum("checkpoint_kind", checkpointKindValues);
+export const auditCategoryEnum = pgEnum("audit_category", auditCategoryValues);
+export const auditActorTypeEnum = pgEnum("audit_actor_type", auditActorTypeValues);
 
 export const workspaces = pgTable("workspaces", {
   id: text("id").primaryKey(),
@@ -321,6 +342,8 @@ export const outcomeRuns = pgTable("outcome_runs", {
     .notNull()
     .references(() => outcomePlans.id),
   status: runStatusEnum("status").notNull().default("draft"),
+  latestCheckpointId: text("latest_checkpoint_id"),
+  resumable: boolean("resumable").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
 });
@@ -366,6 +389,67 @@ export const runEvents = pgTable("run_events", {
   payload: jsonb("payload").notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
 });
+
+export const runCheckpoints = pgTable(
+  "run_checkpoints",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id),
+    outcomeId: text("outcome_id")
+      .notNull()
+      .references(() => outcomes.id),
+    runId: text("run_id")
+      .notNull()
+      .references(() => outcomeRuns.id),
+    stepId: text("step_id").references(() => runSteps.id),
+    sequence: integer("sequence").notNull(),
+    kind: checkpointKindEnum("kind").notNull(),
+    resumable: boolean("resumable").notNull().default(false),
+    storeKey: text("store_key").notNull(),
+    checksum: text("checksum").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    uniqueIndex("run_checkpoints_run_id_sequence_key").on(
+      table.runId,
+      table.sequence
+    )
+  ]
+);
+
+export const runAuditEvents = pgTable(
+  "run_audit_events",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id),
+    outcomeId: text("outcome_id")
+      .notNull()
+      .references(() => outcomes.id),
+    runId: text("run_id")
+      .notNull()
+      .references(() => outcomeRuns.id),
+    stepId: text("step_id").references(() => runSteps.id),
+    checkpointId: text("checkpoint_id").references(() => runCheckpoints.id),
+    sequence: integer("sequence").notNull(),
+    category: auditCategoryEnum("category").notNull(),
+    eventType: text("event_type").notNull(),
+    actorType: auditActorTypeEnum("actor_type").notNull(),
+    summary: text("summary").notNull(),
+    payload: jsonb("payload").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    uniqueIndex("run_audit_events_run_id_sequence_key").on(
+      table.runId,
+      table.sequence
+    )
+  ]
+);
 
 export const workspaceLeases = pgTable("workspace_leases", {
   runId: text("run_id")

@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import {
+  CheckpointDetailPayloadSchema,
   type ApprovalRequirement,
   StepRouteSchema,
   type StepRoute
@@ -11,6 +12,7 @@ import {
   outcomeRuns,
   planEdges,
   planNodes,
+  runCheckpoints,
   runEvents,
   runSteps
 } from "../schema";
@@ -44,6 +46,8 @@ export type StoredRun = {
   outcomeId: string;
   planId: string;
   status: RunRow["status"];
+  latestCheckpointId?: string | null;
+  resumable?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -138,12 +142,21 @@ export type ReleaseReadyDependentsInput = {
   updatedAt: string;
 };
 
+export type RestoreFromCheckpointInput = {
+  runId: string;
+  checkpointId: string;
+  payload: unknown;
+  updatedAt: string;
+};
+
 function mapRunRow(row: RunRow): StoredRun {
   return {
     id: row.id,
     outcomeId: row.outcomeId,
     planId: row.planId,
     status: row.status,
+    latestCheckpointId: row.latestCheckpointId,
+    resumable: row.resumable,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString()
   };
@@ -260,6 +273,8 @@ export class RunRepository {
           outcomeId: plan.outcomeId,
           planId: input.planId,
           status: "queued",
+          latestCheckpointId: null,
+          resumable: false,
           createdAt: new Date(input.createdAt),
           updatedAt: new Date(input.updatedAt)
         })
@@ -655,6 +670,111 @@ export class RunRepository {
       return released
         .sort((left, right) => left.position - right.position)
         .map(mapRunStepRow);
+    });
+  }
+
+  async restoreFromCheckpoint(
+    input: RestoreFromCheckpointInput
+  ): Promise<{ run: StoredRun; steps: StoredRunStep[] } | null> {
+    const payload = CheckpointDetailPayloadSchema.parse(input.payload);
+
+    return this.db.transaction(async (transaction) => {
+      const [runRows, outcomeRows, stepRows, checkpointRows] = await Promise.all([
+        transaction.select().from(outcomeRuns),
+        transaction.select().from(outcomes),
+        transaction.select().from(runSteps),
+        transaction.select().from(runCheckpoints)
+      ]);
+
+      const run = runRows.find((row) => row.id === input.runId);
+
+      if (!run) {
+        return null;
+      }
+
+      const checkpoint = checkpointRows.find((row) => row.id === input.checkpointId);
+
+      if (!checkpoint) {
+        throw new Error(`Checkpoint ${input.checkpointId} does not exist.`);
+      }
+
+      if (checkpoint.runId !== input.runId) {
+        throw new Error(
+          `Checkpoint ${input.checkpointId} belongs to ${checkpoint.runId}, not ${input.runId}.`
+        );
+      }
+
+      const outcome = outcomeRows.find((row) => row.id === run.outcomeId);
+
+      if (!outcome) {
+        throw new Error(`Outcome ${run.outcomeId} does not exist.`);
+      }
+
+      if (payload.run.id !== input.runId) {
+        throw new Error(
+          `Checkpoint payload belongs to ${payload.run.id}, not ${input.runId}.`
+        );
+      }
+
+      if (payload.run.outcomeId !== run.outcomeId) {
+        throw new Error(
+          `Checkpoint payload outcome ${payload.run.outcomeId} does not match ${run.outcomeId}.`
+        );
+      }
+
+      if (payload.run.workspaceId !== outcome.workspaceId) {
+        throw new Error(
+          `Checkpoint payload workspace ${payload.run.workspaceId} does not match ${outcome.workspaceId}.`
+        );
+      }
+
+      const runScopedSteps = stepRows.filter((row) => row.runId === input.runId);
+      const payloadStepIds = new Set(payload.steps.map((step) => step.stepId));
+
+      if (runScopedSteps.some((step) => !payloadStepIds.has(step.id))) {
+        throw new Error(
+          `Checkpoint payload for run ${input.runId} does not cover every persisted step.`
+        );
+      }
+
+      for (const payloadStep of payload.steps) {
+        const existingStep = runScopedSteps.find((row) => row.id === payloadStep.stepId);
+
+        if (!existingStep) {
+          throw new Error(
+            `Checkpoint payload step ${payloadStep.stepId} does not belong to run ${input.runId}.`
+          );
+        }
+
+        await transaction
+          .update(runSteps)
+          .set({
+            status: payloadStep.status,
+            updatedAt: new Date(input.updatedAt)
+          })
+          .where(eq(runSteps.id, payloadStep.stepId))
+          .returning();
+      }
+
+      const [updatedRun] = await transaction
+        .update(outcomeRuns)
+        .set({
+          latestCheckpointId: input.checkpointId,
+          resumable: checkpoint.resumable,
+          updatedAt: new Date(input.updatedAt)
+        })
+        .where(eq(outcomeRuns.id, input.runId))
+        .returning();
+
+      const restoredSteps = await transaction.select().from(runSteps);
+
+      return {
+        run: mapRunRow(updatedRun),
+        steps: restoredSteps
+          .filter((row) => row.runId === input.runId)
+          .sort((left, right) => left.position - right.position)
+          .map(mapRunStepRow)
+      };
     });
   }
 }

@@ -3,6 +3,8 @@ export * from "./client";
 export * from "./repositories/outcomes";
 export * from "./repositories/plans";
 export * from "./repositories/runs";
+export * from "./repositories/checkpoints";
+export * from "./repositories/audit-events";
 export * from "./repositories/artifacts";
 export * from "./repositories/approvals";
 export * from "./repositories/artifact-lineage";

@@ -8,6 +8,8 @@ import {
   outcomeRuns,
   planEdges,
   planNodes,
+  runAuditEvents,
+  runCheckpoints,
   runEvents,
   runSteps,
   routerPolicies,
@@ -26,6 +28,8 @@ type SupportedTable =
   | typeof outcomeRuns
   | typeof runSteps
   | typeof runEvents
+  | typeof runCheckpoints
+  | typeof runAuditEvents
   | typeof artifacts
   | typeof approvals
   | typeof artifactLineageEdges
@@ -43,6 +47,8 @@ export type RepositoryTestState = {
   outcomeRuns: TableRecord[];
   runSteps: TableRecord[];
   runEvents: TableRecord[];
+  runCheckpoints: TableRecord[];
+  runAuditEvents: TableRecord[];
   artifacts: TableRecord[];
   approvals: TableRecord[];
   artifactLineageEdges: TableRecord[];
@@ -106,6 +112,8 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
     outcomeRuns: [],
     runSteps: [],
     runEvents: [],
+    runCheckpoints: [],
+    runAuditEvents: [],
     artifacts: [],
     approvals: [],
     artifactLineageEdges: [],
@@ -143,6 +151,14 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
 
     if (table === runEvents) {
       return "run_events";
+    }
+
+    if (table === runCheckpoints) {
+      return "run_checkpoints";
+    }
+
+    if (table === runAuditEvents) {
+      return "run_audit_events";
     }
 
     if (table === artifacts) {
@@ -192,6 +208,10 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
         return state.runSteps;
       case "run_events":
         return state.runEvents;
+      case "run_checkpoints":
+        return state.runCheckpoints;
+      case "run_audit_events":
+        return state.runAuditEvents;
       case "artifacts":
         return state.artifacts;
       case "approvals":
@@ -383,6 +403,17 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
     );
   }
 
+  function hasCheckpoint(checkpointId: unknown, pendingRows: TableRecord[] = []) {
+    if (typeof checkpointId !== "string" || checkpointId.length === 0) {
+      return false;
+    }
+
+    return (
+      pendingRows.some((row) => row.id === checkpointId) ||
+      state.runCheckpoints.some((row) => row.id === checkpointId)
+    );
+  }
+
   function assertRoutingForeignKeysForRow(
     tableName: string,
     row: TableRecord,
@@ -424,6 +455,71 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
 
       if (!hasStep(row.stepId, pendingRows)) {
         throw insertOrUpdateForeignKeyError("approvals", "approvals_step_id_fkey");
+      }
+    }
+
+    if (tableName === "run_checkpoints") {
+      if (!hasOutcome(row.outcomeId, pendingRows)) {
+        throw insertOrUpdateForeignKeyError(
+          "run_checkpoints",
+          "run_checkpoints_outcome_id_fkey"
+        );
+      }
+
+      if (!hasRun(row.runId, pendingRows)) {
+        throw insertOrUpdateForeignKeyError(
+          "run_checkpoints",
+          "run_checkpoints_run_id_fkey"
+        );
+      }
+
+      if (
+        row.stepId !== null &&
+        row.stepId !== undefined &&
+        !hasStep(row.stepId, pendingRows)
+      ) {
+        throw insertOrUpdateForeignKeyError(
+          "run_checkpoints",
+          "run_checkpoints_step_id_fkey"
+        );
+      }
+    }
+
+    if (tableName === "run_audit_events") {
+      if (!hasOutcome(row.outcomeId, pendingRows)) {
+        throw insertOrUpdateForeignKeyError(
+          "run_audit_events",
+          "run_audit_events_outcome_id_fkey"
+        );
+      }
+
+      if (!hasRun(row.runId, pendingRows)) {
+        throw insertOrUpdateForeignKeyError(
+          "run_audit_events",
+          "run_audit_events_run_id_fkey"
+        );
+      }
+
+      if (
+        row.stepId !== null &&
+        row.stepId !== undefined &&
+        !hasStep(row.stepId, pendingRows)
+      ) {
+        throw insertOrUpdateForeignKeyError(
+          "run_audit_events",
+          "run_audit_events_step_id_fkey"
+        );
+      }
+
+      if (
+        row.checkpointId !== null &&
+        row.checkpointId !== undefined &&
+        !hasCheckpoint(row.checkpointId, pendingRows)
+      ) {
+        throw insertOrUpdateForeignKeyError(
+          "run_audit_events",
+          "run_audit_events_checkpoint_id_fkey"
+        );
       }
     }
 
@@ -515,6 +611,22 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
 
     if (tableName === "run_steps") {
       for (const row of rows) {
+        if (state.runCheckpoints.some((checkpoint) => checkpoint.stepId === row.id)) {
+          throw deleteForeignKeyError(
+            "run_steps",
+            "run_checkpoints_step_id_fkey",
+            "run_checkpoints"
+          );
+        }
+
+        if (state.runAuditEvents.some((event) => event.stepId === row.id)) {
+          throw deleteForeignKeyError(
+            "run_steps",
+            "run_audit_events_step_id_fkey",
+            "run_audit_events"
+          );
+        }
+
         if (state.approvals.some((approval) => approval.stepId === row.id)) {
           throw deleteForeignKeyError(
             "run_steps",
@@ -539,6 +651,22 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
 
     if (tableName === "outcome_runs") {
       for (const row of rows) {
+        if (state.runCheckpoints.some((checkpoint) => checkpoint.runId === row.id)) {
+          throw deleteForeignKeyError(
+            "outcome_runs",
+            "run_checkpoints_run_id_fkey",
+            "run_checkpoints"
+          );
+        }
+
+        if (state.runAuditEvents.some((event) => event.runId === row.id)) {
+          throw deleteForeignKeyError(
+            "outcome_runs",
+            "run_audit_events_run_id_fkey",
+            "run_audit_events"
+          );
+        }
+
         if (state.approvals.some((approval) => approval.runId === row.id)) {
           throw deleteForeignKeyError(
             "outcome_runs",
@@ -561,11 +689,39 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
 
     if (tableName === "outcomes") {
       for (const row of rows) {
+        if (state.runCheckpoints.some((checkpoint) => checkpoint.outcomeId === row.id)) {
+          throw deleteForeignKeyError(
+            "outcomes",
+            "run_checkpoints_outcome_id_fkey",
+            "run_checkpoints"
+          );
+        }
+
+        if (state.runAuditEvents.some((event) => event.outcomeId === row.id)) {
+          throw deleteForeignKeyError(
+            "outcomes",
+            "run_audit_events_outcome_id_fkey",
+            "run_audit_events"
+          );
+        }
+
         if (state.approvals.some((approval) => approval.outcomeId === row.id)) {
           throw deleteForeignKeyError(
             "outcomes",
             "approvals_outcome_id_fkey",
             "approvals"
+          );
+        }
+      }
+    }
+
+    if (tableName === "run_checkpoints") {
+      for (const row of rows) {
+        if (state.runAuditEvents.some((event) => event.checkpointId === row.id)) {
+          throw deleteForeignKeyError(
+            "run_checkpoints",
+            "run_audit_events_checkpoint_id_fkey",
+            "run_audit_events"
           );
         }
       }
@@ -607,6 +763,30 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
             ) {
               throw new Error(
                 'duplicate key value violates unique constraint "outcome_plans_outcome_id_key"'
+              );
+            }
+
+            if (
+              tableName === "run_checkpoints" &&
+              tableRows.some(
+                (existing) =>
+                  existing.runId === row.runId && existing.sequence === row.sequence
+              )
+            ) {
+              throw new Error(
+                'duplicate key value violates unique constraint "run_checkpoints_run_id_sequence_key"'
+              );
+            }
+
+            if (
+              tableName === "run_audit_events" &&
+              tableRows.some(
+                (existing) =>
+                  existing.runId === row.runId && existing.sequence === row.sequence
+              )
+            ) {
+              throw new Error(
+                'duplicate key value violates unique constraint "run_audit_events_run_id_sequence_key"'
               );
             }
           }
@@ -724,6 +904,8 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
         state.outcomeRuns = snapshot.state.outcomeRuns;
         state.runSteps = snapshot.state.runSteps;
         state.runEvents = snapshot.state.runEvents;
+        state.runCheckpoints = snapshot.state.runCheckpoints;
+        state.runAuditEvents = snapshot.state.runAuditEvents;
         state.artifacts = snapshot.state.artifacts;
         state.approvals = snapshot.state.approvals;
         state.artifactLineageEdges = snapshot.state.artifactLineageEdges;
