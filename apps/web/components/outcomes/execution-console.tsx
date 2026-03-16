@@ -216,6 +216,7 @@ export function ExecutionConsole({
       : null) ?? null;
   const pendingCheckpointLoadsRef = useRef(new Set<string>());
   const failedCheckpointLoadsRef = useRef(new Set<string>());
+  const auditRefreshRequestRef = useRef(0);
 
   async function loadCheckpointDetail(checkpointId: string) {
     const response = await fetch(`/api/checkpoints/${checkpointId}`, {
@@ -241,6 +242,49 @@ export function ExecutionConsole({
     }
 
     return AuditListResponseSchema.parse(payload).events;
+  }
+
+  async function refreshAuditTrailIntoState(
+    runId: string,
+    errorMessage: string
+  ) {
+    const requestId = auditRefreshRequestRef.current + 1;
+    auditRefreshRequestRef.current = requestId;
+
+    try {
+      const events = await refreshAuditTrail(runId);
+
+      setState((current) => {
+        if (
+          requestId !== auditRefreshRequestRef.current ||
+          current.selectedRunId !== runId
+        ) {
+          return current;
+        }
+
+        return {
+          ...current,
+          auditEvents: sortAuditEvents(events)
+        };
+      });
+    } catch {
+      setState((current) => {
+        if (
+          requestId !== auditRefreshRequestRef.current ||
+          current.selectedRunId !== runId
+        ) {
+          return current;
+        }
+
+        return {
+          ...current,
+          resumeStatusMessage: {
+            tone: "error",
+            text: errorMessage
+          }
+        };
+      });
+    }
   }
 
   async function ensureCheckpointDetail(
@@ -312,8 +356,6 @@ export function ExecutionConsole({
       }
 
       const resumed = ResumeRunResponseSchema.parse(payload);
-      const events = await refreshAuditTrail(resumed.run.id);
-
       setState((current) => ({
         ...current,
         currentRun:
@@ -324,13 +366,17 @@ export function ExecutionConsole({
               }
             : current.currentRun,
         selectedCheckpointId: resumed.resumedFromCheckpointId,
-        auditEvents: sortAuditEvents(events),
         isResuming: false,
         resumeStatusMessage: {
           tone: "default",
           text: `Resume requested from checkpoint ${resumed.resumedFromCheckpointId}.`
         }
       }));
+
+      void refreshAuditTrailIntoState(
+        resumed.run.id,
+        "Unable to load audit history after resume."
+      );
     } catch (error) {
       setState((current) => ({
         ...current,
@@ -479,22 +525,10 @@ export function ExecutionConsole({
               "Unable to load the latest checkpoint detail."
             );
 
-            void refreshAuditTrail(event.data.runId)
-              .then((events) => {
-                setState((latest) => ({
-                  ...latest,
-                  auditEvents: sortAuditEvents(events)
-                }));
-              })
-              .catch(() => {
-                setState((latest) => ({
-                  ...latest,
-                  resumeStatusMessage: {
-                    tone: "error",
-                    text: "Unable to refresh audit history after checkpoint capture."
-                  }
-                }));
-              });
+            void refreshAuditTrailIntoState(
+              event.data.runId,
+              "Unable to refresh audit history after checkpoint capture."
+            );
 
             return {
               ...current,
@@ -544,22 +578,10 @@ export function ExecutionConsole({
               return current;
             }
 
-            void refreshAuditTrail(event.data.run.id)
-              .then((events) => {
-                setState((latest) => ({
-                  ...latest,
-                  auditEvents: sortAuditEvents(events)
-                }));
-              })
-              .catch(() => {
-                setState((latest) => ({
-                  ...latest,
-                  resumeStatusMessage: {
-                    tone: "error",
-                    text: "Unable to refresh audit history after interruption."
-                  }
-                }));
-              });
+            void refreshAuditTrailIntoState(
+              event.data.run.id,
+              "Unable to refresh audit history after interruption."
+            );
 
             return {
               ...current,
@@ -584,22 +606,10 @@ export function ExecutionConsole({
               return current;
             }
 
-            void refreshAuditTrail(event.data.run.id)
-              .then((events) => {
-                setState((latest) => ({
-                  ...latest,
-                  auditEvents: sortAuditEvents(events)
-                }));
-              })
-              .catch(() => {
-                setState((latest) => ({
-                  ...latest,
-                  resumeStatusMessage: {
-                    tone: "error",
-                    text: "Unable to refresh audit history after resume."
-                  }
-                }));
-              });
+            void refreshAuditTrailIntoState(
+              event.data.run.id,
+              "Unable to refresh audit history after resume."
+            );
 
             if (!current.checkpointDetailsById[event.data.resumedFromCheckpointId]) {
               failedCheckpointLoadsRef.current.delete(
@@ -669,6 +679,16 @@ export function ExecutionConsole({
         onSelectCheckpoint={(checkpointId) =>
           {
             failedCheckpointLoadsRef.current.delete(checkpointId);
+
+            if (
+              state.selectedCheckpointId === checkpointId &&
+              !state.checkpointDetailsById[checkpointId]
+            ) {
+              void ensureCheckpointDetail(
+                checkpointId,
+                "Unable to load selected checkpoint detail."
+              );
+            }
 
             setState((current) => ({
               ...current,
