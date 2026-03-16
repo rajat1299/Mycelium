@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import {
   CheckpointDetailPayloadSchema,
   type ApprovalRequirement,
@@ -605,7 +605,10 @@ export class RunRepository {
             eq(runSteps.id, input.stepId),
             and(
               isNull(runSteps.remoteWorkerId),
-              isNull(runSteps.remoteWorkerSessionId)
+              and(
+                isNull(runSteps.remoteWorkerSessionId),
+                sql`exists (select 1 from ${remoteWorkers} where ${remoteWorkers.id} = ${input.workerId} and ${remoteWorkers.sessionId} = ${input.workerSessionId})`
+              )
             )
           )
         )
@@ -615,7 +618,10 @@ export class RunRepository {
         return mapRunStepRow(updated);
       }
 
-      const refreshedRows = await transaction.select().from(runSteps);
+      const [refreshedRows, refreshedWorkers] = await Promise.all([
+        transaction.select().from(runSteps),
+        transaction.select().from(remoteWorkers)
+      ]);
       const current = refreshedRows.find((row) => row.id === input.stepId);
 
       if (!current) {
@@ -629,6 +635,20 @@ export class RunRepository {
       ) {
         throw new Error(
           `Step ${input.stepId} is already assigned to worker ${current.remoteWorkerId}.`
+        );
+      }
+
+      const currentWorker = refreshedWorkers.find(
+        (row) => row.id === input.workerId
+      );
+
+      if (!currentWorker) {
+        throw new Error(`Remote worker ${input.workerId} does not exist.`);
+      }
+
+      if (currentWorker.sessionId !== input.workerSessionId) {
+        throw new Error(
+          `Remote worker ${input.workerId} session ${input.workerSessionId} does not match active session ${currentWorker.sessionId}.`
         );
       }
 

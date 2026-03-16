@@ -100,7 +100,12 @@ type QueryChunk = {
 
 type ParsedPredicate =
   | { type: "eq"; column: string; value: unknown }
-  | { type: "isNull"; column: string };
+  | { type: "isNull"; column: string }
+  | {
+      type: "existsRemoteWorkerSession";
+      workerId: unknown;
+      workerSessionId: unknown;
+    };
 
 export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) {
   const inserted: Array<{ table: string; values: TableRecord | TableRecord[] }> = [];
@@ -271,6 +276,27 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
       return [...parsePredicates(chunks[0]), ...parsePredicates(chunks[2])];
     }
 
+    if (
+      chunks.length === 11 &&
+      isStringChunkValue(chunks[0]?.value, "exists (select 1 from ") &&
+      chunks[1] === remoteWorkers &&
+      isStringChunkValue(chunks[2]?.value, " where ") &&
+      chunks[3]?.name === "id" &&
+      isStringChunkValue(chunks[4]?.value, " = ") &&
+      isStringChunkValue(chunks[6]?.value, " and ") &&
+      chunks[7]?.name === "session_id" &&
+      isStringChunkValue(chunks[8]?.value, " = ") &&
+      isStringChunkValue(chunks[10]?.value, ")")
+    ) {
+      return [
+        {
+          type: "existsRemoteWorkerSession",
+          workerId: chunks[5],
+          workerSessionId: chunks[9]
+        }
+      ];
+    }
+
     const column = chunks[1]?.name;
 
     if (typeof column !== "string") {
@@ -307,6 +333,14 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
   }
 
   function rowMatchesPredicate(row: TableRecord, predicate: ParsedPredicate) {
+    if (predicate.type === "existsRemoteWorkerSession") {
+      return state.remoteWorkers.some(
+        (worker) =>
+          readColumnValue(worker, "id") === predicate.workerId &&
+          readColumnValue(worker, "session_id") === predicate.workerSessionId
+      );
+    }
+
     const value = readColumnValue(row, predicate.column);
 
     if (predicate.type === "eq") {
