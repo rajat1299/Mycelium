@@ -1,11 +1,13 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { DatabaseClient } from "../client";
-import { outcomeRuns, workspaceLeases } from "../schema";
+import { outcomeRuns, remoteWorkers, workspaceLeases } from "../schema";
 
 type WorkspaceLeaseRow = typeof workspaceLeases.$inferSelect;
 
 export type StoredWorkspaceLease = {
   runId: string;
+  remoteWorkerId: string | null;
+  remoteWorkerSessionId: string | null;
   rootPath: string;
   inputPath: string;
   artifactsPath: string;
@@ -16,6 +18,8 @@ export type StoredWorkspaceLease = {
 
 export type AcquireWorkspaceLeaseInput = {
   runId: string;
+  remoteWorkerId?: string | null;
+  remoteWorkerSessionId?: string | null;
   rootPath: string;
   inputPath: string;
   artifactsPath: string;
@@ -31,6 +35,8 @@ export type ReleaseWorkspaceLeaseInput = {
 function mapWorkspaceLeaseRow(row: WorkspaceLeaseRow): StoredWorkspaceLease {
   return {
     runId: row.runId,
+    remoteWorkerId: row.remoteWorkerId ?? null,
+    remoteWorkerSessionId: row.remoteWorkerSessionId ?? null,
     rootPath: row.rootPath,
     inputPath: row.inputPath,
     artifactsPath: row.artifactsPath,
@@ -45,9 +51,10 @@ export class WorkspaceLeaseRepository {
 
   async acquire(input: AcquireWorkspaceLeaseInput): Promise<StoredWorkspaceLease> {
     return this.db.transaction(async (transaction) => {
-      const [runRows, leaseRows] = await Promise.all([
+      const [runRows, leaseRows, workerRows] = await Promise.all([
         transaction.select().from(outcomeRuns),
-        transaction.select().from(workspaceLeases)
+        transaction.select().from(workspaceLeases),
+        transaction.select().from(remoteWorkers)
       ]);
 
       const run = runRows.find((row) => row.id === input.runId);
@@ -64,10 +71,33 @@ export class WorkspaceLeaseRepository {
         throw new Error(`Active workspace lease already exists for run ${input.runId}.`);
       }
 
+      const hasWorkerOwnership =
+        input.remoteWorkerId !== undefined || input.remoteWorkerSessionId !== undefined;
+
+      if (hasWorkerOwnership) {
+        if (!input.remoteWorkerId || !input.remoteWorkerSessionId) {
+          throw new Error("Remote worker leases require both remoteWorkerId and remoteWorkerSessionId.");
+        }
+
+        const worker = workerRows.find((row) => row.id === input.remoteWorkerId);
+
+        if (!worker) {
+          throw new Error(`Remote worker ${input.remoteWorkerId} does not exist.`);
+        }
+
+        if (worker.sessionId !== input.remoteWorkerSessionId) {
+          throw new Error(
+            `Remote worker ${input.remoteWorkerId} session ${input.remoteWorkerSessionId} does not match active session ${worker.sessionId}.`
+          );
+        }
+      }
+
       const [created] = await transaction
         .insert(workspaceLeases)
         .values({
           runId: input.runId,
+          remoteWorkerId: input.remoteWorkerId ?? null,
+          remoteWorkerSessionId: input.remoteWorkerSessionId ?? null,
           rootPath: input.rootPath,
           inputPath: input.inputPath,
           artifactsPath: input.artifactsPath,

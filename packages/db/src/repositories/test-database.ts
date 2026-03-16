@@ -8,6 +8,7 @@ import {
   outcomeRuns,
   planEdges,
   planNodes,
+  remoteWorkers,
   runAuditEvents,
   runCheckpoints,
   runEvents,
@@ -25,6 +26,7 @@ type SupportedTable =
   | typeof outcomePlans
   | typeof planNodes
   | typeof planEdges
+  | typeof remoteWorkers
   | typeof outcomeRuns
   | typeof runSteps
   | typeof runEvents
@@ -44,6 +46,7 @@ export type RepositoryTestState = {
   outcomePlans: TableRecord[];
   planNodes: TableRecord[];
   planEdges: TableRecord[];
+  remoteWorkers: TableRecord[];
   outcomeRuns: TableRecord[];
   runSteps: TableRecord[];
   runEvents: TableRecord[];
@@ -109,6 +112,7 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
     outcomePlans: [],
     planNodes: [],
     planEdges: [],
+    remoteWorkers: [],
     outcomeRuns: [],
     runSteps: [],
     runEvents: [],
@@ -139,6 +143,10 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
 
     if (table === planEdges) {
       return "plan_edges";
+    }
+
+    if (table === remoteWorkers) {
+      return "remote_workers";
     }
 
     if (table === outcomeRuns) {
@@ -202,6 +210,8 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
         return state.planNodes;
       case "plan_edges":
         return state.planEdges;
+      case "remote_workers":
+        return state.remoteWorkers;
       case "outcome_runs":
         return state.outcomeRuns;
       case "run_steps":

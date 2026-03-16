@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import {
   CheckpointDetailPayloadSchema,
   type ApprovalRequirement,
+  type RemoteExecutionTarget,
   StepRouteSchema,
   type StepRoute
 } from "@computer-oss/protocol";
@@ -12,6 +13,7 @@ import {
   outcomeRuns,
   planEdges,
   planNodes,
+  remoteWorkers,
   runCheckpoints,
   runEvents,
   runSteps
@@ -71,6 +73,11 @@ export type StoredRunStep = {
   routeStatus?: StepRoute["status"];
   routeReason?: StepRoute["reason"];
   routeResolvedAt?: string;
+  executionTarget?: RemoteExecutionTarget | null;
+  remoteWorkerId?: string | null;
+  remoteWorkerSessionId?: string | null;
+  remoteExecutionAttemptId?: string | null;
+  remoteAssignedAt?: string | null;
   status: RunStepRow["status"];
   position: number;
   createdAt: string;
@@ -110,6 +117,15 @@ export type UpdateStepStatusInput = {
 export type UpdateStepRouteInput = {
   stepId: string;
   route: StepRoute;
+};
+
+export type AssignStepToWorkerInput = {
+  stepId: string;
+  workerId: string;
+  workerSessionId: string;
+  attemptId: string;
+  assignedAt: string;
+  updatedAt: string;
 };
 
 export type UpdateRunStatusInput = {
@@ -190,6 +206,15 @@ function mapRunStepRow(row: RunStepRow): StoredRunStep {
           routeStatus: row.routeStatus,
           routeReason: row.routeReason,
           routeResolvedAt: row.routeResolvedAt?.toISOString()
+        }
+      : {}),
+    ...(row.executionTarget
+      ? {
+          executionTarget: row.executionTarget,
+          remoteWorkerId: row.remoteWorkerId,
+          remoteWorkerSessionId: row.remoteWorkerSessionId,
+          remoteExecutionAttemptId: row.remoteExecutionAttemptId,
+          remoteAssignedAt: row.remoteAssignedAt?.toISOString() ?? null
         }
       : {}),
     status: row.status,
@@ -522,6 +547,55 @@ export class RunRepository {
         routeStatus: route.status,
         routeReason: route.reason,
         routeResolvedAt: new Date(route.resolvedAt)
+      })
+      .where(eq(runSteps.id, input.stepId))
+      .returning();
+
+    return updated ? mapRunStepRow(updated) : null;
+  }
+
+  async assignStepToWorker(
+    input: AssignStepToWorkerInput
+  ): Promise<StoredRunStep | null> {
+    const [stepRows, workerRows] = await Promise.all([
+      this.db.select().from(runSteps),
+      this.db.select().from(remoteWorkers)
+    ]);
+    const existing = stepRows.find((row) => row.id === input.stepId);
+
+    if (!existing) {
+      return null;
+    }
+
+    const worker = workerRows.find((row) => row.id === input.workerId);
+
+    if (!worker) {
+      throw new Error(`Remote worker ${input.workerId} does not exist.`);
+    }
+
+    if (worker.sessionId !== input.workerSessionId) {
+      throw new Error(
+        `Remote worker ${input.workerId} session ${input.workerSessionId} does not match active session ${worker.sessionId}.`
+      );
+    }
+
+    if (
+      (existing.remoteWorkerId && existing.remoteWorkerId !== input.workerId) ||
+      (existing.remoteWorkerSessionId &&
+        existing.remoteWorkerSessionId !== input.workerSessionId)
+    ) {
+      throw new Error(`Step ${input.stepId} is already assigned to worker ${existing.remoteWorkerId}.`);
+    }
+
+    const [updated] = await this.db
+      .update(runSteps)
+      .set({
+        executionTarget: "remote_worker",
+        remoteWorkerId: input.workerId,
+        remoteWorkerSessionId: input.workerSessionId,
+        remoteExecutionAttemptId: input.attemptId,
+        remoteAssignedAt: new Date(input.assignedAt),
+        updatedAt: new Date(input.updatedAt)
       })
       .where(eq(runSteps.id, input.stepId))
       .returning();

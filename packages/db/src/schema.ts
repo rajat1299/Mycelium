@@ -88,6 +88,21 @@ export const routeReasonValues = [
   "auth_profile_provider_mismatch",
   "no_active_auth_profile"
 ] as const;
+export const remoteExecutionTargetValues = [
+  "local_docker",
+  "remote_worker"
+] as const;
+export const remoteWorkerAvailabilityValues = [
+  "available",
+  "busy",
+  "draining",
+  "offline"
+] as const;
+export const remoteWorkerHealthStatusValues = [
+  "healthy",
+  "degraded",
+  "offline"
+] as const;
 
 export const artifactLineageRelationValues = ["derived_from"] as const;
 export const checkpointKindValues = [
@@ -126,6 +141,18 @@ export const authProfileStatusEnum = pgEnum(
 );
 export const routeStatusEnum = pgEnum("route_status", routeStatusValues);
 export const routeReasonEnum = pgEnum("route_reason", routeReasonValues);
+export const remoteExecutionTargetEnum = pgEnum(
+  "remote_execution_target",
+  remoteExecutionTargetValues
+);
+export const remoteWorkerAvailabilityEnum = pgEnum(
+  "remote_worker_availability",
+  remoteWorkerAvailabilityValues
+);
+export const remoteWorkerHealthStatusEnum = pgEnum(
+  "remote_worker_health_status",
+  remoteWorkerHealthStatusValues
+);
 export const artifactLineageRelationEnum = pgEnum(
   "artifact_lineage_relation",
   artifactLineageRelationValues
@@ -333,6 +360,36 @@ export const planEdges = pgTable("plan_edges", {
     .references(() => planNodes.id)
 });
 
+export const remoteWorkers = pgTable(
+  "remote_workers",
+  {
+    id: text("id").primaryKey(),
+    sessionId: text("session_id").notNull(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id),
+    label: text("label").notNull(),
+    daemonVersion: text("daemon_version").notNull(),
+    availability: remoteWorkerAvailabilityEnum("availability")
+      .notNull()
+      .default("available"),
+    capabilityFamilies: jsonb("capability_families").notNull().default([]),
+    supportsArtifacts: boolean("supports_artifacts").notNull().default(true),
+    supportsCheckpoints: boolean("supports_checkpoints").notNull().default(true),
+    supportsLogs: boolean("supports_logs").notNull().default(true),
+    healthStatus: remoteWorkerHealthStatusEnum("health_status")
+      .notNull()
+      .default("healthy"),
+    connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
+    lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    disconnectedAt: timestamp("disconnected_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [uniqueIndex("remote_workers_session_id_key").on(table.sessionId)]
+);
+
 export const outcomeRuns = pgTable("outcome_runs", {
   id: text("id").primaryKey(),
   outcomeId: text("outcome_id")
@@ -374,6 +431,11 @@ export const runSteps = pgTable("run_steps", {
   routeStatus: routeStatusEnum("route_status"),
   routeReason: routeReasonEnum("route_reason"),
   routeResolvedAt: timestamp("route_resolved_at", { withTimezone: true }),
+  executionTarget: remoteExecutionTargetEnum("execution_target"),
+  remoteWorkerId: text("remote_worker_id").references(() => remoteWorkers.id),
+  remoteWorkerSessionId: text("remote_worker_session_id"),
+  remoteExecutionAttemptId: text("remote_execution_attempt_id"),
+  remoteAssignedAt: timestamp("remote_assigned_at", { withTimezone: true }),
   status: stepStatusEnum("status").notNull().default("pending"),
   position: integer("position").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -455,6 +517,8 @@ export const workspaceLeases = pgTable("workspace_leases", {
   runId: text("run_id")
     .primaryKey()
     .references(() => outcomeRuns.id),
+  remoteWorkerId: text("remote_worker_id").references(() => remoteWorkers.id),
+  remoteWorkerSessionId: text("remote_worker_session_id"),
   rootPath: text("root_path").notNull(),
   inputPath: text("input_path").notNull(),
   artifactsPath: text("artifacts_path").notNull(),

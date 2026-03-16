@@ -3,14 +3,17 @@ import type {
   CreateArtifactLineageEdgeInput,
   AcquireWorkspaceLeaseInput,
   AppendRunEventInput,
+  CleanupStaleRemoteWorkersInput,
   CreatePendingApprovalInput,
   CreateAuthProfileInput,
   CreateArtifactInput,
   CreateCheckpointInput,
   CreatePlanInput,
   CreateRunFromPlanInput,
+  RecordRemoteWorkerHeartbeatInput,
   ListApprovalsInput,
   RestoreFromCheckpointInput,
+  StoredRemoteWorker,
   CreateWorkspaceCredentialInput,
   ReleaseReadyDependentsInput,
   ReleaseWorkspaceLeaseInput,
@@ -26,7 +29,9 @@ import type {
   StoredRun,
   StoredRunEvent,
   StoredRunStep,
+  UpsertRemoteWorkerInput,
   StoredWorkspaceLease,
+  AssignStepToWorkerInput,
   UpdateAuthProfileInput,
   UpdateRunLifecycleStatusInput,
   UpdateRunStatusInput,
@@ -40,6 +45,7 @@ import type {
   CreateOutcomeRequest,
   Outcome,
   OutcomeStatus,
+  RemoteWorker,
   RouterPolicy,
   WorkspaceCredentialMetadata
 } from "@computer-oss/protocol";
@@ -88,6 +94,9 @@ export type RunStore = {
   updateStatus(input: UpdateRunStatusInput): Promise<StoredRun | null>;
   updateStepStatus(input: UpdateStepStatusInput): Promise<StoredRunStep | null>;
   updateStepRoute(input: UpdateStepRouteInput): Promise<StoredRunStep | null>;
+  assignStepToWorker(
+    input: AssignStepToWorkerInput
+  ): Promise<StoredRunStep | null>;
   releaseReadyDependents(
     input: ReleaseReadyDependentsInput
   ): Promise<StoredRunStep[]>;
@@ -150,6 +159,20 @@ export type WorkspaceLeaseStore = {
   release(input: ReleaseWorkspaceLeaseInput): Promise<StoredWorkspaceLease | null>;
 };
 
+export type RemoteWorkerStore = {
+  upsert(input: UpsertRemoteWorkerInput): Promise<StoredRemoteWorker>;
+  getById(id: string): Promise<StoredRemoteWorker | null>;
+  getBySession(sessionId: string): Promise<StoredRemoteWorker | null>;
+  listByWorkspace(workspaceId: string): Promise<StoredRemoteWorker[]>;
+  recordHeartbeat(
+    input: RecordRemoteWorkerHeartbeatInput
+  ): Promise<StoredRemoteWorker | null>;
+  cleanupStaleSessions(
+    input: CleanupStaleRemoteWorkersInput
+  ): Promise<StoredRemoteWorker[]>;
+  delete(id: string): Promise<boolean>;
+};
+
 export type WorkspaceCredentialStore = {
   create(input: CreateWorkspaceCredentialInput): Promise<WorkspaceCredentialMetadata>;
   getById(id: string): Promise<WorkspaceCredentialMetadata | null>;
@@ -184,6 +207,7 @@ export type Repositories = {
   approvals: ApprovalStore;
   artifactLineage: ArtifactLineageStore;
   workspaceLeases: WorkspaceLeaseStore;
+  remoteWorkers: RemoteWorkerStore;
   workspaceCredentials: WorkspaceCredentialStore;
   authProfiles: AuthProfileStore;
   routerPolicy: RouterPolicyStore;
@@ -196,6 +220,7 @@ type InMemoryDataState = {
   auditEventsById: Map<string, StoredAuditEvent>;
   approvalsById: Map<string, StoredApproval>;
   artifactLineageEdgesById: Map<string, StoredArtifactLineageEdge>;
+  remoteWorkersById: Map<string, StoredRemoteWorker>;
   workspaceCredentialsById: Map<string, CreateWorkspaceCredentialInput>;
   authProfilesById: Map<string, AuthProfile>;
   routerPoliciesByWorkspaceId: Map<string, RouterPolicy>;
@@ -284,6 +309,17 @@ function compareArtifactLineageEdges(
 
   if (createdDelta !== 0) {
     return createdDelta;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
+function compareRemoteWorkers(left: RemoteWorker, right: RemoteWorker) {
+  const updatedDelta =
+    new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime();
+
+  if (updatedDelta !== 0) {
+    return updatedDelta;
   }
 
   return left.id.localeCompare(right.id);
@@ -410,6 +446,7 @@ function createInMemoryRepositoriesState() {
   const auditEventsById = new Map<string, StoredAuditEvent>();
   const approvalsById = new Map<string, StoredApproval>();
   const artifactLineageEdgesById = new Map<string, StoredArtifactLineageEdge>();
+  const remoteWorkersById = new Map<string, StoredRemoteWorker>();
   const workspaceLeasesByRunId = new Map<string, StoredWorkspaceLease>();
   const workspaceCredentialsById = new Map<string, CreateWorkspaceCredentialInput>();
   const authProfilesById = new Map<string, AuthProfile>();
@@ -428,6 +465,7 @@ function createInMemoryRepositoriesState() {
     auditEventsById,
     approvalsById,
     artifactLineageEdgesById,
+    remoteWorkersById,
     workspaceLeasesByRunId,
     workspaceCredentialsById,
     authProfilesById,
@@ -751,6 +789,53 @@ function createInMemoryRepositoriesState() {
         routeStatus: input.route.status,
         routeReason: input.route.reason,
         routeResolvedAt: input.route.resolvedAt
+      };
+      const updatedSteps =
+        runStepsByRunId.get(located.runId)?.map((candidate) =>
+          candidate.id === input.stepId ? updatedStep : candidate
+        ) ?? [];
+
+      runStepsByRunId.set(located.runId, updatedSteps);
+      return updatedStep;
+    },
+    async assignStepToWorker(input) {
+      const located = getStoredRunStep(state, input.stepId);
+
+      if (!located) {
+        return null;
+      }
+
+      const worker = remoteWorkersById.get(input.workerId);
+
+      if (!worker) {
+        throw new Error(`Remote worker ${input.workerId} does not exist.`);
+      }
+
+      if (worker.sessionId !== input.workerSessionId) {
+        throw new Error(
+          `Remote worker ${input.workerId} session ${input.workerSessionId} does not match active session ${worker.sessionId}.`
+        );
+      }
+
+      if (
+        (located.step.remoteWorkerId &&
+          located.step.remoteWorkerId !== input.workerId) ||
+        (located.step.remoteWorkerSessionId &&
+          located.step.remoteWorkerSessionId !== input.workerSessionId)
+      ) {
+        throw new Error(
+          `Step ${input.stepId} is already assigned to worker ${located.step.remoteWorkerId}.`
+        );
+      }
+
+      const updatedStep: StoredRunStep = {
+        ...located.step,
+        executionTarget: "remote_worker",
+        remoteWorkerId: input.workerId,
+        remoteWorkerSessionId: input.workerSessionId,
+        remoteExecutionAttemptId: input.attemptId,
+        remoteAssignedAt: input.assignedAt,
+        updatedAt: input.updatedAt
       };
       const updatedSteps =
         runStepsByRunId.get(located.runId)?.map((candidate) =>
@@ -1149,8 +1234,31 @@ function createInMemoryRepositoriesState() {
         throw new Error(`Active workspace lease already exists for run ${input.runId}.`);
       }
 
+      const hasWorkerOwnership =
+        input.remoteWorkerId !== undefined || input.remoteWorkerSessionId !== undefined;
+
+      if (hasWorkerOwnership) {
+        if (!input.remoteWorkerId || !input.remoteWorkerSessionId) {
+          throw new Error("Remote worker leases require both remoteWorkerId and remoteWorkerSessionId.");
+        }
+
+        const worker = remoteWorkersById.get(input.remoteWorkerId);
+
+        if (!worker) {
+          throw new Error(`Remote worker ${input.remoteWorkerId} does not exist.`);
+        }
+
+        if (worker.sessionId !== input.remoteWorkerSessionId) {
+          throw new Error(
+            `Remote worker ${input.remoteWorkerId} session ${input.remoteWorkerSessionId} does not match active session ${worker.sessionId}.`
+          );
+        }
+      }
+
       const lease: StoredWorkspaceLease = {
         runId: input.runId,
+        remoteWorkerId: input.remoteWorkerId ?? null,
+        remoteWorkerSessionId: input.remoteWorkerSessionId ?? null,
         rootPath: input.rootPath,
         inputPath: input.inputPath,
         artifactsPath: input.artifactsPath,
@@ -1184,6 +1292,108 @@ function createInMemoryRepositoriesState() {
 
       workspaceLeasesByRunId.set(input.runId, updatedLease);
       return updatedLease;
+    }
+  };
+
+  const remoteWorkersStore: RemoteWorkerStore = {
+    async upsert(input) {
+      for (const candidate of remoteWorkersById.values()) {
+        if (candidate.sessionId === input.sessionId && candidate.id !== input.id) {
+          throw new Error(
+            'duplicate key value violates unique constraint "remote_workers_session_id_key"'
+          );
+        }
+      }
+
+      remoteWorkersById.set(input.id, input);
+      return input;
+    },
+    async getById(id) {
+      return remoteWorkersById.get(id) ?? null;
+    },
+    async getBySession(sessionId) {
+      return (
+        Array.from(remoteWorkersById.values()).find(
+          (worker) => worker.sessionId === sessionId
+        ) ?? null
+      );
+    },
+    async listByWorkspace(workspaceId) {
+      return Array.from(remoteWorkersById.values())
+        .filter((worker) => worker.workspaceId === workspaceId)
+        .sort(compareRemoteWorkers);
+    },
+    async recordHeartbeat(input) {
+      const existing = remoteWorkersById.get(input.workerId);
+
+      if (!existing || existing.sessionId !== input.workerSessionId) {
+        return null;
+      }
+
+      const updated: StoredRemoteWorker = {
+        ...existing,
+        health: {
+          ...existing.health,
+          status: input.healthStatus,
+          lastHeartbeatAt: input.sentAt
+        },
+        updatedAt: input.sentAt
+      };
+
+      remoteWorkersById.set(updated.id, updated);
+      return updated;
+    },
+    async cleanupStaleSessions(input) {
+      const updated: StoredRemoteWorker[] = [];
+
+      for (const worker of remoteWorkersById.values()) {
+        if (
+          worker.availability === "offline" ||
+          new Date(worker.health.lastHeartbeatAt).getTime() >=
+            new Date(input.staleBefore).getTime()
+        ) {
+          continue;
+        }
+
+        const next: StoredRemoteWorker = {
+          ...worker,
+          availability: "offline",
+          health: {
+            ...worker.health,
+            status: "offline"
+          },
+          disconnectedAt: input.disconnectedAt,
+          updatedAt: input.disconnectedAt
+        };
+
+        remoteWorkersById.set(next.id, next);
+        updated.push(next);
+      }
+
+      return updated.sort(compareRemoteWorkers);
+    },
+    async delete(id) {
+      for (const steps of runStepsByRunId.values()) {
+        if (steps.some((step) => step.remoteWorkerId === id)) {
+          throw foreignKeyDeleteError(
+            "remote_workers",
+            "run_steps_remote_worker_id_fkey",
+            "run_steps"
+          );
+        }
+      }
+
+      for (const lease of workspaceLeasesByRunId.values()) {
+        if (lease.remoteWorkerId === id) {
+          throw foreignKeyDeleteError(
+            "remote_workers",
+            "workspace_leases_remote_worker_id_fkey",
+            "workspace_leases"
+          );
+        }
+      }
+
+      return remoteWorkersById.delete(id);
     }
   };
 
@@ -1673,6 +1883,7 @@ function createInMemoryRepositoriesState() {
     approvalsStore,
     artifactLineageStore,
     workspaceLeasesStore,
+    remoteWorkersStore,
     workspaceCredentialsStore,
     authProfilesStore,
     routerPolicyStore
@@ -1692,6 +1903,7 @@ export function createInMemoryRepositories(): Repositories {
     approvals: state.approvalsStore,
     artifactLineage: state.artifactLineageStore,
     workspaceLeases: state.workspaceLeasesStore,
+    remoteWorkers: state.remoteWorkersStore,
     workspaceCredentials: state.workspaceCredentialsStore,
     authProfiles: state.authProfilesStore,
     routerPolicy: state.routerPolicyStore
@@ -1711,6 +1923,7 @@ export async function createDatabaseRepositories(
     OutcomeRepository,
     PlanRepository,
     RouterPolicyRepository,
+    RemoteWorkerRepository,
     RunRepository,
     WorkspaceCredentialRepository,
     WorkspaceLeaseRepository,
@@ -1728,6 +1941,7 @@ export async function createDatabaseRepositories(
     approvals: new ApprovalRepository(db),
     artifactLineage: new ArtifactLineageRepository(db),
     workspaceLeases: new WorkspaceLeaseRepository(db),
+    remoteWorkers: new RemoteWorkerRepository(db),
     workspaceCredentials: new WorkspaceCredentialRepository(db),
     authProfiles: new AuthProfileRepository(db),
     routerPolicy: new RouterPolicyRepository(db)
