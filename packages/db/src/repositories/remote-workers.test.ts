@@ -99,6 +99,172 @@ describe("RemoteWorkerRepository", () => {
     ]);
   });
 
+  it("does not apply a stale heartbeat after the worker session changes", async () => {
+    const { db, state } = createRepositoryTestDatabase();
+    const repository = new RemoteWorkerRepository(db as never);
+
+    await repository.upsert({
+      id: "worker_1",
+      sessionId: "worker_session_1",
+      workspaceId: "ws_default",
+      label: "Primary remote worker",
+      daemonVersion: "1.0.0",
+      availability: "available",
+      capabilities: {
+        capabilityFamilies: ["coding", "terminal", "document"],
+        supportsArtifacts: true,
+        supportsCheckpoints: true,
+        supportsLogs: true
+      },
+      health: {
+        status: "healthy",
+        lastHeartbeatAt: "2026-03-16T10:00:00.000Z"
+      },
+      connectedAt: "2026-03-16T09:59:00.000Z",
+      disconnectedAt: null,
+      updatedAt: "2026-03-16T10:00:00.000Z"
+    });
+
+    const originalUpdate = (db as { update: typeof db.update }).update.bind(db);
+    let simulatedReconnect = false;
+
+    (db as { update: typeof db.update }).update = ((table) => {
+      const updateBuilder = originalUpdate(table);
+
+      return {
+        set(values) {
+          const setBuilder = updateBuilder.set(values);
+
+          return {
+            where(expression) {
+              if (!simulatedReconnect) {
+                simulatedReconnect = true;
+                const worker = state.remoteWorkers.find(
+                  (row) => row.id === "worker_1"
+                );
+
+                if (worker) {
+                  Object.assign(worker, {
+                    sessionId: "worker_session_2",
+                    connectedAt: new Date("2026-03-16T10:06:00.000Z"),
+                    lastHeartbeatAt: new Date("2026-03-16T10:06:00.000Z"),
+                    updatedAt: new Date("2026-03-16T10:06:00.000Z")
+                  });
+                }
+              }
+
+              return setBuilder.where(expression);
+            }
+          };
+        }
+      };
+    }) as typeof db.update;
+
+    await expect(
+      repository.recordHeartbeat({
+        workerId: "worker_1",
+        workerSessionId: "worker_session_1",
+        sentAt: "2026-03-16T10:05:00.000Z",
+        healthStatus: "degraded"
+      })
+    ).resolves.toBeNull();
+
+    await expect(repository.getById("worker_1")).resolves.toEqual(
+      expect.objectContaining({
+        id: "worker_1",
+        sessionId: "worker_session_2",
+        health: expect.objectContaining({
+          status: "healthy",
+          lastHeartbeatAt: "2026-03-16T10:06:00.000Z"
+        }),
+        updatedAt: "2026-03-16T10:06:00.000Z"
+      })
+    );
+  });
+
+  it("does not mark a reconnected worker offline during stale-session cleanup", async () => {
+    const { db, state } = createRepositoryTestDatabase();
+    const repository = new RemoteWorkerRepository(db as never);
+
+    await repository.upsert({
+      id: "worker_1",
+      sessionId: "worker_session_1",
+      workspaceId: "ws_default",
+      label: "Primary remote worker",
+      daemonVersion: "1.0.0",
+      availability: "available",
+      capabilities: {
+        capabilityFamilies: ["coding", "terminal", "document"],
+        supportsArtifacts: true,
+        supportsCheckpoints: true,
+        supportsLogs: true
+      },
+      health: {
+        status: "healthy",
+        lastHeartbeatAt: "2026-03-16T10:00:00.000Z"
+      },
+      connectedAt: "2026-03-16T09:59:00.000Z",
+      disconnectedAt: null,
+      updatedAt: "2026-03-16T10:00:00.000Z"
+    });
+
+    const originalUpdate = (db as { update: typeof db.update }).update.bind(db);
+    let simulatedReconnect = false;
+
+    (db as { update: typeof db.update }).update = ((table) => {
+      const updateBuilder = originalUpdate(table);
+
+      return {
+        set(values) {
+          const setBuilder = updateBuilder.set(values);
+
+          return {
+            where(expression) {
+              if (!simulatedReconnect) {
+                simulatedReconnect = true;
+                const worker = state.remoteWorkers.find(
+                  (row) => row.id === "worker_1"
+                );
+
+                if (worker) {
+                  Object.assign(worker, {
+                    sessionId: "worker_session_2",
+                    connectedAt: new Date("2026-03-16T10:12:00.000Z"),
+                    lastHeartbeatAt: new Date("2026-03-16T10:12:00.000Z"),
+                    updatedAt: new Date("2026-03-16T10:12:00.000Z")
+                  });
+                }
+              }
+
+              return setBuilder.where(expression);
+            }
+          };
+        }
+      };
+    }) as typeof db.update;
+
+    await expect(
+      repository.cleanupStaleSessions({
+        staleBefore: "2026-03-16T10:10:00.000Z",
+        disconnectedAt: "2026-03-16T10:15:00.000Z"
+      })
+    ).resolves.toEqual([]);
+
+    await expect(repository.getById("worker_1")).resolves.toEqual(
+      expect.objectContaining({
+        id: "worker_1",
+        sessionId: "worker_session_2",
+        availability: "available",
+        disconnectedAt: null,
+        health: expect.objectContaining({
+          status: "healthy",
+          lastHeartbeatAt: "2026-03-16T10:12:00.000Z"
+        }),
+        updatedAt: "2026-03-16T10:12:00.000Z"
+      })
+    );
+  });
+
   it("persists step assignment and worker-owned workspace leases, and rejects conflicting assignment", async () => {
     const { db } = createRepositoryTestDatabase();
     const plans = new PlanRepository(db as never);
@@ -209,6 +375,116 @@ describe("RemoteWorkerRepository", () => {
       })
     ).rejects.toThrow(
       `Step ${step.id} is already assigned to worker worker_1.`
+    );
+  });
+
+  it("rejects stale step assignment when another worker claims the step first", async () => {
+    const { db, state } = createRepositoryTestDatabase();
+    const plans = new PlanRepository(db as never);
+    const runs = new RunRepository(db as never);
+    const remoteWorkers = new RemoteWorkerRepository(db as never);
+
+    await plans.create(buildExecutablePlanInput());
+    await runs.createFromPlan({
+      id: "run_123",
+      outcomeId: "outcome_123",
+      planId: "plan_outcome_123",
+      createdAt: "2026-03-16T10:00:00.000Z",
+      updatedAt: "2026-03-16T10:00:00.000Z"
+    });
+
+    await remoteWorkers.upsert({
+      id: "worker_1",
+      sessionId: "worker_session_1",
+      workspaceId: "ws_default",
+      label: "Primary remote worker",
+      daemonVersion: "1.0.0",
+      availability: "available",
+      capabilities: {
+        capabilityFamilies: ["coding", "terminal"],
+        supportsArtifacts: true,
+        supportsCheckpoints: true,
+        supportsLogs: true
+      },
+      health: {
+        status: "healthy",
+        lastHeartbeatAt: "2026-03-16T10:00:00.000Z"
+      },
+      connectedAt: "2026-03-16T09:59:00.000Z",
+      disconnectedAt: null,
+      updatedAt: "2026-03-16T10:00:00.000Z"
+    });
+    await remoteWorkers.upsert({
+      id: "worker_2",
+      sessionId: "worker_session_2",
+      workspaceId: "ws_default",
+      label: "Backup remote worker",
+      daemonVersion: "1.0.0",
+      availability: "available",
+      capabilities: {
+        capabilityFamilies: ["coding", "terminal"],
+        supportsArtifacts: true,
+        supportsCheckpoints: true,
+        supportsLogs: true
+      },
+      health: {
+        status: "healthy",
+        lastHeartbeatAt: "2026-03-16T10:00:00.000Z"
+      },
+      connectedAt: "2026-03-16T09:59:00.000Z",
+      disconnectedAt: null,
+      updatedAt: "2026-03-16T10:00:00.000Z"
+    });
+
+    const [step] = await runs.listSteps("run_123");
+    const originalUpdate = (db as { update: typeof db.update }).update.bind(db);
+    let simulatedConcurrentClaim = false;
+
+    (db as { update: typeof db.update }).update = ((table) => {
+      const updateBuilder = originalUpdate(table);
+
+      return {
+        set(values) {
+          const setBuilder = updateBuilder.set(values);
+
+          return {
+            where(expression) {
+              if (!simulatedConcurrentClaim) {
+                simulatedConcurrentClaim = true;
+                const persistedStep = state.runSteps.find(
+                  (row) => row.id === step?.id
+                );
+
+                if (persistedStep) {
+                  Object.assign(persistedStep, {
+                    executionTarget: "remote_worker",
+                    remoteWorkerId: "worker_2",
+                    remoteWorkerSessionId: "worker_session_2",
+                    remoteExecutionAttemptId: "attempt_2",
+                    remoteAssignedAt: new Date("2026-03-16T10:01:00.000Z"),
+                    updatedAt: new Date("2026-03-16T10:01:00.000Z")
+                  });
+                }
+              }
+
+              return setBuilder.where(expression);
+            }
+          };
+        }
+      };
+    }) as typeof db.update;
+
+    await expect(
+      runs.assignStepToWorker({
+        stepId: step!.id,
+        workerId: "worker_1",
+        workerSessionId: "worker_session_1",
+        attemptId: "attempt_1",
+        assignedAt: "2026-03-16T10:02:00.000Z",
+        updatedAt: "2026-03-16T10:02:00.000Z"
+      })
+    ).rejects.toThrow(
+      `Step ${step!.id} is already assigned to worker worker_2.`
     );
   });
 });

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import {
   CheckpointDetailPayloadSchema,
   type ApprovalRequirement,
@@ -557,50 +557,83 @@ export class RunRepository {
   async assignStepToWorker(
     input: AssignStepToWorkerInput
   ): Promise<StoredRunStep | null> {
-    const [stepRows, workerRows] = await Promise.all([
-      this.db.select().from(runSteps),
-      this.db.select().from(remoteWorkers)
-    ]);
-    const existing = stepRows.find((row) => row.id === input.stepId);
+    return this.db.transaction(async (transaction) => {
+      const [stepRows, workerRows] = await Promise.all([
+        transaction.select().from(runSteps),
+        transaction.select().from(remoteWorkers)
+      ]);
+      const existing = stepRows.find((row) => row.id === input.stepId);
 
-    if (!existing) {
-      return null;
-    }
+      if (!existing) {
+        return null;
+      }
 
-    const worker = workerRows.find((row) => row.id === input.workerId);
+      const worker = workerRows.find((row) => row.id === input.workerId);
 
-    if (!worker) {
-      throw new Error(`Remote worker ${input.workerId} does not exist.`);
-    }
+      if (!worker) {
+        throw new Error(`Remote worker ${input.workerId} does not exist.`);
+      }
 
-    if (worker.sessionId !== input.workerSessionId) {
-      throw new Error(
-        `Remote worker ${input.workerId} session ${input.workerSessionId} does not match active session ${worker.sessionId}.`
-      );
-    }
+      if (worker.sessionId !== input.workerSessionId) {
+        throw new Error(
+          `Remote worker ${input.workerId} session ${input.workerSessionId} does not match active session ${worker.sessionId}.`
+        );
+      }
 
-    if (
-      (existing.remoteWorkerId && existing.remoteWorkerId !== input.workerId) ||
-      (existing.remoteWorkerSessionId &&
-        existing.remoteWorkerSessionId !== input.workerSessionId)
-    ) {
-      throw new Error(`Step ${input.stepId} is already assigned to worker ${existing.remoteWorkerId}.`);
-    }
+      if (
+        (existing.remoteWorkerId && existing.remoteWorkerId !== input.workerId) ||
+        (existing.remoteWorkerSessionId &&
+          existing.remoteWorkerSessionId !== input.workerSessionId)
+      ) {
+        throw new Error(
+          `Step ${input.stepId} is already assigned to worker ${existing.remoteWorkerId}.`
+        );
+      }
 
-    const [updated] = await this.db
-      .update(runSteps)
-      .set({
-        executionTarget: "remote_worker",
-        remoteWorkerId: input.workerId,
-        remoteWorkerSessionId: input.workerSessionId,
-        remoteExecutionAttemptId: input.attemptId,
-        remoteAssignedAt: new Date(input.assignedAt),
-        updatedAt: new Date(input.updatedAt)
-      })
-      .where(eq(runSteps.id, input.stepId))
-      .returning();
+      const [updated] = await transaction
+        .update(runSteps)
+        .set({
+          executionTarget: "remote_worker",
+          remoteWorkerId: input.workerId,
+          remoteWorkerSessionId: input.workerSessionId,
+          remoteExecutionAttemptId: input.attemptId,
+          remoteAssignedAt: new Date(input.assignedAt),
+          updatedAt: new Date(input.updatedAt)
+        })
+        .where(
+          and(
+            eq(runSteps.id, input.stepId),
+            and(
+              isNull(runSteps.remoteWorkerId),
+              isNull(runSteps.remoteWorkerSessionId)
+            )
+          )
+        )
+        .returning();
 
-    return updated ? mapRunStepRow(updated) : null;
+      if (updated) {
+        return mapRunStepRow(updated);
+      }
+
+      const refreshedRows = await transaction.select().from(runSteps);
+      const current = refreshedRows.find((row) => row.id === input.stepId);
+
+      if (!current) {
+        return null;
+      }
+
+      if (
+        (current.remoteWorkerId && current.remoteWorkerId !== input.workerId) ||
+        (current.remoteWorkerSessionId &&
+          current.remoteWorkerSessionId !== input.workerSessionId)
+      ) {
+        throw new Error(
+          `Step ${input.stepId} is already assigned to worker ${current.remoteWorkerId}.`
+        );
+      }
+
+      return mapRunStepRow(current);
+    });
   }
 
   async updateApprovalResolutionLifecycle(

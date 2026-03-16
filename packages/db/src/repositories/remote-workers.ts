@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type {
   RemoteWorker,
   RemoteWorkerHealthStatus
@@ -163,13 +163,6 @@ export class RemoteWorkerRepository {
   async recordHeartbeat(
     input: RecordRemoteWorkerHeartbeatInput
   ): Promise<StoredRemoteWorker | null> {
-    const rows = await this.db.select().from(remoteWorkers);
-    const existing = rows.find((row) => row.id === input.workerId);
-
-    if (!existing || existing.sessionId !== input.workerSessionId) {
-      return null;
-    }
-
     const [updated] = await this.db
       .update(remoteWorkers)
       .set({
@@ -177,7 +170,12 @@ export class RemoteWorkerRepository {
         lastHeartbeatAt: new Date(input.sentAt),
         updatedAt: new Date(input.sentAt)
       })
-      .where(eq(remoteWorkers.id, input.workerId))
+      .where(
+        and(
+          eq(remoteWorkers.id, input.workerId),
+          eq(remoteWorkers.sessionId, input.workerSessionId)
+        )
+      )
       .returning();
 
     return updated ? mapRemoteWorkerRow(updated) : null;
@@ -204,7 +202,18 @@ export class RemoteWorkerRepository {
           disconnectedAt: new Date(input.disconnectedAt),
           updatedAt: new Date(input.disconnectedAt)
         })
-        .where(eq(remoteWorkers.id, worker.id))
+        .where(
+          and(
+            eq(remoteWorkers.id, worker.id),
+            and(
+              eq(remoteWorkers.sessionId, worker.sessionId),
+              and(
+                eq(remoteWorkers.availability, worker.availability),
+                eq(remoteWorkers.lastHeartbeatAt, worker.lastHeartbeatAt)
+              )
+            )
+          )
+        )
         .returning();
 
       if (updated) {
