@@ -232,7 +232,7 @@ Completion notes:
 
 Execution note:
 
-- M5 is complete on `main`. M6 is the next roadmap item, but it is not execution-ready yet in this repo because its design and implementation plan have not been authored.
+- M5 is complete on `main`. M6 is now the active execution-ready milestone, with reviewed design and implementation docs authored in this repo.
 
 ### M6 Checkpoints, Replay, and Audit
 
@@ -244,9 +244,10 @@ Make long-running work resumable, replayable, and explainable.
 
 Primary references:
 
-- `Terragon`: checkpoint thread and durable post-run pipeline
+- `Terragon`: sandbox or session resume semantics and durable event-ledger instincts
 - `Deer Flow`: checkpointer abstraction and resumability
-- `OpenClaw`: session continuity and cleanup rigor
+- `OpenClaw`: session continuity, maintenance, and cleanup rigor
+- `Middleman`: typed server events and manager-owned persistence boundaries
 
 Deliverables:
 
@@ -258,6 +259,18 @@ Deliverables:
 Ship gate:
 
 - interrupted work can resume from a durable checkpoint
+- operators can inspect checkpoint history and audit history for a run
+
+Primary docs:
+
+- [Milestone 6 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-15-milestone-6-checkpoints-replay-and-audit-design.md)
+- [Milestone 6 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-15-milestone-6-checkpoints-replay-and-audit-implementation.md)
+
+Execution note:
+
+- M6 is now the active execution-ready milestone on `main`
+- lock `CheckpointStore` to a backend-agnostic interface in M6 and implement only the local filesystem backend here
+- M7 adds a remote checkpoint backend when remote workers and daemon protocol work land
 - operators can inspect a run history after the fact
 
 ### M7 Remote Sandbox and Worker Daemon

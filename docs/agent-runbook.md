@@ -27,8 +27,10 @@ Read these next:
 9. [Milestone 4 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-13-milestone-4-routing-byo-keys-implementation.md)
 10. [Milestone 5 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-14-milestone-5-review-queue-and-artifact-lineage-design.md)
 11. [Milestone 5 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-14-milestone-5-review-queue-and-artifact-lineage-implementation.md)
+12. [Milestone 6 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-15-milestone-6-checkpoints-replay-and-audit-design.md)
+13. [Milestone 6 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-15-milestone-6-checkpoints-replay-and-audit-implementation.md)
 
-The M4 and M5 docs now include milestone-closure verification notes. The roadmap points to M6 next, but there is not yet a new execution-ready implementation plan beyond M5 in this repo.
+The M4 and M5 docs now include milestone-closure verification notes. M5 is integrated on `main`, and M6 is now the active execution-ready milestone for separate implementation windows.
 
 ## Local setup
 

@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { ApprovalSchema } from "./approval";
 import { ArtifactSchema } from "./artifact";
+import {
+  CheckpointSummarySchema,
+  ResumeRunResponseSchema,
+  RunInterruptedDataSchema
+} from "./checkpoint";
 import { OutcomeSchema } from "./outcome";
 import { PlanSchema, RunSchema, RunStepSchema } from "./plan";
 
@@ -13,8 +18,11 @@ export const EventTypeSchema = z.enum([
   "run.updated",
   "run.log",
   "artifact.created",
+  "checkpoint.created",
   "approval.requested",
   "approval.resolved",
+  "run.interrupted",
+  "run.resumed",
   "schedule.fired",
   "message.created"
 ]);
@@ -93,6 +101,12 @@ export const ArtifactCreatedEventSchema = z.object({
   data: ArtifactSchema
 });
 
+export const CheckpointCreatedEventSchema = z.object({
+  outcomeId: z.string(),
+  type: z.literal("checkpoint.created"),
+  data: CheckpointSummarySchema
+});
+
 export const ApprovalRequestedEventSchema = z.object({
   outcomeId: z.string(),
   type: z.literal("approval.requested"),
@@ -105,6 +119,18 @@ export const ApprovalResolvedEventSchema = z.object({
   data: ApprovalSchema
 });
 
+export const RunInterruptedEventSchema = z.object({
+  outcomeId: z.string(),
+  type: z.literal("run.interrupted"),
+  data: RunInterruptedDataSchema
+});
+
+export const RunResumedEventSchema = z.object({
+  outcomeId: z.string(),
+  type: z.literal("run.resumed"),
+  data: ResumeRunResponseSchema
+});
+
 export const OutcomeStreamEventSchema = z.discriminatedUnion("type", [
   OutcomeUpdatedEventSchema,
   MessageCreatedEventSchema,
@@ -114,8 +140,11 @@ export const OutcomeStreamEventSchema = z.discriminatedUnion("type", [
   RunUpdatedEventSchema,
   RunLogEventSchema,
   ArtifactCreatedEventSchema,
+  CheckpointCreatedEventSchema,
   ApprovalRequestedEventSchema,
-  ApprovalResolvedEventSchema
+  ApprovalResolvedEventSchema,
+  RunInterruptedEventSchema,
+  RunResumedEventSchema
 ]);
 
 export type EventType = z.infer<typeof EventTypeSchema>;
@@ -131,6 +160,9 @@ export type RunLogData = z.infer<typeof RunLogDataSchema>;
 export type RunLogEvent = z.infer<typeof RunLogEventSchema>;
 export type RunLogListResponse = z.infer<typeof RunLogListResponseSchema>;
 export type ArtifactCreatedEvent = z.infer<typeof ArtifactCreatedEventSchema>;
+export type CheckpointCreatedEvent = z.infer<typeof CheckpointCreatedEventSchema>;
 export type ApprovalRequestedEvent = z.infer<typeof ApprovalRequestedEventSchema>;
 export type ApprovalResolvedEvent = z.infer<typeof ApprovalResolvedEventSchema>;
+export type RunInterruptedEvent = z.infer<typeof RunInterruptedEventSchema>;
+export type RunResumedEvent = z.infer<typeof RunResumedEventSchema>;
 export type OutcomeStreamEvent = z.infer<typeof OutcomeStreamEventSchema>;

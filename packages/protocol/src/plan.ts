@@ -66,6 +66,7 @@ export const RunStatusSchema = z.enum([
   "waiting_for_worker",
   "running",
   "blocked",
+  "interrupted",
   "completed",
   "failed",
   "cancelled"
@@ -82,14 +83,44 @@ export const StepStatusSchema = z.enum([
   "cancelled"
 ]);
 
-export const RunSchema = z.object({
-  id: z.string(),
-  outcomeId: z.string(),
-  planId: z.string(),
-  status: RunStatusSchema,
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime()
-});
+export const RunSchema = z
+  .object({
+    id: z.string(),
+    outcomeId: z.string(),
+    planId: z.string(),
+    status: RunStatusSchema,
+    latestCheckpointId: z.string().nullable().optional(),
+    resumable: z.boolean().optional(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime()
+  })
+  .superRefine((run, ctx) => {
+    if (run.resumable && !run.latestCheckpointId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["latestCheckpointId"],
+        message: "Resumable runs require latestCheckpointId."
+      });
+    }
+
+    if (run.status === "interrupted") {
+      if (run.resumable !== true) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["resumable"],
+          message: "Interrupted runs must be resumable."
+        });
+      }
+
+      if (!run.latestCheckpointId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["latestCheckpointId"],
+          message: "Interrupted runs require latestCheckpointId."
+        });
+      }
+    }
+  });
 
 export const RunStepSchema = z
   .object({

@@ -94,6 +94,12 @@ importers:
 
   packages/artifacts: {}
 
+  packages/checkpoints:
+    dependencies:
+      '@computer-oss/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+
   packages/db:
     dependencies:
       '@computer-oss/protocol':

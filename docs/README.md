@@ -18,7 +18,9 @@ Read these in order if you are new to the project:
 14. [Milestone 4 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-13-milestone-4-routing-byo-keys-implementation.md)
 15. [Milestone 5 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-14-milestone-5-review-queue-and-artifact-lineage-design.md)
 16. [Milestone 5 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-14-milestone-5-review-queue-and-artifact-lineage-implementation.md)
-17. [Architecture Design Record](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-v1-architecture-design.md)
+17. [Milestone 6 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-15-milestone-6-checkpoints-replay-and-audit-design.md)
+18. [Milestone 6 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-15-milestone-6-checkpoints-replay-and-audit-implementation.md)
+19. [Architecture Design Record](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-v1-architecture-design.md)
 
 ## How to use this docs set
 
@@ -30,4 +32,4 @@ Read these in order if you are new to the project:
 
 ## Current status
 
-Milestone 4 is integrated on `main`, and Milestone 5 is the active next implementation target. The M5 design and plan are now the execution-ready handoff for separate Codex implementation windows. Start with the runbook, then the local setup guide, then the M5 design and plan.
+Milestone 5 is integrated on `main`, and Milestone 6 is the active next implementation target. The M6 design and plan are now the execution-ready handoff for separate Codex implementation windows. Start with the runbook, then the local setup guide, then the M6 design and plan.
