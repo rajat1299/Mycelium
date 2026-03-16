@@ -640,6 +640,102 @@ describe("run routes", () => {
     }
   });
 
+  it("rejects explicit missing and foreign checkpoint ids on resume", async () => {
+    const harness = await createExecutionHarness();
+
+    try {
+      const { app, services } = harness;
+
+      const createInterruptedRun = async (label: string) => {
+        const createOutcome = await app.inject({
+          method: "POST",
+          url: "/api/outcomes",
+          payload: {
+            workspaceId: "ws_123",
+            userId: "user_123",
+            prompt: label,
+            source: "web"
+          }
+        });
+        const outcome = createOutcome.json();
+        const plan = await createNonReviewPlan(services.repositories, outcome.id);
+        const run = await services.repositories.runs.createFromPlan({
+          id: `run_${outcome.id}_${label.replace(/\s+/g, "_")}`,
+          outcomeId: outcome.id,
+          planId: plan.id,
+          createdAt: "2026-03-16T16:00:00.000Z",
+          updatedAt: "2026-03-16T16:00:00.000Z"
+        });
+        const steps = await services.repositories.runs.listSteps(run.id);
+        const rootStep = steps.find((step) => step.position === 0)!;
+        const synthStep = steps.find((step) => step.position === 1)!;
+
+        await services.repositories.workspaceLeases.acquire({
+          runId: run.id,
+          rootPath: `/tmp/${run.id}`,
+          inputPath: `/tmp/${run.id}/input`,
+          artifactsPath: `/tmp/${run.id}/artifacts`,
+          logsPath: `/tmp/${run.id}/logs`,
+          acquiredAt: "2026-03-16T16:00:01.000Z"
+        });
+        await services.repositories.runs.updateLifecycleStatus({
+          runId: run.id,
+          outcomeId: outcome.id,
+          runStatus: "running",
+          outcomeStatus: "running",
+          updatedAt: "2026-03-16T16:00:02.000Z"
+        });
+        await services.repositories.runs.updateStepStatus({
+          stepId: rootStep.id,
+          status: "completed",
+          updatedAt: "2026-03-16T16:00:03.000Z"
+        });
+        await services.repositories.runs.updateStepStatus({
+          stepId: synthStep.id,
+          status: "ready",
+          updatedAt: "2026-03-16T16:00:03.000Z"
+        });
+        const checkpoint = await services.checkpointService.createCheckpoint({
+          runId: run.id,
+          kind: "step_completed",
+          stepId: rootStep.id
+        });
+        await services.repositories.workspaceLeases.release({
+          runId: run.id,
+          releasedAt: "2026-03-16T16:00:04.000Z"
+        });
+        await services.executionService.recoverInterruptedRuns();
+
+        return { run, checkpoint };
+      };
+
+      const primary = await createInterruptedRun("Primary interrupted run");
+      const secondary = await createInterruptedRun("Secondary interrupted run");
+
+      const missingCheckpointResume = await app.inject({
+        method: "POST",
+        url: `/api/runs/${primary.run.id}/resume`,
+        payload: {
+          checkpointId: "checkpoint_missing"
+        }
+      });
+
+      expect(missingCheckpointResume.statusCode).toBe(404);
+
+      const foreignCheckpointResume = await app.inject({
+        method: "POST",
+        url: `/api/runs/${primary.run.id}/resume`,
+        payload: {
+          checkpointId: secondary.checkpoint.id
+        }
+      });
+
+      expect(foreignCheckpointResume.statusCode).toBe(409);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   it("rejects resume for blocked, terminal, and non-resumable runs", async () => {
     const harness = await createExecutionHarness();
 

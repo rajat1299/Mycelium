@@ -302,10 +302,14 @@ export function registerRunRoutes(
       if (
         error instanceof Error &&
         (error.message.includes("cannot be resumed") ||
+          error.message.includes("does not exist") ||
+          error.message.includes("belongs to") ||
           error.message.includes("resumable checkpoint") ||
           error.message.includes("not resumable"))
       ) {
-        return reply.code(409).send(badRequest(error.message));
+        return reply
+          .code(error.message.includes("does not exist") ? 404 : 409)
+          .send(badRequest(error.message));
       }
 
       throw error;

@@ -102,13 +102,20 @@ export function createExecutionService(
         throw new Error(`Run ${run.id} is not interrupted and cannot be resumed.`);
       }
 
-      const checkpoint =
-        (input.checkpointId
-          ? await options.repositories.checkpoints.getById(input.checkpointId)
-          : null) ?? (await options.repositories.checkpoints.getLatestResumableByRun(run.id));
+      const checkpoint = input.checkpointId
+        ? await options.repositories.checkpoints.getById(input.checkpointId)
+        : await options.repositories.checkpoints.getLatestResumableByRun(run.id);
 
       if (!checkpoint) {
+        if (input.checkpointId) {
+          throw new Error(`Checkpoint ${input.checkpointId} does not exist.`);
+        }
+
         throw new Error(`Run ${run.id} does not have a resumable checkpoint.`);
+      }
+
+      if (checkpoint.runId !== run.id) {
+        throw new Error(`Checkpoint ${checkpoint.id} belongs to ${checkpoint.runId}, not ${run.id}.`);
       }
 
       if (!checkpoint.resumable) {
