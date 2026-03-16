@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { cleanup, render, screen } from "@testing-library/react";
-import type { RunDetail } from "@computer-oss/protocol";
+import type { Approval, ArtifactLineageEdge, RunDetail } from "@computer-oss/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import OutcomeDetailPage from "./page";
 
@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   getLatestRun: vi.fn(),
   getRunArtifacts: vi.fn(),
   getRunLogs: vi.fn(),
+  getRunArtifactLineage: vi.fn(),
+  listApprovals: vi.fn(),
   listAuthProfiles: vi.fn(),
   createPlan: vi.fn(),
   createRun: vi.fn(),
@@ -27,6 +29,8 @@ let observedSelectedRunId: string | null = null;
 let observedArtifacts: Array<{ id: string; relativePath: string }> = [];
 let observedLogs: Array<{ message: string; level: string }> = [];
 let observedAuthProfiles: Array<{ id: string; label: string }> = [];
+let observedPendingApprovals: Approval[] = [];
+let observedLineageEdges: ArtifactLineageEdge[] = [];
 
 vi.mock("next/cache", () => ({
   revalidatePath: mocks.revalidatePath
@@ -64,21 +68,35 @@ vi.mock("../../../components/outcomes/execution-console", () => ({
     initialRun,
     initialArtifacts,
     initialLogs,
-    initialAuthProfiles
+    initialAuthProfiles,
+    initialPendingApprovals = [],
+    initialLineageEdges = []
   }: {
     initialRun: RunDetail | null;
     initialArtifacts: Array<{ id: string; relativePath: string }>;
     initialLogs: Array<{ message: string; level: string }>;
     initialAuthProfiles: Array<{ id: string; label: string }>;
+    initialPendingApprovals?: Approval[];
+    initialLineageEdges?: ArtifactLineageEdge[];
   }) => {
     observedRun = initialRun;
     observedSelectedRunId = initialRun?.id ?? null;
     observedArtifacts = initialArtifacts;
     observedLogs = initialLogs;
     observedAuthProfiles = initialAuthProfiles;
+    observedPendingApprovals = initialPendingApprovals;
+    observedLineageEdges = initialLineageEdges;
     return (
       <div data-testid="execution-console">
-        {(initialRun?.id ?? "none") + ":" + initialArtifacts.length + ":" + initialLogs.length}
+        {(initialRun?.id ?? "none") +
+          ":" +
+          initialArtifacts.length +
+          ":" +
+          initialLogs.length +
+          ":" +
+          initialPendingApprovals.length +
+          ":" +
+          initialLineageEdges.length}
       </div>
     );
   }
@@ -104,6 +122,8 @@ vi.mock("../../../lib/api", () => ({
   getLatestRun: mocks.getLatestRun,
   getRunArtifacts: mocks.getRunArtifacts,
   getRunLogs: mocks.getRunLogs,
+  getRunArtifactLineage: mocks.getRunArtifactLineage,
+  listApprovals: mocks.listApprovals,
   listAuthProfiles: mocks.listAuthProfiles
 }));
 
@@ -118,6 +138,8 @@ describe("OutcomeDetailPage", () => {
     observedArtifacts = [];
     observedLogs = [];
     observedAuthProfiles = [];
+    observedPendingApprovals = [];
+    observedLineageEdges = [];
     vi.clearAllMocks();
 
     mocks.getOutcome.mockResolvedValue({
@@ -164,6 +186,37 @@ describe("OutcomeDetailPage", () => {
         createdAt: "2026-03-11T00:09:20.000Z"
       }
     ]);
+    mocks.getRunArtifactLineage.mockResolvedValue([
+      {
+        id: "edge_123",
+        runId: "run_latest",
+        parentArtifactId: "artifact_parent",
+        childArtifactId: "artifact_123",
+        parentStepId: "step_parent",
+        childStepId: "step_1",
+        relation: "derived_from",
+        createdAt: "2026-03-11T00:09:31.000Z"
+      }
+    ]);
+    mocks.listApprovals.mockResolvedValue([
+      {
+        id: "approval_123",
+        workspaceId: "ws_default",
+        outcomeId: "outcome_123",
+        runId: "run_latest",
+        stepId: "step_1",
+        status: "pending",
+        kind: "output_review_required",
+        title: "Review final result",
+        summary: "Inspect the final artifact before marking the run complete.",
+        instruction: "Approve to complete the run or reject to fail it.",
+        artifactIds: ["artifact_123"],
+        requestedAt: "2026-03-11T00:09:40.000Z",
+        resolvedAt: null,
+        resolution: null,
+        resolutionNote: null
+      }
+    ]);
     mocks.listAuthProfiles.mockResolvedValue([
       {
         id: "profile_openai_primary",
@@ -192,10 +245,12 @@ describe("OutcomeDetailPage", () => {
     expect(mocks.getLatestRun).toHaveBeenCalledWith("outcome_123");
     expect(mocks.getRun).not.toHaveBeenCalled();
     expect(mocks.listAuthProfiles).toHaveBeenCalledWith("ws_default");
+    expect(mocks.listApprovals).toHaveBeenCalledWith("ws_default");
     expect(mocks.getRunArtifacts).toHaveBeenCalledWith("run_latest");
+    expect(mocks.getRunArtifactLineage).toHaveBeenCalledWith("run_latest");
     expect(mocks.getRunLogs).toHaveBeenCalledWith("run_latest");
     expect(screen.getByTestId("execution-console")).toHaveTextContent(
-      "run_latest:1:1"
+      "run_latest:1:1:1:1"
     );
     expect(observedRun?.id).toBe("run_latest");
     expect(observedSelectedRunId).toBe("run_latest");
@@ -215,6 +270,18 @@ describe("OutcomeDetailPage", () => {
       expect.objectContaining({
         id: "profile_openai_primary",
         label: "OpenAI Primary"
+      })
+    ]);
+    expect(observedPendingApprovals).toEqual([
+      expect.objectContaining({
+        id: "approval_123",
+        runId: "run_latest"
+      })
+    ]);
+    expect(observedLineageEdges).toEqual([
+      expect.objectContaining({
+        id: "edge_123",
+        runId: "run_latest"
       })
     ]);
   });
@@ -240,10 +307,12 @@ describe("OutcomeDetailPage", () => {
     expect(mocks.getRun).toHaveBeenCalledWith("run_other");
     expect(mocks.getLatestRun).toHaveBeenCalledWith("outcome_123");
     expect(mocks.listAuthProfiles).toHaveBeenCalledWith("ws_default");
+    expect(mocks.listApprovals).toHaveBeenCalledWith("ws_default");
     expect(mocks.getRunArtifacts).toHaveBeenCalledWith("run_latest");
+    expect(mocks.getRunArtifactLineage).toHaveBeenCalledWith("run_latest");
     expect(mocks.getRunLogs).toHaveBeenCalledWith("run_latest");
     expect(screen.getByTestId("execution-console")).toHaveTextContent(
-      "run_latest:1:1"
+      "run_latest:1:1:1:1"
     );
     expect(observedRun?.id).toBe("run_latest");
     expect(observedSelectedRunId).toBe("run_latest");

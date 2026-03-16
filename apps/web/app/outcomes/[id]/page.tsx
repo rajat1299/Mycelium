@@ -8,8 +8,10 @@ import { PlanGraph } from "../../../components/outcomes/plan-graph";
 import {
   createPlan,
   createRun,
+  getRunArtifactLineage,
   getLatestRun,
   listAuthProfiles,
+  listApprovals,
   getOutcome,
   getPlan,
   getRunArtifacts,
@@ -55,13 +57,19 @@ export default async function OutcomeDetailPage({
   }
 
   const authProfilesPromise = listAuthProfiles(outcome.workspaceId);
-  const [artifacts, logs, authProfiles] = run
+  const approvalsPromise = listApprovals(outcome.workspaceId);
+  const [artifacts, logs, authProfiles, lineageEdges, approvals] = run
     ? await Promise.all([
         getRunArtifacts(run.id),
         getRunLogs(run.id),
-        authProfilesPromise
+        authProfilesPromise,
+        getRunArtifactLineage(run.id),
+        approvalsPromise
       ])
-    : [[], [], await authProfilesPromise];
+    : [[], [], await authProfilesPromise, [], await approvalsPromise];
+  const pendingApprovalsForRun = run
+    ? approvals.filter((approval) => approval.runId === run.id)
+    : [];
 
   async function createPlanAction() {
     "use server";
@@ -133,6 +141,8 @@ export default async function OutcomeDetailPage({
             initialRun={run}
             initialArtifacts={artifacts}
             initialLogs={logs}
+            initialPendingApprovals={pendingApprovalsForRun}
+            initialLineageEdges={lineageEdges}
             initialAuthProfiles={authProfiles}
           />
           <OutcomeActivity outcome={outcome} />

@@ -1,6 +1,9 @@
 import {
+  ApprovalListResponseSchema,
+  ApprovalSchema,
   AuthProfileSchema,
   ArtifactListResponseSchema,
+  ArtifactLineageListResponseSchema,
   CreateRunRequestSchema,
   CreateOutcomeRequestSchema,
   OutcomeListResponseSchema,
@@ -14,6 +17,8 @@ import {
   type CreateOutcomeRequest,
   type CreateRunRequest,
   type AuthProfile,
+  type Approval,
+  type ArtifactLineageEdge,
   type Outcome
 } from "@computer-oss/protocol";
 import { z } from "zod";
@@ -241,6 +246,31 @@ export async function getRunLogs(runId: string) {
   }
 }
 
+export async function getRunArtifactLineage(
+  runId: string
+): Promise<ArtifactLineageEdge[]> {
+  try {
+    const response = await fetch(
+      `${getControlPlaneBaseUrl()}/api/runs/${runId}/artifact-lineage`,
+      {
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const parsed = await parseJson(response, (value) =>
+      ArtifactLineageListResponseSchema.parse(value)
+    );
+
+    return parsed.edges;
+  } catch {
+    return [];
+  }
+}
+
 export async function getProviderCatalog() {
   try {
     const response = await fetch(`${getControlPlaneBaseUrl()}/api/providers/models`, {
@@ -308,6 +338,29 @@ export async function listAuthProfiles(workspaceId: string): Promise<AuthProfile
     return parsed.authProfiles.map((authProfile) =>
       AuthProfileSchema.parse(authProfile)
     );
+  } catch {
+    return [];
+  }
+}
+
+export async function listApprovals(workspaceId: string): Promise<Approval[]> {
+  try {
+    const response = await fetch(
+      `${getControlPlaneBaseUrl()}/api/approvals?workspaceId=${encodeURIComponent(workspaceId)}`,
+      {
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const parsed = await parseJson(response, (value) =>
+      ApprovalListResponseSchema.parse(value)
+    );
+
+    return parsed.approvals.map((approval) => ApprovalSchema.parse(approval));
   } catch {
     return [];
   }
