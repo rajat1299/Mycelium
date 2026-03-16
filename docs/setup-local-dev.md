@@ -1,6 +1,6 @@
 # Local Development
 
-This repository is currently shipping the Milestone 5 review-queue-and-artifact-lineage slice on top of the Milestone 4 routing layer and the Milestone 3 execution substrate:
+This repository is currently shipping the Milestone 6 checkpoints-replay-and-audit slice on top of the Milestone 5 review queue, the Milestone 4 routing layer, and the Milestone 3 execution substrate:
 
 - Postgres-backed outcome storage
 - Fastify control plane with outcome, draft-plan, run, log, and artifact APIs
@@ -11,6 +11,7 @@ This repository is currently shipping the Milestone 5 review-queue-and-artifact-
 - Approval-aware execution blocking and resume
 - Review queue APIs and workspace review desk
 - Durable artifact-lineage edges plus outcome-detail lineage inspection
+- Local filesystem checkpoint capture, replay anchors, interruption recovery, and audit history
 - Next.js operator console for create, list, detail, settings, draft-plan, run timeline, review queue, persisted logs, and run artifact views
 
 ## Prerequisites
@@ -36,10 +37,14 @@ This repository is currently shipping the Milestone 5 review-queue-and-artifact-
 13. Confirm the selected run blocks on `Synthesize result` and the outcome detail page shows `Blocked on review`.
 14. Confirm `/review` shows a pending `Review final result` approval for that run.
 15. Approve the blocked work and confirm the run reaches `completed`.
-16. Repeat with a second run and reject the blocked work, then confirm the run reaches `failed`.
-17. Confirm the run timeline shows persisted route metadata on steps without breaking local Docker execution.
-18. Confirm the artifact panel, lineage panel, log panel, and live activity panel update without a manual refresh.
-19. Refresh the page and confirm persisted logs, artifacts, route badges, and lineage are still visible for the selected run.
+16. Repeat with a second run, let it create at least one `step_completed` checkpoint while still active, stop the control plane, restart it, and confirm the run becomes `interrupted` plus `resumable`.
+17. Resume that interrupted run and confirm the already checkpointed completed step does not rerun.
+18. Approve the resumed final review step and confirm the run reaches `completed`.
+19. Confirm the checkpoint panel shows `Replay anchors` and the audit panel shows `Operator trail` with interruption and resume entries.
+20. Repeat with a third run and reject the blocked work, then confirm the run reaches `failed`.
+21. Confirm the run timeline shows persisted route metadata on steps without breaking local Docker execution.
+22. Confirm the artifact panel, lineage panel, checkpoint panel, audit panel, log panel, and live activity panel update without a manual refresh.
+23. Refresh the page and confirm persisted logs, artifacts, route badges, checkpoint history, and audit history are still visible for the selected run.
 
 ## First-time setup
 
@@ -60,6 +65,7 @@ set -a; source .env; set +a; pnpm db:push
 The repository does not commit a database password. You must set your own local password in `.env` and `apps/control-plane/.env.local`.
 `MYCELIUM_ENCRYPTION_KEY` is required for workspace-credential create and update operations. A local generated key is enough for development.
 The local Docker sandbox defaults to `node:22-bookworm-slim`. If you need a different local image, set `SANDBOX_IMAGE` in `apps/control-plane/.env.local`.
+`CHECKPOINT_ROOT` is optional. If you leave it unset, the local M6 checkpoint backend writes versioned JSON manifests under `apps/control-plane/.mycelium/checkpoints`.
 
 ## Start the stack
 
@@ -92,12 +98,19 @@ Expected local services:
 14. Open [http://127.0.0.1:3000/review](http://127.0.0.1:3000/review) and confirm the pending `Review final result` approval is auto-selected.
 15. Confirm the review detail shows the final artifact under review and that the outcome detail page renders an `Artifact lineage` panel for the selected run.
 16. Approve the blocked work and confirm the run reaches `completed`.
-17. Repeat with a second outcome and reject the blocked work. Confirm that run reaches `failed`.
-18. Confirm the artifact panel shows exactly four persisted artifacts for the approved run:
+17. Create a second outcome and start a second run.
+18. Wait until the second run shows at least one `step_completed` checkpoint while the run is still active.
+19. Stop only the control plane process and leave the web app running.
+20. Restart the control plane and confirm the second run becomes `interrupted` with `resumable: true` and the latest resumable checkpoint still selected.
+21. Use the outcome detail checkpoint panel or `POST /api/runs/<RUN_ID>/resume` to resume from the latest durable checkpoint.
+22. Confirm the step that had already completed before interruption still has exactly one `step_completed` checkpoint after resume, then approve the resumed final review step and confirm the run reaches `completed`.
+23. Confirm the checkpoint panel renders `Replay anchors`, the audit panel renders `Operator trail`, and the audit list includes interruption and resume entries in stable sequence order.
+24. Confirm the artifact panel shows exactly four persisted artifacts for the approved resumed run:
    `artifacts/analyze-outcome.md`, `artifacts/brief.md`, `artifacts/operator-summary.md`, and `artifacts/final-result.md`.
-19. Confirm the lineage panel shows deterministic `derived_from` edges for the selected run.
-20. Confirm the log panel shows persisted step logs and still shows them after a page refresh.
-21. In a second terminal, append a message through the control plane:
+25. Confirm the lineage panel shows deterministic `derived_from` edges for the selected run.
+26. Confirm the replay detail shows the selected checkpoint payload, the audit trail explains what happened before and after that checkpoint, and the log panel still shows persisted step logs after a page refresh.
+27. Repeat with a third outcome and reject the blocked work. Confirm that run reaches `failed`.
+28. In a second terminal, append a message through the control plane:
 
 ```bash
 curl -X POST http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/messages \
@@ -105,8 +118,8 @@ curl -X POST http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/messages \
   -d '{"role":"assistant","content":"Smoke path event from the control plane."}'
 ```
 
-22. Confirm the detail page adds a new activity entry without a refresh.
-23. Optional API verification for the same workspace and outcome:
+29. Confirm the detail page adds a new activity entry without a refresh.
+30. Optional API verification for the same workspace and outcome:
 
 ```bash
 curl http://127.0.0.1:4000/api/providers/models
@@ -131,9 +144,21 @@ curl http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/runs/latest
 curl http://127.0.0.1:4000/api/runs/<RUN_ID>/logs
 curl http://127.0.0.1:4000/api/runs/<RUN_ID>/artifacts
 curl http://127.0.0.1:4000/api/runs/<RUN_ID>/artifact-lineage
+curl http://127.0.0.1:4000/api/runs/<RUN_ID>/checkpoints
+curl http://127.0.0.1:4000/api/checkpoints/<CHECKPOINT_ID>
+curl http://127.0.0.1:4000/api/runs/<RUN_ID>/audit
+curl -X POST http://127.0.0.1:4000/api/runs/<RUN_ID>/resume \
+  -H 'content-type: application/json' \
+  -d '{}'
 curl "http://127.0.0.1:4000/api/approvals?workspaceId=ws_default"
 curl -N http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/events
 ```
+
+Replay, audit, and live logs are intentionally different surfaces:
+
+- replay is the selected durable checkpoint payload and step frontier
+- audit is the append-only lifecycle ledger keyed by stable sequence numbers
+- live logs are step stdout and stderr detail, useful for debugging but not the source of truth for resume
 
 ## Verification commands
 
@@ -174,3 +199,5 @@ If runs stay queued or step execution fails immediately, verify Docker Desktop i
 If a run shows unresolved route badges on `Draft brief`, `Draft operator summary`, or `Synthesize result`, verify the router policy includes a `document` candidate. The default M3 draft plan uses `document` for those three nodes.
 
 If a run completes immediately instead of blocking for review, verify the selected run is using the current default draft plan. M5 only pauses on the review-required `Synthesize result` step in that shipped four-node plan.
+
+If a resumed run never shows a resume control, verify the run is actually `interrupted`, the latest selected checkpoint is marked `resumable`, and the control plane restarted after the interruption instead of the run quietly reaching a later state before shutdown.

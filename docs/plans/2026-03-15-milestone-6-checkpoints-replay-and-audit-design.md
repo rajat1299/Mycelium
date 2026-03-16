@@ -4,7 +4,7 @@
 
 Milestone 6 exists to make the shipped M5 local stack resumable, inspectable, and explainable.
 
-Status: `Approved on 2026-03-15. Not implemented yet.`
+Status: `Completed on 2026-03-16 and integrated on main.`
 
 Milestones 1 through 5 proved:
 
@@ -131,6 +131,25 @@ By the end of M6, an operator should be able to:
 6. inspect a checkpoint timeline and an audit trail that explains what happened
 
 If that works reliably, Mycelium has its first real continuity layer.
+
+## Closure note
+
+M6 shipped on `2026-03-16` with the design intact:
+
+- `CheckpointStore` is a first-class interface, but only `LocalFilesystemCheckpointStore` ships in M6
+- Postgres stores checkpoint metadata, audit indexes, and the latest resumable checkpoint pointer
+- checkpoint payload manifests stay behind the store boundary and default locally to `apps/control-plane/.mycelium/checkpoints` when `CHECKPOINT_ROOT` is unset
+- replay, audit, and live logs are now separate operator surfaces:
+  - replay shows the selected durable checkpoint payload and step frontier
+  - audit shows the append-only lifecycle ledger in stable sequence order
+  - logs show persisted step stdout or stderr detail
+- the live local-stack smoke path verified interruption and recovery end to end:
+  - a run reached `step_completed`
+  - the control plane was stopped before terminal state
+  - restart marked the run `interrupted` and `resumable`
+  - `POST /api/runs/:runId/resume` resumed from the preserved checkpoint id
+  - the already completed `Analyze outcome` step did not rerun
+  - the run returned to the M5 review gate and reached `completed` after approval
 
 ## Reference extraction map for M6
 

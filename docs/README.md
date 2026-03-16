@@ -32,4 +32,4 @@ Read these in order if you are new to the project:
 
 ## Current status
 
-Milestone 5 is integrated on `main`, and Milestone 6 is the active next implementation target. The M6 design and plan are now the execution-ready handoff for separate Codex implementation windows. Start with the runbook, then the local setup guide, then the M6 design and plan.
+Milestone 6 is integrated on `main`. The shipped local stack now includes checkpoint capture, interruption recovery, replay anchors, durable audit history, and manual resume on top of the Milestone 5 review queue, Milestone 4 routing, and Milestone 3 local Docker execution path. Start with the runbook, then the local setup guide, then the M6 design and plan for the final shipped shape.

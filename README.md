@@ -182,8 +182,9 @@ pnpm dev
 `pnpm db:push` currently needs `DATABASE_URL` exported from the root `.env` file. The command above works from the repo root in a normal POSIX shell.
 
 The local sandbox uses `node:22-bookworm-slim` by default. If you need to pin a different local image, set `SANDBOX_IMAGE` in `apps/control-plane/.env.local` before starting the stack.
+`CHECKPOINT_ROOT` is optional. If you leave it unset, the shipped M6 checkpoint backend writes versioned JSON manifests under `apps/control-plane/.mycelium/checkpoints`.
 
-Open `http://127.0.0.1:3000`. The current integrated slice is Milestone 5 review queue and artifact lineage on top of the Milestone 4 routing and Milestone 3 local execution path: you can save encrypted provider credentials, create auth profiles, define router policy, preview route resolution, run the local Docker execution flow, review blocked work in `/review`, and inspect persisted lineage on the outcome detail page.
+Open `http://127.0.0.1:3000`. The current integrated slice is Milestone 6 checkpoints, replay, and audit on top of the Milestone 5 review queue, Milestone 4 routing, and Milestone 3 local execution path: you can save encrypted provider credentials, create auth profiles, define router policy, preview route resolution, run the local Docker execution flow, review blocked work in `/review`, inspect persisted lineage, interrupt the control plane, recover stranded runs as resumable, and resume from durable checkpoints in the outcome detail console.
 
 ### Manual smoke checklist
 
@@ -204,6 +205,14 @@ Open `http://127.0.0.1:3000`. The current integrated slice is Milestone 5 review
    `artifacts/analyze-outcome.md`, `artifacts/brief.md`, `artifacts/operator-summary.md`, and `artifacts/final-result.md`.
 14. Confirm the lineage panel shows the deterministic `derived_from` relationships for the run, including the final result deriving from both branch artifacts.
 15. Confirm the log panel shows persisted step logs after a page refresh, not just live SSE updates.
+16. Start a new outcome and run for the interruption smoke path, then wait until the selected run shows at least one `step_completed` checkpoint while the run is still active.
+17. Stop only the control plane process before the run reaches a terminal state.
+18. Restart the control plane and confirm the selected run becomes `interrupted`, `resumable`, and still points at the latest resumable checkpoint instead of silently continuing in the background.
+19. Resume the run from the outcome detail checkpoint panel or `POST /api/runs/<RUN_ID>/resume`.
+20. Confirm the already checkpointed completed step does not rerun, then approve the resumed final review step and confirm the run reaches `completed`.
+21. Confirm the outcome detail page renders `Replay anchors` and `Operator trail`, and that the audit trail includes interruption and resume entries in stable sequence order.
+22. Confirm replay, audit, and live logs each answer a different question:
+    replay shows the selected durable checkpoint payload, audit shows the durable lifecycle ledger, and logs show step stdout or stderr detail.
 
 ### Messaging (optional)
 
@@ -211,7 +220,7 @@ Mycelium supports Slack and Telegram out of the box. See the [messaging setup gu
 
 ### API
 
-The currently shipped local API surface for the Milestone 5 slice is:
+The currently shipped local API surface for the Milestone 6 slice is:
 
 ```bash
 # Read the static provider/model catalog
@@ -268,6 +277,16 @@ curl http://127.0.0.1:4000/api/runs/<RUN_ID>/artifacts
 # Read persisted artifact-lineage edges for a run
 curl http://127.0.0.1:4000/api/runs/<RUN_ID>/artifact-lineage
 
+# Read checkpoint summaries, a selected checkpoint payload, and the durable audit ledger
+curl http://127.0.0.1:4000/api/runs/<RUN_ID>/checkpoints
+curl http://127.0.0.1:4000/api/checkpoints/<CHECKPOINT_ID>
+curl http://127.0.0.1:4000/api/runs/<RUN_ID>/audit
+
+# Resume an interrupted run from the latest durable checkpoint
+curl -X POST http://127.0.0.1:4000/api/runs/<RUN_ID>/resume \
+  -H "content-type: application/json" \
+  -d '{}'
+
 # List pending approvals for a workspace
 curl "http://127.0.0.1:4000/api/approvals?workspaceId=ws_default"
 
@@ -283,7 +302,7 @@ curl -X POST http://127.0.0.1:4000/api/approvals/<APPROVAL_ID>/reject \
 curl -N http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/events
 ```
 
-The operator console consumes the same control-plane endpoints and the same outcome-scoped SSE stream for timeline, activity, logs, artifacts, approvals, and persisted step-route metadata. Runtime execution remains on the M3 local Docker path in this milestone; M4 made routing decisions durable and visible, and M5 adds the workspace review desk plus run-scoped artifact-lineage inspection before provider-backed worker execution lands in a later milestone.
+The operator console consumes the same control-plane endpoints and the same outcome-scoped SSE stream for timeline, activity, logs, artifacts, approvals, checkpoints, and audit history. Runtime execution remains on the M3 local Docker path in this milestone; M4 made routing decisions durable and visible, M5 added the workspace review desk plus run-scoped artifact-lineage inspection, and M6 adds local interruption recovery plus checkpoint-backed resume before provider-backed worker execution lands in a later milestone.
 
 ---
 
@@ -301,6 +320,7 @@ mycelium/
 │   ├── protocol/           # Typed API and realtime event contracts
 │   ├── orchestrator/       # Foreman logic, plan graph, synthesis, retries
 │   ├── router/             # Capability → provider/model policy engine
+│   ├── checkpoints/        # Backend-agnostic checkpoint store interface plus local filesystem backend
 │   ├── sandbox/            # Remote sandbox lifecycle management
 │   ├── worker-daemon/      # Runtime process inside sandboxes
 │   ├── messaging/          # Slack and Telegram adapters

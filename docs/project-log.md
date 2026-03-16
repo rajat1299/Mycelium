@@ -48,11 +48,11 @@ Do not rewrite older entries except to correct factual mistakes.
 
 ## Current snapshot
 
-- Date: `2026-03-15`
+- Date: `2026-03-16`
 - Default branch: `main`
-- Current integrated runtime baseline: `Milestone 5 review queue and artifact lineage integrated on main`
-- Completed milestone: `M5 Review Queue and Artifact Lineage`
-- Active execution-ready milestone: `M6 Checkpoints, Replay, and Audit`
+- Current integrated runtime baseline: `Milestone 6 checkpoints, replay, and audit integrated on main`
+- Completed milestone: `M6 Checkpoints, Replay, and Audit`
+- Active execution-ready milestone: `None. M7 is next in the roadmap, but it is not execution-ready yet in this repo.`
 - Current mode:
   - this chat window is review/planning/management space
   - implementation happens in separate Codex windows on `codex/*` branches
@@ -66,7 +66,7 @@ Do not rewrite older entries except to correct factual mistakes.
 | M3 Execution Substrate V1 | Complete | Local Docker sandbox provider, dependency-aware execution service, artifact persistence, run logs, operator-console artifact/log surfaces, and a verified end-to-end fork/join execution path | [Milestone 3 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-12-milestone-3-execution-substrate-implementation.md) |
 | M4 Routing and BYO Keys | Complete | Static provider/model registry, encrypted credentials, auth profiles, router policy CRUD, deterministic route resolution, route preview, persisted step-route metadata, and operator settings surfaces verified against the local M3 execution path | [Milestone 4 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-13-milestone-4-routing-byo-keys-design.md), [Milestone 4 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-13-milestone-4-routing-byo-keys-implementation.md) |
 | M5 Review Queue and Artifact Lineage | Complete | First-class approvals, review queue, approval-aware execution blocking and resume, durable artifact-lineage inspection, and verified approve/reject review flows on the shipped local stack | [Milestone 5 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-14-milestone-5-review-queue-and-artifact-lineage-design.md), [Milestone 5 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-14-milestone-5-review-queue-and-artifact-lineage-implementation.md) |
-| M6 Checkpoints, Replay, and Audit | Planned | Remote-compatible checkpoint architecture with a local filesystem backend, replay and audit surfaces, and interruption or resume workflow planned but not yet implemented | [Milestone 6 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-15-milestone-6-checkpoints-replay-and-audit-design.md), [Milestone 6 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-15-milestone-6-checkpoints-replay-and-audit-implementation.md) |
+| M6 Checkpoints, Replay, and Audit | Complete | Remote-compatible checkpoint architecture with a shipped local filesystem backend, durable checkpoint and audit persistence, interruption recovery, manual resume, replay anchors, and checkpoint or audit outcome-console surfaces verified on the local stack | [Milestone 6 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-15-milestone-6-checkpoints-replay-and-audit-design.md), [Milestone 6 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-15-milestone-6-checkpoints-replay-and-audit-implementation.md) |
 | Execution Roadmap | Active | Multi-milestone delivery order for future Codex agents | [Execution Roadmap](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-execution-roadmap.md) |
 
 ## Decision log
@@ -85,6 +85,7 @@ Do not rewrite older entries except to correct factual mistakes.
 - `2026-03-14`: Approval resolution must be transactional with run, step, and outcome updates, and artifact lineage should be persisted as first-class edge records rather than only loose artifact metadata.
 - `2026-03-15`: Keep the M5 closure docs explicit that the shipped four-node draft plan blocks on the final `Synthesize result` review step, `/review` is the workspace review desk, approving completes the blocked run, and rejecting fails it.
 - `2026-03-15`: Lock Milestone 6 to a remote-compatible `CheckpointStore` interface with only a local filesystem backend in M6. Remote checkpoint backends belong to M7 with remote workers and daemon protocol work.
+- `2026-03-16`: Keep the shipped M6 checkpoint backend local-only. Postgres persists relative checkpoint store keys, but the actual manifest root stays on the local filesystem under `CHECKPOINT_ROOT` and defaults to `apps/control-plane/.mycelium/checkpoints`.
 
 ## Activity log
 
@@ -148,3 +149,5 @@ Do not rewrite older entries except to correct factual mistakes.
 - `2026-03-16` | `Codex` | `codex/m6-task4-replay-audit-api` | Completed Milestone 6 Task 4: added control-plane routes for checkpoint list/detail, run audit history, and run resume, then verified checkpoint-created and run-resumed events over the live outcome SSE path. | Verified with `pnpm --filter @computer-oss/control-plane test`, `pnpm --filter @computer-oss/control-plane typecheck`, and `pnpm --filter @computer-oss/control-plane build`.
 - `2026-03-16` | `Codex` | `codex/m6-task5-checkpoint-ui` | Started Milestone 6 Task 5 in a fresh global worktree from merged `main`, reloaded the M6 Task 5 outcome-console plan plus Deer Flow UI references and `/Users/rajattiwari/swarm/spell-ui.md`, and scoped the batch to checkpoint timeline, checkpoint detail, audit trail, and resume controls layered into the existing operator console. | Baseline web surface inspection completed; Task 5 begins with red tests for checkpoint rendering, audit ordering, resumable-run controls, and live checkpoint or resume updates.
 - `2026-03-16` | `Codex` | `codex/m6-task5-checkpoint-ui` | Completed Milestone 6 Task 5: added checkpoint timeline, selected checkpoint detail, audit trail, resume controls, and same-origin checkpoint or audit proxies to the outcome console, then hardened the console against a default-prop rerender loop while keeping the M3-M5 timeline, lineage, artifact, and review surfaces intact. | Verified with `pnpm --filter @computer-oss/web test`, `pnpm --filter @computer-oss/web build`, and `pnpm --filter @computer-oss/web typecheck`.
+- `2026-03-16` | `Codex` | `codex/m6-task6-docs-verification` | Started Milestone 6 Task 6 in a fresh global worktree from merged `main`, reloaded the M6 closure plan plus the current runbook/setup surfaces, inspected the shipped checkpoint runtime to confirm `CHECKPOINT_ROOT` defaults and local-filesystem storage behavior, and scoped the batch to docs updates plus a live interruption-and-resume smoke path. | Baseline repo state was clean on `main` before the worktree was created; Task 6 begins by exercising the shipped checkpoint timeline, audit trail, interruption recovery, and resume flow against the local stack.
+- `2026-03-16` | `Codex` | `codex/m6-task6-docs-verification` | Completed Milestone 6 Task 6: updated the README, local-dev guide, runbook, roadmap, design doc, implementation notes, and project log for the shipped checkpoint workflow, then verified the live local stack end to end through interruption, restart recovery, resume, replay, audit, and final completion. | Verified with `pnpm db:up`, `set -a; source .env; set +a; pnpm db:push`, live `pnpm dev:web` and control-plane server runs, interruption before terminal state, restart to `interrupted` plus `resumable`, `POST /api/runs/:runId/resume`, confirmation that `Analyze outcome` kept exactly one `step_completed` checkpoint, rendered `Replay anchors` plus `Operator trail`, and fresh workspace `pnpm test`, `pnpm typecheck`, and `pnpm build`.

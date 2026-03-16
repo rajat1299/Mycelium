@@ -4,11 +4,12 @@ Use this file as the first stop for any Codex agent working on Mycelium.
 
 ## What this repository is
 
-Mycelium is an open-source control plane for outcome-driven AI work. The current integrated slice is `Milestone 5: Review Queue and Artifact Lineage`, running on top of the verified `Milestone 4: Routing and BYO Keys` and `Milestone 3: Execution Substrate V1` local execution path:
+Mycelium is an open-source control plane for outcome-driven AI work. The current integrated slice is `Milestone 6: Checkpoints, Replay, and Audit`, running on top of the verified `Milestone 5: Review Queue and Artifact Lineage`, `Milestone 4: Routing and BYO Keys`, and `Milestone 3: Execution Substrate V1` local execution path:
 
 - `apps/control-plane`: Fastify API and SSE runtime
 - `apps/web`: Next.js operator console
 - `packages/protocol`: shared contracts
+- `packages/checkpoints`: backend-agnostic checkpoint store interface plus the shipped local filesystem backend
 - `packages/db`: Drizzle schema and repositories
 - `packages/orchestrator`: plan graph, planner, scheduler, and run-state primitives
 - `packages/sandbox`: local Docker sandbox provider and workspace management
@@ -30,7 +31,7 @@ Read these next:
 12. [Milestone 6 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-15-milestone-6-checkpoints-replay-and-audit-design.md)
 13. [Milestone 6 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-15-milestone-6-checkpoints-replay-and-audit-implementation.md)
 
-The M4 and M5 docs now include milestone-closure verification notes. M5 is integrated on `main`, and M6 is now the active execution-ready milestone for separate implementation windows.
+The M4, M5, and M6 docs now include milestone-closure verification notes. M6 is integrated on `main`. The next roadmap milestone is M7, but it is not execution-ready yet in this repo because its design and implementation docs have not been authored.
 
 ## Local setup
 
@@ -58,6 +59,7 @@ set -a; source .env; set +a; pnpm db:push
 `pnpm db:push` from the repo root currently requires the root `.env` file to be exported first. Keep the command above verbatim until the script is changed.
 
 The default local sandbox image is `node:22-bookworm-slim`. If a machine needs a different image, set `SANDBOX_IMAGE` in `apps/control-plane/.env.local`.
+`CHECKPOINT_ROOT` is optional. If it is unset, the shipped M6 local checkpoint backend writes versioned JSON manifests under `apps/control-plane/.mycelium/checkpoints`.
 
 Set `MYCELIUM_ENCRYPTION_KEY` in `apps/control-plane/.env.local` before testing credential writes. Generate one local key with:
 
@@ -117,6 +119,15 @@ If the task touches the M5 approval or lineage surface, also verify:
 - the review detail points at the expected artifact under review
 - approving the blocked work completes the run, and rejecting it fails the run
 - the outcome detail page shows the blocked-review card and the artifact-lineage panel for the selected run
+
+If the task touches the M6 checkpoint, replay, or audit surface, also verify:
+
+- the selected run persists resumable checkpoints at safe boundaries under `CHECKPOINT_ROOT`
+- interrupting the control plane leaves an in-flight run `interrupted` and `resumable` after restart instead of silently stuck
+- `POST /api/runs/:runId/resume` resumes from the latest durable checkpoint
+- steps already checkpointed as completed do not rerun during resume
+- the outcome detail page renders `Replay anchors` and `Operator trail` for the selected run
+- replay explains the selected checkpoint payload, audit explains durable lifecycle history, and persisted logs remain separate step-level debug detail
 
 ## Stop commands
 

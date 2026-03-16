@@ -236,7 +236,7 @@ Execution note:
 
 ### M6 Checkpoints, Replay, and Audit
 
-Status: `Planned`
+Status: `Complete`
 
 Goal:
 
@@ -266,12 +266,19 @@ Primary docs:
 - [Milestone 6 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-15-milestone-6-checkpoints-replay-and-audit-design.md)
 - [Milestone 6 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-15-milestone-6-checkpoints-replay-and-audit-implementation.md)
 
+Completion notes:
+
+- `CheckpointStore` shipped as a backend-agnostic interface, and M6 integrates only the local `LocalFilesystemCheckpointStore`
+- checkpoint metadata and audit indexes are durable in Postgres, while checkpoint manifests stay on the local filesystem under `CHECKPOINT_ROOT` and default to `apps/control-plane/.mycelium/checkpoints`
+- restarting the control plane now marks stranded `running` work as `interrupted` and preserves the latest resumable checkpoint pointer instead of silently continuing
+- `POST /api/runs/:runId/resume` restores step state from the durable checkpoint snapshot and does not rerun already checkpointed completed work
+- the outcome detail page now shows `Replay anchors` plus `Operator trail`, so replay, audit, and live logs are separate operator surfaces
+- the end-to-end local smoke path was verified on `2026-03-16`, including interruption, restart recovery, resume from `checkpoint_9e29dc52-f199-499e-a599-f936e5c28067`, no duplicate rerun of `Analyze outcome`, and final completion after approval
+
 Execution note:
 
-- M6 is now the active execution-ready milestone on `main`
-- lock `CheckpointStore` to a backend-agnostic interface in M6 and implement only the local filesystem backend here
-- M7 adds a remote checkpoint backend when remote workers and daemon protocol work land
-- operators can inspect a run history after the fact
+- M6 is complete on `main`
+- M7 is next in the roadmap, but it is not execution-ready yet in this repo
 
 ### M7 Remote Sandbox and Worker Daemon
 
