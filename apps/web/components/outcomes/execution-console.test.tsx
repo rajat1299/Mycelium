@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ExecutionConsole } from "./execution-console";
 
@@ -25,6 +25,7 @@ vi.mock("../../lib/events", () => ({
 afterEach(() => {
   cleanup();
   eventStream.handlers.clear();
+  vi.restoreAllMocks();
 });
 
 describe("ExecutionConsole", () => {
@@ -220,5 +221,226 @@ describe("ExecutionConsole", () => {
     });
 
     expect(screen.queryByText("Blocked on review")).not.toBeInTheDocument();
+  });
+
+  it("adds live checkpoints and clears resume controls after a resume event arrives", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+
+      if (url === "/api/checkpoints/checkpoint_2") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: "checkpoint_2",
+              workspaceId: "ws_default",
+              outcomeId: "outcome_123",
+              runId: "run_123",
+              sequence: 2,
+              kind: "step_completed",
+              resumable: true,
+              storeKey: "run_123/000002.json",
+              checksum:
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              byteSize: 1024,
+              stepId: "step_final",
+              createdAt: "2026-03-16T12:05:00.000Z",
+              payload: {
+                version: 1,
+                run: {
+                  id: "run_123",
+                  outcomeId: "outcome_123",
+                  workspaceId: "ws_default",
+                  status: "interrupted"
+                },
+                steps: [
+                  {
+                    stepId: "step_final",
+                    title: "Synthesize result",
+                    status: "ready"
+                  }
+                ],
+                readyStepIds: ["step_final"],
+                blockedStepIds: [],
+                workspacePaths: {
+                  inputDir: "/tmp/run_123/input",
+                  logsDir: "/tmp/run_123/logs",
+                  artifactsDir: "/tmp/run_123/artifacts"
+                },
+                artifactIds: ["artifact_final"],
+                latestAuditSequence: 4
+              }
+            }),
+            { status: 200, headers: { "content-type": "application/json" } }
+          )
+        );
+      }
+
+      if (url === "/api/runs/run_123/audit") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              events: [
+                {
+                  id: "audit_1",
+                  workspaceId: "ws_default",
+                  outcomeId: "outcome_123",
+                  runId: "run_123",
+                  stepId: null,
+                  checkpointId: "checkpoint_2",
+                  sequence: 4,
+                  category: "resume",
+                  eventType: "run.resumed",
+                  actorType: "system",
+                  summary: "Audit trail shows the resumed run.",
+                  payload: {},
+                  createdAt: "2026-03-16T12:06:00.000Z"
+                }
+              ]
+            }),
+            { status: 200, headers: { "content-type": "application/json" } }
+          )
+        );
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    render(
+      <ExecutionConsole
+        outcomeId="outcome_123"
+        initialRun={{
+          id: "run_123",
+          outcomeId: "outcome_123",
+          planId: "plan_outcome_123",
+          status: "interrupted",
+          latestCheckpointId: "checkpoint_1",
+          resumable: true,
+          createdAt: "2026-03-16T12:00:00.000Z",
+          updatedAt: "2026-03-16T12:04:00.000Z",
+          steps: []
+        }}
+        initialArtifacts={[]}
+        initialLogs={[]}
+        initialPendingApprovals={[]}
+        initialLineageEdges={[]}
+        initialCheckpoints={[
+          {
+            id: "checkpoint_1",
+            workspaceId: "ws_default",
+            outcomeId: "outcome_123",
+            runId: "run_123",
+            sequence: 1,
+            kind: "run_started",
+            resumable: true,
+            storeKey: "run_123/000001.json",
+            checksum:
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            byteSize: 512,
+            stepId: null,
+            createdAt: "2026-03-16T12:00:00.000Z"
+          }
+        ]}
+        initialSelectedCheckpoint={{
+          id: "checkpoint_1",
+          workspaceId: "ws_default",
+          outcomeId: "outcome_123",
+          runId: "run_123",
+          sequence: 1,
+          kind: "run_started",
+          resumable: true,
+          storeKey: "run_123/000001.json",
+          checksum:
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          byteSize: 512,
+          stepId: null,
+          createdAt: "2026-03-16T12:00:00.000Z",
+          payload: {
+            version: 1,
+            run: {
+              id: "run_123",
+              outcomeId: "outcome_123",
+              workspaceId: "ws_default",
+              status: "interrupted"
+            },
+            steps: [],
+            readyStepIds: [],
+            blockedStepIds: [],
+            workspacePaths: {
+              inputDir: "/tmp/run_123/input",
+              logsDir: "/tmp/run_123/logs",
+              artifactsDir: "/tmp/run_123/artifacts"
+            },
+            artifactIds: [],
+            latestAuditSequence: 1
+          }
+        }}
+        initialAuditEvents={[]}
+      />
+    );
+
+    expect(
+      screen.getByRole("button", { name: /resume from checkpoint/i })
+    ).toBeInTheDocument();
+
+    act(() => {
+      for (const handler of eventStream.handlers) {
+        handler({
+          outcomeId: "outcome_123",
+          type: "checkpoint.created",
+          data: {
+            id: "checkpoint_2",
+            workspaceId: "ws_default",
+            outcomeId: "outcome_123",
+            runId: "run_123",
+            sequence: 2,
+            kind: "step_completed",
+            resumable: true,
+            storeKey: "run_123/000002.json",
+            checksum:
+              "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            byteSize: 1024,
+            stepId: "step_final",
+            createdAt: "2026-03-16T12:05:00.000Z"
+          }
+        });
+      }
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Checkpoint #2")).toBeInTheDocument();
+    });
+
+    act(() => {
+      for (const handler of eventStream.handlers) {
+        handler({
+          outcomeId: "outcome_123",
+          type: "run.resumed",
+          data: {
+            run: {
+              id: "run_123",
+              outcomeId: "outcome_123",
+              planId: "plan_outcome_123",
+              status: "running",
+              latestCheckpointId: "checkpoint_2",
+              resumable: false,
+              createdAt: "2026-03-16T12:00:00.000Z",
+              updatedAt: "2026-03-16T12:06:00.000Z"
+            },
+            resumedFromCheckpointId: "checkpoint_2"
+          }
+        });
+      }
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: /resume from checkpoint/i })
+      ).not.toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByText("Audit trail shows the resumed run.")
+      ).toBeInTheDocument();
+    });
   });
 });

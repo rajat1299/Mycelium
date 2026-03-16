@@ -174,6 +174,27 @@ export function RunTimeline({
             };
           });
         }
+
+        if (event.type === "run.interrupted" || event.type === "run.resumed") {
+          setState((current) => {
+            if (
+              !current.run ||
+              current.pinnedRunId !== event.data.run.id ||
+              current.run.id !== event.data.run.id
+            ) {
+              return current;
+            }
+
+            return {
+              ...current,
+              run: {
+                ...current.run,
+                ...event.data.run,
+                steps: sortSteps(current.run.steps)
+              }
+            };
+          });
+        }
       });
     });
   }, [outcomeId]);

@@ -1,7 +1,14 @@
 import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { cleanup, render, screen } from "@testing-library/react";
-import type { Approval, ArtifactLineageEdge, RunDetail } from "@computer-oss/protocol";
+import type {
+  Approval,
+  ArtifactLineageEdge,
+  AuditEvent,
+  CheckpointDetail,
+  CheckpointSummary,
+  RunDetail
+} from "@computer-oss/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import OutcomeDetailPage from "./page";
 
@@ -11,6 +18,9 @@ const mocks = vi.hoisted(() => ({
   getRun: vi.fn(),
   getLatestRun: vi.fn(),
   getRunArtifacts: vi.fn(),
+  getRunCheckpoints: vi.fn(),
+  getCheckpoint: vi.fn(),
+  getRunAudit: vi.fn(),
   getRunLogs: vi.fn(),
   getRunArtifactLineage: vi.fn(),
   listApprovals: vi.fn(),
@@ -31,6 +41,9 @@ let observedLogs: Array<{ message: string; level: string }> = [];
 let observedAuthProfiles: Array<{ id: string; label: string }> = [];
 let observedPendingApprovals: Approval[] = [];
 let observedLineageEdges: ArtifactLineageEdge[] = [];
+let observedCheckpoints: CheckpointSummary[] = [];
+let observedSelectedCheckpoint: CheckpointDetail | null = null;
+let observedAuditEvents: AuditEvent[] = [];
 
 vi.mock("next/cache", () => ({
   revalidatePath: mocks.revalidatePath
@@ -70,7 +83,10 @@ vi.mock("../../../components/outcomes/execution-console", () => ({
     initialLogs,
     initialAuthProfiles,
     initialPendingApprovals = [],
-    initialLineageEdges = []
+    initialLineageEdges = [],
+    initialCheckpoints = [],
+    initialSelectedCheckpoint = null,
+    initialAuditEvents = []
   }: {
     initialRun: RunDetail | null;
     initialArtifacts: Array<{ id: string; relativePath: string }>;
@@ -78,6 +94,9 @@ vi.mock("../../../components/outcomes/execution-console", () => ({
     initialAuthProfiles: Array<{ id: string; label: string }>;
     initialPendingApprovals?: Approval[];
     initialLineageEdges?: ArtifactLineageEdge[];
+    initialCheckpoints?: CheckpointSummary[];
+    initialSelectedCheckpoint?: CheckpointDetail | null;
+    initialAuditEvents?: AuditEvent[];
   }) => {
     observedRun = initialRun;
     observedSelectedRunId = initialRun?.id ?? null;
@@ -86,6 +105,9 @@ vi.mock("../../../components/outcomes/execution-console", () => ({
     observedAuthProfiles = initialAuthProfiles;
     observedPendingApprovals = initialPendingApprovals;
     observedLineageEdges = initialLineageEdges;
+    observedCheckpoints = initialCheckpoints;
+    observedSelectedCheckpoint = initialSelectedCheckpoint;
+    observedAuditEvents = initialAuditEvents;
     return (
       <div data-testid="execution-console">
         {(initialRun?.id ?? "none") +
@@ -96,7 +118,11 @@ vi.mock("../../../components/outcomes/execution-console", () => ({
           ":" +
           initialPendingApprovals.length +
           ":" +
-          initialLineageEdges.length}
+          initialLineageEdges.length +
+          ":" +
+          initialCheckpoints.length +
+          ":" +
+          initialAuditEvents.length}
       </div>
     );
   }
@@ -121,6 +147,9 @@ vi.mock("../../../lib/api", () => ({
   getRun: mocks.getRun,
   getLatestRun: mocks.getLatestRun,
   getRunArtifacts: mocks.getRunArtifacts,
+  getRunCheckpoints: mocks.getRunCheckpoints,
+  getCheckpoint: mocks.getCheckpoint,
+  getRunAudit: mocks.getRunAudit,
   getRunLogs: mocks.getRunLogs,
   getRunArtifactLineage: mocks.getRunArtifactLineage,
   listApprovals: mocks.listApprovals,
@@ -140,6 +169,9 @@ describe("OutcomeDetailPage", () => {
     observedAuthProfiles = [];
     observedPendingApprovals = [];
     observedLineageEdges = [];
+    observedCheckpoints = [];
+    observedSelectedCheckpoint = null;
+    observedAuditEvents = [];
     vi.clearAllMocks();
 
     mocks.getOutcome.mockResolvedValue({
@@ -198,6 +230,74 @@ describe("OutcomeDetailPage", () => {
         createdAt: "2026-03-11T00:09:31.000Z"
       }
     ]);
+    mocks.getRunCheckpoints.mockResolvedValue([
+      {
+        id: "checkpoint_123",
+        workspaceId: "ws_default",
+        outcomeId: "outcome_123",
+        runId: "run_latest",
+        sequence: 2,
+        kind: "step_completed",
+        resumable: true,
+        storeKey: "run_latest/000002.json",
+        checksum:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        byteSize: 1024,
+        stepId: "step_1",
+        createdAt: "2026-03-11T00:09:32.000Z"
+      }
+    ]);
+    mocks.getCheckpoint.mockResolvedValue({
+      id: "checkpoint_123",
+      workspaceId: "ws_default",
+      outcomeId: "outcome_123",
+      runId: "run_latest",
+      sequence: 2,
+      kind: "step_completed",
+      resumable: true,
+      storeKey: "run_latest/000002.json",
+      checksum:
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      byteSize: 1024,
+      stepId: "step_1",
+      createdAt: "2026-03-11T00:09:32.000Z",
+      payload: {
+        version: 1,
+        run: {
+          id: "run_latest",
+          outcomeId: "outcome_123",
+          workspaceId: "ws_default",
+          status: "queued"
+        },
+        steps: [],
+        readyStepIds: [],
+        blockedStepIds: [],
+        workspacePaths: {
+          inputDir: "/tmp/run_latest/input",
+          logsDir: "/tmp/run_latest/logs",
+          artifactsDir: "/tmp/run_latest/artifacts"
+        },
+        artifactIds: ["artifact_123"],
+        latestAuditSequence: 2
+      }
+    });
+    mocks.getRunAudit.mockResolvedValue([
+      {
+        id: "audit_123",
+        workspaceId: "ws_default",
+        outcomeId: "outcome_123",
+        runId: "run_latest",
+        stepId: null,
+        checkpointId: "checkpoint_123",
+        sequence: 2,
+        category: "checkpoint",
+        eventType: "checkpoint.created",
+        actorType: "system",
+        summary: "Checkpoint #2 captured.",
+        payload: {},
+        createdAt: "2026-03-11T00:09:32.000Z"
+      }
+    ]);
     mocks.listApprovals.mockResolvedValue([
       {
         id: "approval_123",
@@ -248,9 +348,12 @@ describe("OutcomeDetailPage", () => {
     expect(mocks.listApprovals).toHaveBeenCalledWith("ws_default");
     expect(mocks.getRunArtifacts).toHaveBeenCalledWith("run_latest");
     expect(mocks.getRunArtifactLineage).toHaveBeenCalledWith("run_latest");
+    expect(mocks.getRunCheckpoints).toHaveBeenCalledWith("run_latest");
+    expect(mocks.getCheckpoint).toHaveBeenCalledWith("checkpoint_123");
+    expect(mocks.getRunAudit).toHaveBeenCalledWith("run_latest");
     expect(mocks.getRunLogs).toHaveBeenCalledWith("run_latest");
     expect(screen.getByTestId("execution-console")).toHaveTextContent(
-      "run_latest:1:1:1:1"
+      "run_latest:1:1:1:1:1:1"
     );
     expect(observedRun?.id).toBe("run_latest");
     expect(observedSelectedRunId).toBe("run_latest");
@@ -276,6 +379,23 @@ describe("OutcomeDetailPage", () => {
       expect.objectContaining({
         id: "approval_123",
         runId: "run_latest"
+      })
+    ]);
+    expect(observedCheckpoints).toEqual([
+      expect.objectContaining({
+        id: "checkpoint_123",
+        sequence: 2
+      })
+    ]);
+    expect(observedSelectedCheckpoint).toEqual(
+      expect.objectContaining({
+        id: "checkpoint_123"
+      })
+    );
+    expect(observedAuditEvents).toEqual([
+      expect.objectContaining({
+        id: "audit_123",
+        sequence: 2
       })
     ]);
     expect(observedLineageEdges).toEqual([
@@ -310,9 +430,12 @@ describe("OutcomeDetailPage", () => {
     expect(mocks.listApprovals).toHaveBeenCalledWith("ws_default");
     expect(mocks.getRunArtifacts).toHaveBeenCalledWith("run_latest");
     expect(mocks.getRunArtifactLineage).toHaveBeenCalledWith("run_latest");
+    expect(mocks.getRunCheckpoints).toHaveBeenCalledWith("run_latest");
+    expect(mocks.getCheckpoint).toHaveBeenCalledWith("checkpoint_123");
+    expect(mocks.getRunAudit).toHaveBeenCalledWith("run_latest");
     expect(mocks.getRunLogs).toHaveBeenCalledWith("run_latest");
     expect(screen.getByTestId("execution-console")).toHaveTextContent(
-      "run_latest:1:1:1:1"
+      "run_latest:1:1:1:1:1:1"
     );
     expect(observedRun?.id).toBe("run_latest");
     expect(observedSelectedRunId).toBe("run_latest");

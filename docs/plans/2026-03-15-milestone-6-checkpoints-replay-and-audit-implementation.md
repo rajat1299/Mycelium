@@ -566,6 +566,15 @@ git add apps/web
 git commit -m "feat: add checkpoint and audit console"
 ```
 
+**Completion note:**
+
+- Completed on `codex/m6-task5-checkpoint-ui` after adding server-loaded checkpoint and audit data, client-side selection and resume flows, same-origin checkpoint or audit proxies for console refreshes, and regression coverage for timeline selection, checkpoint detail, audit ordering, run interruption or resume SSE handling, and outcome-page initial data loading.
+- One review-driven runtime hardening came out of the Task 5 implementation itself: `ExecutionConsole` now uses stable default collection references so the prop-sync effect cannot spin forever when optional arrays are omitted.
+- Verified with:
+  - `pnpm --filter @computer-oss/web test`
+  - `pnpm --filter @computer-oss/web build`
+  - `pnpm --filter @computer-oss/web typecheck`
+
 ---
 
 ## Task 6: Update docs and run the interruption-and-resume smoke path

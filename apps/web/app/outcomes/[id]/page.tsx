@@ -8,12 +8,15 @@ import { PlanGraph } from "../../../components/outcomes/plan-graph";
 import {
   createPlan,
   createRun,
+  getCheckpoint,
   getRunArtifactLineage,
+  getRunAudit,
   getLatestRun,
   listAuthProfiles,
   listApprovals,
   getOutcome,
   getPlan,
+  getRunCheckpoints,
   getRunArtifacts,
   getRunLogs,
   getRun
@@ -58,18 +61,30 @@ export default async function OutcomeDetailPage({
 
   const authProfilesPromise = listAuthProfiles(outcome.workspaceId);
   const approvalsPromise = listApprovals(outcome.workspaceId);
-  const [artifacts, logs, authProfiles, lineageEdges, approvals] = run
+  const checkpointsPromise = run ? getRunCheckpoints(run.id) : Promise.resolve([]);
+  const [artifacts, logs, authProfiles, lineageEdges, approvals, checkpoints, auditEvents] = run
     ? await Promise.all([
         getRunArtifacts(run.id),
         getRunLogs(run.id),
         authProfilesPromise,
         getRunArtifactLineage(run.id),
-        approvalsPromise
+        approvalsPromise,
+        checkpointsPromise,
+        getRunAudit(run.id)
       ])
-    : [[], [], await authProfilesPromise, [], await approvalsPromise];
+    : [[], [], await authProfilesPromise, [], await approvalsPromise, [], []];
   const pendingApprovalsForRun = run
     ? approvals.filter((approval) => approval.runId === run.id)
     : [];
+  const selectedCheckpointId =
+    run?.latestCheckpointId ??
+    [...checkpoints]
+      .sort((left, right) => right.sequence - left.sequence)[0]
+      ?.id ??
+    null;
+  const selectedCheckpoint = selectedCheckpointId
+    ? await getCheckpoint(selectedCheckpointId)
+    : null;
 
   async function createPlanAction() {
     "use server";
@@ -144,6 +159,9 @@ export default async function OutcomeDetailPage({
             initialPendingApprovals={pendingApprovalsForRun}
             initialLineageEdges={lineageEdges}
             initialAuthProfiles={authProfiles}
+            initialCheckpoints={checkpoints}
+            initialSelectedCheckpoint={selectedCheckpoint}
+            initialAuditEvents={auditEvents}
           />
           <OutcomeActivity outcome={outcome} />
         </div>

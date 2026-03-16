@@ -1,15 +1,19 @@
 import {
   ApprovalListResponseSchema,
   ApprovalSchema,
+  AuditListResponseSchema,
   AuthProfileSchema,
   ArtifactListResponseSchema,
   ArtifactLineageListResponseSchema,
+  CheckpointDetailSchema,
+  CheckpointListResponseSchema,
   CreateRunRequestSchema,
   CreateOutcomeRequestSchema,
   OutcomeListResponseSchema,
   OutcomeSchema,
   PlanSchema,
   ProviderCatalogSchema,
+  ResumeRunResponseSchema,
   RunDetailSchema,
   RunLogListResponseSchema,
   RouterPolicySchema,
@@ -18,7 +22,10 @@ import {
   type CreateRunRequest,
   type AuthProfile,
   type Approval,
+  type AuditEvent,
   type ArtifactLineageEdge,
+  type CheckpointDetail,
+  type CheckpointSummary,
   type Outcome
 } from "@computer-oss/protocol";
 import { z } from "zod";
@@ -269,6 +276,95 @@ export async function getRunArtifactLineage(
   } catch {
     return [];
   }
+}
+
+export async function getRunCheckpoints(
+  runId: string
+): Promise<CheckpointSummary[]> {
+  try {
+    const response = await fetch(
+      `${getControlPlaneBaseUrl()}/api/runs/${runId}/checkpoints`,
+      {
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const parsed = await parseJson(response, (value) =>
+      CheckpointListResponseSchema.parse(value)
+    );
+
+    return parsed.checkpoints;
+  } catch {
+    return [];
+  }
+}
+
+export async function getCheckpoint(
+  checkpointId: string
+): Promise<CheckpointDetail | null> {
+  try {
+    const response = await fetch(
+      `${getControlPlaneBaseUrl()}/api/checkpoints/${checkpointId}`,
+      {
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return parseJson(response, (value) => CheckpointDetailSchema.parse(value));
+  } catch {
+    return null;
+  }
+}
+
+export async function getRunAudit(runId: string): Promise<AuditEvent[]> {
+  try {
+    const response = await fetch(`${getControlPlaneBaseUrl()}/api/runs/${runId}/audit`, {
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const parsed = await parseJson(response, (value) =>
+      AuditListResponseSchema.parse(value)
+    );
+
+    return parsed.events;
+  } catch {
+    return [];
+  }
+}
+
+export async function resumeRun(
+  runId: string,
+  input: { checkpointId?: string } = {}
+) {
+  const response = await fetch(
+    `${getControlPlaneBaseUrl()}/api/runs/${runId}/resume`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(input),
+      cache: "no-store"
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to resume run.");
+  }
+
+  return parseJson(response, (value) => ResumeRunResponseSchema.parse(value));
 }
 
 export async function getProviderCatalog() {
