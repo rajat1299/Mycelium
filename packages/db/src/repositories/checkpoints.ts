@@ -57,10 +57,11 @@ export class CheckpointRepository {
     const checkpoint = CheckpointSummarySchema.parse(input);
 
     return this.db.transaction(async (transaction) => {
-      const [runRows, outcomeRows, stepRows] = await Promise.all([
+      const [runRows, outcomeRows, stepRows, checkpointRows] = await Promise.all([
         transaction.select().from(outcomeRuns),
         transaction.select().from(outcomes),
-        transaction.select().from(runSteps)
+        transaction.select().from(runSteps),
+        transaction.select().from(runCheckpoints)
       ]);
 
       const run = runRows.find((row) => row.id === checkpoint.runId);
@@ -101,6 +102,15 @@ export class CheckpointRepository {
         }
       }
 
+      const latestRecordedCheckpoint = checkpointRows
+        .filter((row) => row.runId === checkpoint.runId)
+        .sort(compareCheckpointsNewestFirst)
+        .at(0);
+
+      const shouldAdvanceLatestPointer =
+        !latestRecordedCheckpoint ||
+        checkpoint.sequence > latestRecordedCheckpoint.sequence;
+
       const [created] = await transaction
         .insert(runCheckpoints)
         .values({
@@ -119,15 +129,17 @@ export class CheckpointRepository {
         })
         .returning();
 
-      await transaction
-        .update(outcomeRuns)
-        .set({
-          latestCheckpointId: checkpoint.id,
-          resumable: checkpoint.resumable,
-          updatedAt: new Date(checkpoint.createdAt)
-        })
-        .where(eq(outcomeRuns.id, checkpoint.runId))
-        .returning();
+      if (shouldAdvanceLatestPointer) {
+        await transaction
+          .update(outcomeRuns)
+          .set({
+            latestCheckpointId: checkpoint.id,
+            resumable: checkpoint.resumable,
+            updatedAt: new Date(checkpoint.createdAt)
+          })
+          .where(eq(outcomeRuns.id, checkpoint.runId))
+          .returning();
+      }
 
       return mapCheckpointRow(created);
     });

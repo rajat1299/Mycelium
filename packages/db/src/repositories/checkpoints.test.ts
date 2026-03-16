@@ -257,4 +257,53 @@ describe("CheckpointRepository", () => {
       ]
     });
   });
+
+  it("keeps the run latest checkpoint pointer monotonic when older checkpoints arrive late", async () => {
+    const { db, state } = createRepositoryTestDatabase();
+    seedCheckpointContext(state);
+    const repository = new CheckpointRepository(db as never);
+
+    await repository.create({
+      id: "checkpoint_002",
+      workspaceId: "ws_123",
+      outcomeId: "outcome_123",
+      runId: "run_123",
+      stepId: "step_root",
+      sequence: 2,
+      kind: "step_completed",
+      resumable: false,
+      storeKey: "run_123/000002-checkpoint_002.json",
+      checksum: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      byteSize: 768,
+      createdAt: "2026-03-16T00:03:00.000Z"
+    });
+
+    await repository.create({
+      id: "checkpoint_001",
+      workspaceId: "ws_123",
+      outcomeId: "outcome_123",
+      runId: "run_123",
+      stepId: null,
+      sequence: 1,
+      kind: "run_started",
+      resumable: true,
+      storeKey: "run_123/000001-checkpoint_001.json",
+      checksum: "9999999999999999999999999999999999999999999999999999999999999999",
+      byteSize: 512,
+      createdAt: "2026-03-16T00:02:00.000Z"
+    });
+
+    expect(state.outcomeRuns).toEqual([
+      expect.objectContaining({
+        id: "run_123",
+        latestCheckpointId: "checkpoint_002",
+        resumable: false
+      }),
+      expect.objectContaining({
+        id: "run_999",
+        latestCheckpointId: null,
+        resumable: false
+      })
+    ]);
+  });
 });
