@@ -14,6 +14,7 @@
     "declaration": true,
     "paths": {
       "@computer-oss/artifacts": ["packages/artifacts/src/index.ts"],
+      "@computer-oss/checkpoints": ["packages/checkpoints/src/index.ts"],
       "@computer-oss/protocol": ["packages/protocol/src/index.ts"],
       "@computer-oss/router": ["packages/router/src/index.ts"],
       "@computer-oss/db": ["packages/db/src/index.ts"],
