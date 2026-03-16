@@ -56,8 +56,8 @@ Lock these before touching code:
 
 ### Task 1
 
-- `/Users/rajattiwari/swarm/openclaw/src/tools/exec-approval.ts`
-- `/Users/rajattiwari/swarm/openclaw/src/core/agent-state.ts`
+- `/Users/rajattiwari/swarm/openclaw/src/gateway/server-methods/exec-approval.ts`
+- `/Users/rajattiwari/swarm/openclaw/src/gateway/exec-approval-manager.ts`
 - `/Users/rajattiwari/swarm/deer-flow/frontend/src/core/artifacts/loader.ts`
 
 ### Task 2
@@ -74,13 +74,17 @@ Lock these before touching code:
 
 ### Task 4
 
-- `/Users/rajattiwari/swarm/openclaw/src/gateway/router.ts`
+- `/Users/rajattiwari/swarm/openclaw/src/gateway/server-methods/exec-approval.ts`
+- `/Users/rajattiwari/swarm/openclaw/src/gateway/server-methods/exec-approvals.ts`
+- `/Users/rajattiwari/swarm/openclaw/src/gateway/exec-approval-manager.ts`
+- `/Users/rajattiwari/swarm/openclaw/src/gateway/server-broadcast.ts`
+- `/Users/rajattiwari/swarm/openclaw/src/gateway/method-scopes.ts`
 - `/Users/rajattiwari/swarm/deer-flow/backend/src/gateway/routers/artifacts.py`
 
 ### Task 5
 
 - `/Users/rajattiwari/swarm/deer-flow/frontend/src/core/artifacts/loader.ts`
-- `/Users/rajattiwari/swarm/openclaw/src/tools/exec-approval.ts`
+- `/Users/rajattiwari/swarm/openclaw/src/gateway/server-methods/exec-approval.ts`
 
 ## Progress update protocol
 
@@ -619,3 +623,4 @@ git commit -m "docs: record m5 review queue workflow"
 - `2026-03-14`: Task 1 completed on `codex/m5-task1-approval-lineage-contracts`: added first-class approval and artifact-lineage protocol contracts, wired approval events into the shared SSE union, and added additive approval-requirement metadata on plan nodes and run steps.
 - `2026-03-14`: Task 2 completed on `codex/m5-task2-approvals-lineage-persistence`: expanded the DB schema for first-class approvals plus `artifact_lineage_edges`, added approval and lineage repositories with run-scoped validation, added artifact lookup helpers and approval-lifecycle repository support, and extended the fake repository DB with approval/lineage tables, FK checks, and rollback coverage.
 - `2026-03-15`: Task 4 completed on `codex/m5-task4-approval-api-streaming`: added control-plane approval routes for pending-list/detail/approve/reject, added run-scoped artifact-lineage reads, and verified that `approval.requested` and `approval.resolved` events stream over the existing outcome SSE surface without adding a second transport.
+- `2026-03-15`: Review-driven doc correction: replaced stale OpenClaw checklist paths with the verified live approval gateway files (`server-methods/exec-approval.ts`, `server-methods/exec-approvals.ts`, `exec-approval-manager.ts`, `server-broadcast.ts`, `method-scopes.ts`) so future agents start from the current repo surface instead of missing paths.
