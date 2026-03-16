@@ -1,7 +1,12 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useState } from "react";
-import type { Approval, Artifact } from "@computer-oss/protocol";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ApprovalListResponseSchema,
+  ArtifactListResponseSchema,
+  type Approval,
+  type Artifact
+} from "@computer-oss/protocol";
 import { subscribeToOutcomeEvents } from "../../lib/events";
 import { Badge } from "../ui/badge";
 import { ReviewDetailCard } from "./review-detail-card";
@@ -29,21 +34,113 @@ function selectFallbackApproval(
   return approvals[0]?.id ?? null;
 }
 
+function mergeArtifactsByRunId(
+  current: Record<string, Artifact[]>,
+  runId: string,
+  artifacts: Artifact[]
+) {
+  if (current[runId]) {
+    return current;
+  }
+
+  return {
+    ...current,
+    [runId]: artifacts
+  };
+}
+
 export function ReviewQueue({
   workspaceId,
   initialApprovals,
   initialArtifactsByRunId
 }: ReviewQueueProps) {
-  const [approvals, setApprovals] = useState(() => sortApprovals(initialApprovals));
+  const initialSortedApprovals = sortApprovals(initialApprovals);
+  const [approvals, setApprovals] = useState(() => initialSortedApprovals);
   const [selectedApprovalId, setSelectedApprovalId] = useState<string | null>(
-    initialApprovals[0]?.id ?? null
+    initialSortedApprovals[0]?.id ?? null
   );
+  const [artifactsByRunId, setArtifactsByRunId] = useState(initialArtifactsByRunId);
+  const artifactsByRunIdRef = useRef(initialArtifactsByRunId);
+  const loadingRunIdsRef = useRef(new Set<string>());
+
+  async function ensureArtifactsLoaded(runId: string) {
+    if (artifactsByRunIdRef.current[runId] || loadingRunIdsRef.current.has(runId)) {
+      return;
+    }
+
+    loadingRunIdsRef.current.add(runId);
+
+    try {
+      const response = await fetch(`/api/runs/${runId}/artifacts`, {
+        cache: "no-store"
+      });
+
+      if (!response.ok) {
+        return;
+      }
+
+      const payload = ArtifactListResponseSchema.parse(await response.json());
+
+      startTransition(() => {
+        setArtifactsByRunId((current) => {
+          const next = mergeArtifactsByRunId(current, runId, payload.artifacts);
+          artifactsByRunIdRef.current = next;
+          return next;
+        });
+      });
+    } catch {
+      return;
+    } finally {
+      loadingRunIdsRef.current.delete(runId);
+    }
+  }
+
+  async function refreshApprovals() {
+    try {
+      const response = await fetch(
+        `/api/approvals?workspaceId=${encodeURIComponent(workspaceId)}`,
+        {
+          cache: "no-store"
+        }
+      );
+
+      if (!response.ok) {
+        return;
+      }
+
+      const payload = ApprovalListResponseSchema.parse(await response.json());
+      const nextApprovals = sortApprovals(payload.approvals);
+
+      startTransition(() => {
+        setApprovals(nextApprovals);
+        setSelectedApprovalId((current) => selectFallbackApproval(nextApprovals, current));
+      });
+
+      await Promise.all(nextApprovals.map((approval) => ensureArtifactsLoaded(approval.runId)));
+    } catch {
+      return;
+    }
+  }
 
   useEffect(() => {
     const nextApprovals = sortApprovals(initialApprovals);
     setApprovals(nextApprovals);
-    setSelectedApprovalId(selectFallbackApproval(nextApprovals, selectedApprovalId));
-  }, [initialApprovals]);
+    setSelectedApprovalId((current) => selectFallbackApproval(nextApprovals, current));
+    setArtifactsByRunId(initialArtifactsByRunId);
+    artifactsByRunIdRef.current = initialArtifactsByRunId;
+  }, [initialApprovals, initialArtifactsByRunId]);
+
+  useEffect(() => {
+    void refreshApprovals();
+
+    const intervalId = window.setInterval(() => {
+      void refreshApprovals();
+    }, 5_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [workspaceId]);
 
   useEffect(() => {
     const outcomeIds = Array.from(new Set(approvals.map((approval) => approval.outcomeId)));
@@ -66,6 +163,7 @@ export function ReviewQueue({
               setSelectedApprovalId((selected) => selectFallbackApproval(next, selected));
               return sortApprovals(next);
             });
+            void ensureArtifactsLoaded(event.data.runId);
           }
 
           if (event.type === "approval.resolved") {
@@ -89,11 +187,11 @@ export function ReviewQueue({
   const selectedArtifacts = useMemo(
     () =>
       selectedApproval
-        ? (initialArtifactsByRunId[selectedApproval.runId] ?? []).filter((artifact) =>
+        ? (artifactsByRunId[selectedApproval.runId] ?? []).filter((artifact) =>
             selectedApproval.artifactIds.includes(artifact.id)
           )
         : [],
-    [initialArtifactsByRunId, selectedApproval]
+    [artifactsByRunId, selectedApproval]
   );
 
   return (
