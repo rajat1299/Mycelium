@@ -2,7 +2,7 @@
 
 **Your keys. Your models. Your data.**
 
-Mycelium is an open-source orchestration platform for long-running AI work. Describe an outcome — research, code, documents, data analysis, scheduled workflows — and Mycelium decomposes it into a dependency-aware task graph, routes subtasks across the best available models and runtimes, executes them in parallel sandboxed environments, gates side effects on human approval, and delivers artifacts. Interactive, background, or recurring. Minutes or months.
+Mycelium is an open-source orchestration platform for long-running AI work. Describe an outcome — research, code, documents, data analysis, scheduled workflows — and Mycelium decomposes it into a dependency-aware task graph, routes subtasks across the best available models and runtimes, executes them in parallel sandboxed environments, gates review-required or side-effecting work on human approval, and delivers artifacts. Interactive, background, or recurring. Minutes or months.
 
 You run it. You own it.
 
@@ -113,7 +113,7 @@ An optional edge agent that runs on your machine for tasks that need local conte
 
 ### Approvals
 
-Side effects are gated by default. Mycelium runs autonomously for read-only work — browsing, search, summarization, drafting, sandboxed file generation, dry-run planning. But any external write (posting messages, sending emails, mutating third-party services, privileged terminal commands, creating persistent schedules) pauses for your explicit approval before executing.
+Review-required work is gated by default. The shipped M5 slice pauses the final synthesis output for approval in the web console, and the same control loop is the substrate for future external writes. Read-only work still runs autonomously for browsing, search, summarization, drafting, sandboxed file generation, and dry-run planning.
 
 You review and approve in the web console or directly in Slack/Telegram.
 
@@ -131,7 +131,7 @@ Mycelium is the assembled thing. Not a framework. A product you run with one com
 
 - **BYO keys.** Plug in your own API keys from any supported provider. You pay providers directly. No markup.
 - **Visible routing.** You see and control exactly which model handles which capability. Policy-driven, not magic.
-- **Approval-gated execution.** Read-only work runs autonomously. Side effects always pause for your sign-off.
+- **Approval-gated execution.** Read-only work runs autonomously. Review-required outputs and side effects pause for your sign-off.
 - **Self-hosted.** Your data, artifacts, logs, and memory stay on your infrastructure.
 - **Multi-surface.** Web command center for the full experience. Slack and Telegram for messaging your agent like a coworker. REST + WebSocket API for programmatic access. An outcome started on one surface continues seamlessly on another.
 - **Persistent memory.** The foreman learns your codebase, preferences, and workflow across sessions.
@@ -183,24 +183,27 @@ pnpm dev
 
 The local sandbox uses `node:22-bookworm-slim` by default. If you need to pin a different local image, set `SANDBOX_IMAGE` in `apps/control-plane/.env.local` before starting the stack.
 
-Open `http://127.0.0.1:3000`. The current integrated slice is Milestone 4 routing and BYO keys on top of the Milestone 3 local execution path: you can save encrypted provider credentials, create auth profiles, define router policy, preview route resolution, and then run the same local Docker execution flow with persisted route metadata on each step.
+Open `http://127.0.0.1:3000`. The current integrated slice is Milestone 5 review queue and artifact lineage on top of the Milestone 4 routing and Milestone 3 local execution path: you can save encrypted provider credentials, create auth profiles, define router policy, preview route resolution, run the local Docker execution flow, review blocked work in `/review`, and inspect persisted lineage on the outcome detail page.
 
 ### Manual smoke checklist
 
 1. Open `/settings` and confirm the provider catalog, workspace credentials, auth profiles, and routing policy surfaces load.
 2. Create one workspace credential. Credential writes require `MYCELIUM_ENCRYPTION_KEY` in `apps/control-plane/.env.local`.
 3. Create one auth profile for that credential.
-4. Save router policy entries for `reasoning` and `coding`, then preview both routes and confirm they resolve to the same provider, model, and auth profile on repeated previews. `resolvedAt` changes per preview because it is a fresh resolution timestamp.
-5. If you want every node in the default M3 draft plan to resolve, also add a `document` policy entry. The shipped four-node draft plan uses `reasoning` for `Analyze outcome` and `document` for the other three nodes.
-6. Create an outcome from the web UI.
-7. Generate the draft plan and confirm the four-node fork/join graph renders:
+4. Save router policy entries for `reasoning`, `coding`, and `document`, then preview `reasoning` and `document` and confirm repeated previews keep the same provider, model, and auth profile. `resolvedAt` changes per preview because it is a fresh resolution timestamp.
+5. Create an outcome from the web UI.
+6. Generate the draft plan and confirm the four-node fork/join graph renders:
    `Analyze outcome` -> `Draft brief` + `Draft operator summary` -> `Synthesize result`.
-8. Start the run and confirm the two middle steps complete before synthesis starts.
-9. Confirm the run reaches `completed` and the outcome header also reaches `completed`.
-10. Confirm the timeline shows route badges on each step and that unresolved routes, if any, are rendered explicitly instead of blocking local execution.
-11. Confirm the artifact panel shows exactly four artifacts:
+7. Start the run and confirm the two middle steps complete before synthesis starts.
+8. Confirm the run blocks on `Synthesize result` and the selected run shows the `Blocked on review` card instead of completing immediately.
+9. Open `/review` and confirm a pending `Review final result` approval appears for the blocked run.
+10. Confirm the blocked approval points at the final artifact under review, and the outcome detail page renders the `Artifact lineage` panel for the selected run.
+11. Approve the blocked work and confirm the run reaches `completed`.
+12. Repeat with a second outcome and reject the blocked work. Confirm the second run reaches `failed`.
+13. Confirm the artifact panel still shows exactly four persisted artifacts for the approved run:
    `artifacts/analyze-outcome.md`, `artifacts/brief.md`, `artifacts/operator-summary.md`, and `artifacts/final-result.md`.
-12. Confirm the log panel shows persisted step logs after a page refresh, not just live SSE updates.
+14. Confirm the lineage panel shows the deterministic `derived_from` relationships for the run, including the final result deriving from both branch artifacts.
+15. Confirm the log panel shows persisted step logs after a page refresh, not just live SSE updates.
 
 ### Messaging (optional)
 
@@ -208,7 +211,7 @@ Mycelium supports Slack and Telegram out of the box. See the [messaging setup gu
 
 ### API
 
-The currently shipped local API surface for the Milestone 4 slice is:
+The currently shipped local API surface for the Milestone 5 slice is:
 
 ```bash
 # Read the static provider/model catalog
@@ -262,11 +265,25 @@ curl http://127.0.0.1:4000/api/runs/<RUN_ID>/logs
 # Read persisted run artifacts
 curl http://127.0.0.1:4000/api/runs/<RUN_ID>/artifacts
 
+# Read persisted artifact-lineage edges for a run
+curl http://127.0.0.1:4000/api/runs/<RUN_ID>/artifact-lineage
+
+# List pending approvals for a workspace
+curl "http://127.0.0.1:4000/api/approvals?workspaceId=ws_default"
+
+# Approve or reject blocked work
+curl -X POST http://127.0.0.1:4000/api/approvals/<APPROVAL_ID>/approve \
+  -H "content-type: application/json" \
+  -d '{"resolutionNote":"Looks good."}'
+curl -X POST http://127.0.0.1:4000/api/approvals/<APPROVAL_ID>/reject \
+  -H "content-type: application/json" \
+  -d '{"resolutionNote":"Needs revision."}'
+
 # Stream live plan/run events over SSE
 curl -N http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/events
 ```
 
-The operator console consumes the same control-plane endpoints and the same outcome-scoped SSE stream for timeline, activity, logs, artifacts, and persisted step-route metadata. Runtime execution remains on the M3 local Docker path in this milestone; M4 makes the routing decisions durable and visible before provider-backed worker execution lands in a later milestone.
+The operator console consumes the same control-plane endpoints and the same outcome-scoped SSE stream for timeline, activity, logs, artifacts, approvals, and persisted step-route metadata. Runtime execution remains on the M3 local Docker path in this milestone; M4 made routing decisions durable and visible, and M5 adds the workspace review desk plus run-scoped artifact-lineage inspection before provider-backed worker execution lands in a later milestone.
 
 ---
 

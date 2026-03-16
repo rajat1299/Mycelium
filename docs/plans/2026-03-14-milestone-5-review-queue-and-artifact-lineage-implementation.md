@@ -10,6 +10,8 @@
 
 **Tech stack:** `pnpm`, `turbo`, `TypeScript`, `Vitest`, `Zod`, `Fastify`, `Drizzle ORM`, `Postgres`, `Next.js`, `React`, `Tailwind CSS`
 
+**Status:** `Complete on 2026-03-15 after Task 6 docs closure and live approve/reject smoke verification`
+
 ---
 
 ## Required reading for this milestone
@@ -622,6 +624,15 @@ git commit -m "docs: record m5 review queue workflow"
 - `2026-03-14`: Plan authored. No implementation notes yet.
 - `2026-03-14`: Task 1 completed on `codex/m5-task1-approval-lineage-contracts`: added first-class approval and artifact-lineage protocol contracts, wired approval events into the shared SSE union, and added additive approval-requirement metadata on plan nodes and run steps.
 - `2026-03-14`: Task 2 completed on `codex/m5-task2-approvals-lineage-persistence`: expanded the DB schema for first-class approvals plus `artifact_lineage_edges`, added approval and lineage repositories with run-scoped validation, added artifact lookup helpers and approval-lifecycle repository support, and extended the fake repository DB with approval/lineage tables, FK checks, and rollback coverage.
+- `2026-03-15`: Task 3 completed on `codex/m5-task3-approval-runtime`: marked the deterministic final synthesis step review-required, integrated approval-aware pause and resume into the execution service, persisted artifact-lineage edges during execution, and hardened the blocked-run and approval-resolution paths through review-driven fixes for cancellation, sibling-ready work, and resume ordering.
 - `2026-03-15`: Task 4 completed on `codex/m5-task4-approval-api-streaming`: added control-plane approval routes for pending-list/detail/approve/reject, added run-scoped artifact-lineage reads, and verified that `approval.requested` and `approval.resolved` events stream over the existing outcome SSE surface without adding a second transport.
 - `2026-03-15`: Review-driven doc correction: replaced stale OpenClaw checklist paths with the verified live approval gateway files (`server-methods/exec-approval.ts`, `server-methods/exec-approvals.ts`, `exec-approval-manager.ts`, `server-broadcast.ts`, `method-scopes.ts`) so future agents start from the current repo surface instead of missing paths.
 - `2026-03-15`: Task 5 completed on `codex/m5-task5-review-queue-ui`: added the `/review` operator desk with first-pending auto-selection, approval action wiring through Next API routes, outcome-detail blocked-review and artifact-lineage panels, and approval SSE updates across both web surfaces. Deer Flow artifact-loader patterns informed the inspectable artifact context, and `/Users/rajattiwari/swarm/spell-ui.md` guided the panel, spacing, and interaction polish.
+- `2026-03-15`: Task 6 completed on `codex/m5-task6-docs-verification`: updated the public README, local-dev guide, runbook, roadmap, and milestone docs for the shipped review workflow; corrected the M5 design doc to point at the verified live OpenClaw approval files; and reran the full local-stack smoke path with both approval outcomes.
+- `2026-03-15`: Live smoke verification results:
+  - route preview stayed stable for `reasoning` and `document` on policy `v2`, resolving to `anthropic / claude-opus-4.6 / Task 6 Anthropic primary ...`
+  - the default four-node draft plan blocked on `Synthesize result`
+  - `/review` showed the pending `Review final result` approval for the blocked run
+  - the blocked approval referenced one final artifact under review, and the selected run persisted four artifacts plus four `derived_from` lineage edges
+  - approving the blocked work completed the run
+  - rejecting the blocked work failed the run

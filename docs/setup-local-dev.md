@@ -1,6 +1,6 @@
 # Local Development
 
-This repository is currently shipping the Milestone 4 routing-and-BYO-keys slice on top of the Milestone 3 execution substrate:
+This repository is currently shipping the Milestone 5 review-queue-and-artifact-lineage slice on top of the Milestone 4 routing layer and the Milestone 3 execution substrate:
 
 - Postgres-backed outcome storage
 - Fastify control plane with outcome, draft-plan, run, log, and artifact APIs
@@ -8,7 +8,10 @@ This repository is currently shipping the Milestone 4 routing-and-BYO-keys slice
 - Local Docker sandbox execution with deterministic fork/join scheduling
 - Encrypted workspace credentials plus auth profiles
 - Router policy CRUD and deterministic route preview
-- Next.js operator console for create, list, detail, settings, draft-plan, run timeline, persisted logs, and run artifact views
+- Approval-aware execution blocking and resume
+- Review queue APIs and workspace review desk
+- Durable artifact-lineage edges plus outcome-detail lineage inspection
+- Next.js operator console for create, list, detail, settings, draft-plan, run timeline, review queue, persisted logs, and run artifact views
 
 ## Prerequisites
 
@@ -24,15 +27,19 @@ This repository is currently shipping the Milestone 4 routing-and-BYO-keys slice
 4. Start the web app.
 5. Open the settings page and confirm provider catalog, credentials, auth profiles, and router policy load.
 6. Create one workspace credential and one auth profile.
-7. Save router policy for `reasoning` and `coding`, and add `document` too if you want every step in the default draft plan to resolve.
-8. Preview `reasoning` and `coding` and confirm provider/model/auth-profile selection stays stable across repeated previews.
+7. Save router policy for `reasoning`, `coding`, and `document`.
+8. Preview `reasoning` and `document` and confirm provider/model/auth-profile selection stays stable across repeated previews.
 9. Create an outcome from the web UI.
 10. Generate a draft plan from the outcome detail page.
 11. Start a run from the persisted plan.
 12. Confirm the two middle draft steps finish before synthesis starts.
-13. Confirm the run timeline shows persisted route metadata on steps without breaking local Docker execution.
-14. Confirm the run timeline, artifact panel, log panel, and live activity panel update without a manual refresh.
-15. Refresh the page and confirm persisted logs, artifacts, and route badges are still visible for the selected run.
+13. Confirm the selected run blocks on `Synthesize result` and the outcome detail page shows `Blocked on review`.
+14. Confirm `/review` shows a pending `Review final result` approval for that run.
+15. Approve the blocked work and confirm the run reaches `completed`.
+16. Repeat with a second run and reject the blocked work, then confirm the run reaches `failed`.
+17. Confirm the run timeline shows persisted route metadata on steps without breaking local Docker execution.
+18. Confirm the artifact panel, lineage panel, log panel, and live activity panel update without a manual refresh.
+19. Refresh the page and confirm persisted logs, artifacts, route badges, and lineage are still visible for the selected run.
 
 ## First-time setup
 
@@ -72,20 +79,25 @@ Expected local services:
 2. Open the settings page.
 3. Create one workspace credential.
 4. Create one auth profile for that credential.
-5. Save router policy entries for `reasoning` and `coding`.
-6. Preview both routes and confirm the selected provider, model, and auth profile stay the same on repeated previews. The preview timestamp changes because each preview is a fresh resolution.
-7. If you want every step in the default draft plan to resolve, also add a `document` candidate. The shipped plan uses `reasoning` once and `document` for the other three nodes.
+5. Save router policy entries for `reasoning`, `coding`, and `document`.
+6. Preview `reasoning` and `document` and confirm the selected provider, model, and auth profile stay the same on repeated previews. The preview timestamp changes because each preview is a fresh resolution.
+7. The shipped plan uses `reasoning` once and `document` for the other three nodes, so keep `document` configured for the full M5 smoke path.
 8. Submit a new outcome from the home page.
 9. Confirm the new outcome appears in the list.
 10. Open the outcome detail page.
 11. Click `Generate draft plan` and confirm the four-node fork/join graph renders:
    `Analyze outcome`, `Draft brief`, `Draft operator summary`, and `Synthesize result`.
-12. Click `Start run` and confirm the run timeline shows `Analyze outcome` finishing first, `Draft brief` and `Draft operator summary` finishing before `Synthesize result`, and the run reaching `completed`.
-13. Confirm the run timeline shows provider, model, auth profile, and route status badges on the selected run.
-14. Confirm the artifact panel shows exactly four persisted artifacts for the run:
+12. Click `Start run` and confirm the run timeline shows `Analyze outcome` finishing first, `Draft brief` and `Draft operator summary` finishing before `Synthesize result`, then blocking on review instead of auto-completing.
+13. Confirm the selected run shows provider, model, auth profile, and route status badges plus the `Blocked on review` card.
+14. Open [http://127.0.0.1:3000/review](http://127.0.0.1:3000/review) and confirm the pending `Review final result` approval is auto-selected.
+15. Confirm the review detail shows the final artifact under review and that the outcome detail page renders an `Artifact lineage` panel for the selected run.
+16. Approve the blocked work and confirm the run reaches `completed`.
+17. Repeat with a second outcome and reject the blocked work. Confirm that run reaches `failed`.
+18. Confirm the artifact panel shows exactly four persisted artifacts for the approved run:
    `artifacts/analyze-outcome.md`, `artifacts/brief.md`, `artifacts/operator-summary.md`, and `artifacts/final-result.md`.
-15. Confirm the log panel shows persisted step logs and still shows them after a page refresh.
-16. In a second terminal, append a message through the control plane:
+19. Confirm the lineage panel shows deterministic `derived_from` edges for the selected run.
+20. Confirm the log panel shows persisted step logs and still shows them after a page refresh.
+21. In a second terminal, append a message through the control plane:
 
 ```bash
 curl -X POST http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/messages \
@@ -93,8 +105,8 @@ curl -X POST http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/messages \
   -d '{"role":"assistant","content":"Smoke path event from the control plane."}'
 ```
 
-17. Confirm the detail page adds a new activity entry without a refresh.
-18. Optional API verification for the same workspace and outcome:
+22. Confirm the detail page adds a new activity entry without a refresh.
+23. Optional API verification for the same workspace and outcome:
 
 ```bash
 curl http://127.0.0.1:4000/api/providers/models
@@ -118,6 +130,8 @@ curl -X POST http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/runs \
 curl http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/runs/latest
 curl http://127.0.0.1:4000/api/runs/<RUN_ID>/logs
 curl http://127.0.0.1:4000/api/runs/<RUN_ID>/artifacts
+curl http://127.0.0.1:4000/api/runs/<RUN_ID>/artifact-lineage
+curl "http://127.0.0.1:4000/api/approvals?workspaceId=ws_default"
 curl -N http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/events
 ```
 
@@ -158,3 +172,5 @@ If you already run Postgres locally on `5432`, that is expected. Mycelium uses `
 If runs stay queued or step execution fails immediately, verify Docker Desktop is running, confirm the host has enough free space to pull and start `node:22-bookworm-slim`, and check whether `SANDBOX_IMAGE` points at a valid local image.
 
 If a run shows unresolved route badges on `Draft brief`, `Draft operator summary`, or `Synthesize result`, verify the router policy includes a `document` candidate. The default M3 draft plan uses `document` for those three nodes.
+
+If a run completes immediately instead of blocking for review, verify the selected run is using the current default draft plan. M5 only pauses on the review-required `Synthesize result` step in that shipped four-node plan.

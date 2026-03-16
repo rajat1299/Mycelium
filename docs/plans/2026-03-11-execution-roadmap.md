@@ -192,7 +192,7 @@ Completion notes:
 
 ### M5 Review Queue and Artifact Lineage
 
-Status: `Planned`
+Status: `Complete`
 
 Goal:
 
@@ -221,9 +221,18 @@ Primary docs:
 - [Milestone 5 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-14-milestone-5-review-queue-and-artifact-lineage-design.md)
 - [Milestone 5 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-14-milestone-5-review-queue-and-artifact-lineage-implementation.md)
 
+Completion notes:
+
+- the deterministic final synthesis step now blocks on a first-class approval instead of auto-completing
+- `/review` is the workspace review desk for pending approvals, and the outcome detail page shows the blocked-review card plus run-scoped artifact lineage
+- the local stack smoke path was verified end to end with both approval outcomes:
+  - approve path: the blocked run completed after resolving `Review final result`
+  - reject path: the blocked run failed after rejection
+- the shipped approval flow still runs on the M3 local Docker execution path with M4 route metadata intact on steps
+
 Execution note:
 
-- M5 is the next execution-ready milestone after M4. Start from the design doc, then execute the implementation plan task-by-task on a fresh `codex/*` branch.
+- M5 is complete on `main`. M6 is the next roadmap item, but it is not execution-ready yet in this repo because its design and implementation plan have not been authored.
 
 ### M6 Checkpoints, Replay, and Audit
 

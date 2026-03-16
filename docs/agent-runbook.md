@@ -4,7 +4,7 @@ Use this file as the first stop for any Codex agent working on Mycelium.
 
 ## What this repository is
 
-Mycelium is an open-source control plane for outcome-driven AI work. The current integrated slice is `Milestone 4: Routing and BYO Keys`, running on top of the verified `Milestone 3: Execution Substrate V1` local execution path:
+Mycelium is an open-source control plane for outcome-driven AI work. The current integrated slice is `Milestone 5: Review Queue and Artifact Lineage`, running on top of the verified `Milestone 4: Routing and BYO Keys` and `Milestone 3: Execution Substrate V1` local execution path:
 
 - `apps/control-plane`: Fastify API and SSE runtime
 - `apps/web`: Next.js operator console
@@ -28,7 +28,7 @@ Read these next:
 10. [Milestone 5 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-14-milestone-5-review-queue-and-artifact-lineage-design.md)
 11. [Milestone 5 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-14-milestone-5-review-queue-and-artifact-lineage-implementation.md)
 
-The M4 docs now include the milestone-closure verification notes, and the M5 docs are the execution-ready handoff for the next implementation window.
+The M4 and M5 docs now include milestone-closure verification notes. The roadmap points to M6 next, but there is not yet a new execution-ready implementation plan beyond M5 in this repo.
 
 ## Local setup
 
@@ -107,6 +107,14 @@ If the task touches the M4 routing surface, also verify:
 - repeated route previews keep the same provider/model/auth-profile selection for a fixed policy version, even though `resolvedAt` changes per preview
 - if you want every node in the default draft plan to resolve, the policy includes `document` as well as `reasoning`
 - run steps show route metadata or unresolved state without breaking the M3 local execution path
+
+If the task touches the M5 approval or lineage surface, also verify:
+
+- the selected run blocks on the review-required `Synthesize result` step
+- `/review` shows a pending `Review final result` approval for the blocked run
+- the review detail points at the expected artifact under review
+- approving the blocked work completes the run, and rejecting it fails the run
+- the outcome detail page shows the blocked-review card and the artifact-lineage panel for the selected run
 
 ## Stop commands
 

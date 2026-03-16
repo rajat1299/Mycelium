@@ -4,6 +4,8 @@
 
 Milestone 5 exists to make Mycelium reviewable and interruptible in a way that the current M4 stack is not.
 
+Status: `Complete on 2026-03-15 after live local-stack verification`
+
 Milestones 1 through 4 proved:
 
 - outcomes, plans, runs, and steps are durable
@@ -134,9 +136,11 @@ M5 should extract ideas selectively from the reference repos. Do not import whol
 
 Read:
 
-- `/Users/rajattiwari/swarm/openclaw/src/tools/exec-approval.ts`
-- `/Users/rajattiwari/swarm/openclaw/src/core/agent-state.ts`
-- `/Users/rajattiwari/swarm/openclaw/src/gateway/router.ts`
+- `/Users/rajattiwari/swarm/openclaw/src/gateway/server-methods/exec-approval.ts`
+- `/Users/rajattiwari/swarm/openclaw/src/gateway/server-methods/exec-approvals.ts`
+- `/Users/rajattiwari/swarm/openclaw/src/gateway/exec-approval-manager.ts`
+- `/Users/rajattiwari/swarm/openclaw/src/gateway/server-broadcast.ts`
+- `/Users/rajattiwari/swarm/openclaw/src/gateway/method-scopes.ts`
 - [openclaw-engineering.md](/Users/rajattiwari/swarm/_codex_notes/openclaw-engineering.md)
 
 Extract:
@@ -446,3 +450,17 @@ If M5 lands cleanly, the next milestones become much easier:
 - messaging or schedules can eventually become another surface for the same review queue instead of inventing their own flow
 
 That is why M5 should happen before checkpoints or remote sandboxes.
+
+## M5 closure verification
+
+Verified on `2026-03-15` against the live local stack:
+
+- saved encrypted provider credentials, an auth profile, and a router policy covering `reasoning`, `coding`, and `document`
+- repeated `reasoning` and `document` previews resolved stably to `anthropic / claude-opus-4.6 / Task 6 Anthropic primary ...`
+- the default four-node draft plan blocked on the review-required `Synthesize result` step
+- `/review` showed the pending `Review final result` approval for the blocked run
+- the approval pointed at the final artifact under review, and the outcome detail page rendered the blocked-review card plus artifact-lineage panel
+- approving the blocked work completed the run
+- rejecting the blocked work failed the run
+
+The lineage verification used the shipped deterministic draft plan and produced four persisted `derived_from` edges across the four run artifacts.
