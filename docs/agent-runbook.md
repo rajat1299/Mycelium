@@ -30,8 +30,10 @@ Read these next:
 11. [Milestone 5 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-14-milestone-5-review-queue-and-artifact-lineage-implementation.md)
 12. [Milestone 6 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-15-milestone-6-checkpoints-replay-and-audit-design.md)
 13. [Milestone 6 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-15-milestone-6-checkpoints-replay-and-audit-implementation.md)
+14. [Milestone 7 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-16-milestone-7-remote-workers-and-daemon-design.md)
+15. [Milestone 7 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-16-milestone-7-remote-workers-and-daemon-implementation.md)
 
-The M4, M5, and M6 docs now include milestone-closure verification notes. M6 is integrated on `main`. The next roadmap milestone is M7, but it is not execution-ready yet in this repo because its design and implementation docs have not been authored.
+The M4, M5, and M6 docs now include milestone-closure verification notes. M6 is integrated on `main`. M7 is now the active execution-ready milestone in this repo: it is scoped to remote daemon-backed execution with control-plane-hosted durability.
 
 ## Local setup
 
@@ -128,6 +130,14 @@ If the task touches the M6 checkpoint, replay, or audit surface, also verify:
 - steps already checkpointed as completed do not rerun during resume
 - the outcome detail page renders `Replay anchors` and `Operator trail` for the selected run
 - replay explains the selected checkpoint payload, audit explains durable lifecycle history, and persisted logs remain separate step-level debug detail
+
+If the task touches the M7 remote-worker surface, also verify:
+
+- a worker daemon connects to the control plane and shows up as available
+- a real run executes on the remote worker instead of the local Docker path
+- step logs, artifacts, and checkpoint creation still persist through the control plane
+- approval-gated work still blocks and resolves normally after remote execution reaches review
+- a worker disconnect or control-plane restart leaves the run recoverable through the M6 resume path
 
 ## Stop commands
 

@@ -278,31 +278,39 @@ Completion notes:
 Execution note:
 
 - M6 is complete on `main`
-- M7 is next in the roadmap, but it is not execution-ready yet in this repo
+- M7 is the next execution-ready milestone in this repo
+- primary docs:
+  - [Milestone 7 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-16-milestone-7-remote-workers-and-daemon-design.md)
+  - [Milestone 7 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-16-milestone-7-remote-workers-and-daemon-implementation.md)
 
-### M7 Remote Sandbox and Worker Daemon
+### M7 Remote Workers and Daemon
 
-Status: `Planned`
+Status: `Execution-ready planning complete`
 
 Goal:
 
-Move from local execution substrate to real remote, isolated worker environments.
+Move from the M3 local Docker execution substrate to real remote daemon-backed workers, while keeping checkpoints, artifacts, and audit durability authoritative in the control plane.
 
 Primary references:
 
-- `Terragon`: daemon-in-sandbox model and sandbox lifecycle
-- `OpenClaw`: runtime registry and long-lived session coherence
+- `Terragon`: outbound daemon connection model, daemon lifecycle, and event ingestion
+- `OpenClaw`: runtime registry, session coherence, and runtime-state ownership
+- `Middleman`: runtime construction boundaries and typed streaming status
+- `Deer Flow`: long-running delegated execution and reconnect-aware stream behavior
 
 Deliverables:
 
-- remote sandbox provider abstraction
-- worker daemon protocol
-- remote artifact sync
-- sandbox lifecycle management
+- worker daemon and remote-worker protocol contracts
+- worker registration, heartbeat, and remote run assignment
+- remote sandbox provider support in `packages/sandbox`
+- remote step execution with upload-back logs, artifacts, and checkpoint payloads
+- operator-visible remote worker status and recovery behavior
 
 Ship gate:
 
-- a run can execute on a remote isolated worker with durable coordination
+- a real run executes end to end on a remote daemon-backed worker
+- checkpoints, artifacts, and audit history remain durably visible from the control plane
+- worker disconnect or control-plane restart recovers through the existing M6 checkpoint model instead of losing durable state
 
 ### M8 Schedules, Messaging, and Local Companion
 
