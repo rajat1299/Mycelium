@@ -88,7 +88,12 @@ export function RemoteWorkerPanel({
       {
         workerId: step.remoteWorkerId,
         workerSessionId: step.remoteWorkerSessionId,
-        worker: workers.find((worker) => worker.id === step.remoteWorkerId) ?? null
+        worker:
+          workers.find(
+            (worker) =>
+              worker.id === step.remoteWorkerId &&
+              worker.sessionId === step.remoteWorkerSessionId
+          ) ?? null
       }
     ];
   }, []);

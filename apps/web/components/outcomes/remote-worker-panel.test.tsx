@@ -97,4 +97,74 @@ describe("RemoteWorkerPanel", () => {
     expect(screen.getByText("Draft brief")).toBeInTheDocument();
     expect(screen.getByText("Worker accepted the assignment.")).toBeInTheDocument();
   });
+
+  it("does not borrow live worker health from a different daemon session", () => {
+    render(
+      <RemoteWorkerPanel
+        run={{
+          id: "run_456",
+          outcomeId: "outcome_456",
+          planId: "plan_outcome_456",
+          status: "running",
+          latestCheckpointId: null,
+          resumable: false,
+          createdAt: "2026-03-17T00:00:00.000Z",
+          updatedAt: "2026-03-17T00:05:00.000Z",
+          steps: [
+            {
+              id: "step_remote",
+              runId: "run_456",
+              planNodeId: "plan_outcome_456:draft-brief",
+              title: "Draft brief",
+              kind: "task",
+              capability: "coding",
+              instruction: "Write the brief artifact.",
+              template: "draft_brief",
+              status: "claimed",
+              position: 0,
+              executionTarget: "remote_worker",
+              remoteWorkerId: "worker_1",
+              remoteWorkerSessionId: "worker_session_1",
+              remoteExecutionAttemptId: "attempt_1",
+              remoteAssignedAt: "2026-03-17T00:01:00.000Z",
+              createdAt: "2026-03-17T00:00:00.000Z",
+              updatedAt: "2026-03-17T00:01:00.000Z"
+            }
+          ]
+        }}
+        workers={[
+          {
+            id: "worker_1",
+            sessionId: "worker_session_2",
+            workspaceId: "ws_default",
+            label: "Reconnected worker",
+            daemonVersion: "2.0.0",
+            availability: "available",
+            capabilities: {
+              capabilityFamilies: ["coding", "terminal"],
+              supportsArtifacts: true,
+              supportsCheckpoints: true,
+              supportsLogs: true
+            },
+            health: {
+              status: "healthy",
+              lastHeartbeatAt: "2026-03-17T00:04:00.000Z"
+            },
+            connectedAt: "2026-03-17T00:03:00.000Z",
+            disconnectedAt: null,
+            updatedAt: "2026-03-17T00:04:00.000Z"
+          }
+        ]}
+        remoteStepStates={{}}
+        statusMessage={null}
+      />
+    );
+
+    expect(screen.getAllByText("worker_1").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Reconnected worker")).not.toBeInTheDocument();
+    expect(screen.queryByText("healthy")).not.toBeInTheDocument();
+    expect(screen.queryByText("available")).not.toBeInTheDocument();
+    expect(screen.getAllByText("unknown").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("Daemon unavailable")).toBeInTheDocument();
+  });
 });
