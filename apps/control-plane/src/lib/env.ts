@@ -7,7 +7,12 @@ const EnvSchema = z.object({
   WORKSPACE_ROOT: z.string().min(1).default(".mycelium/workspaces"),
   CHECKPOINT_ROOT: z.string().min(1).default(".mycelium/checkpoints"),
   SANDBOX_IMAGE: z.string().min(1).optional(),
-  MYCELIUM_ENCRYPTION_KEY: z.string().min(1).optional()
+  MYCELIUM_ENCRYPTION_KEY: z.string().min(1).optional(),
+  MYCELIUM_DAEMON_TOKEN: z.string().min(1).default("local-daemon-token"),
+  MYCELIUM_WORKER_STALE_TIMEOUT_MS: z.coerce.number()
+    .int()
+    .positive()
+    .default(60_000)
 });
 
 export type AppEnv = z.infer<typeof EnvSchema>;

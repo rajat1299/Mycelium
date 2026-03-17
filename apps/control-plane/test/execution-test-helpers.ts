@@ -4,10 +4,12 @@ import { dirname, join, resolve } from "node:path";
 import { buildApp } from "../src/app";
 import { createApprovalService } from "../src/lib/approval-service";
 import { createCheckpointService } from "../src/lib/checkpoint-service";
+import { createDaemonGateway } from "../src/lib/daemon-gateway";
 import { createEncryptionService } from "../src/lib/encryption";
 import { createEventBus } from "../src/lib/event-bus";
 import { createExecutionService } from "../src/lib/execution-service";
 import { createRouterService } from "../src/lib/router-service";
+import { createWorkerRegistry } from "../src/lib/worker-registry";
 import { LocalFilesystemCheckpointStore } from "@computer-oss/checkpoints";
 import {
   createInMemoryRepositories,
@@ -148,6 +150,15 @@ export async function createExecutionHarness(
     checkpointService,
     executionService
   });
+  const workerRegistry = createWorkerRegistry({
+    repositories,
+    eventBus
+  });
+  const daemonGateway = createDaemonGateway({
+    repositories,
+    eventBus,
+    workerRegistry
+  });
   const services: ServiceContainer = {
     repositories,
     eventBus,
@@ -155,7 +166,10 @@ export async function createExecutionHarness(
     routerService: createRouterService({ repositories }),
     checkpointService,
     executionService,
-    approvalService
+    approvalService,
+    workerRegistry,
+    daemonGateway,
+    daemonAuthToken: "test-daemon-token"
   };
   const events: Array<{ outcomeId: string; type: string; data: unknown }> = [];
   const unsubscribe = eventBus.subscribeAll((event) => {

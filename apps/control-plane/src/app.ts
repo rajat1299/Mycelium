@@ -18,6 +18,8 @@ import { registerProviderRoutes } from "./routes/providers";
 import { registerRouterRoutes } from "./routes/router";
 import { registerWorkspaceCredentialRoutes } from "./routes/workspace-credentials";
 import { registerRunRoutes } from "./routes/runs";
+import { registerWorkerDaemonRoutes } from "./routes/worker-daemon";
+import { registerWorkerRoutes } from "./routes/workers";
 
 type BuildAppOptions = {
   services?: ServiceContainer;
@@ -43,9 +45,14 @@ export function buildApp(options: BuildAppOptions = {}) {
   const checkpointService = services.checkpointService;
   const encryption = services.encryption;
   const routerService = services.routerService;
+  const workerRegistry = services.workerRegistry;
+  const daemonGateway = services.daemonGateway;
+  const daemonAuthToken = services.daemonAuthToken;
 
   registerHealthRoutes(app);
   registerProviderRoutes(app);
+  registerWorkerDaemonRoutes(app, { daemonGateway, daemonAuthToken });
+  registerWorkerRoutes(app, { workerRegistry });
   registerApprovalRoutes(app, { repositories, approvalService });
   registerWorkspaceCredentialRoutes(app, { repositories, encryption });
   registerAuthProfileRoutes(app, { repositories, encryption });

@@ -22,6 +22,10 @@ import {
   type CheckpointService
 } from "./checkpoint-service";
 import {
+  createDaemonGateway,
+  type DaemonGateway
+} from "./daemon-gateway";
+import {
   createExecutionService,
   type ExecutionService
 } from "./execution-service";
@@ -29,6 +33,10 @@ import {
   createRouterService,
   type RouterService
 } from "./router-service";
+import {
+  createWorkerRegistry,
+  type WorkerRegistry
+} from "./worker-registry";
 import {
   createDatabaseRepositories,
   createInMemoryRepositories,
@@ -43,6 +51,9 @@ export type ServiceContainer = {
   checkpointService: CheckpointService;
   encryption: EncryptionService;
   routerService: RouterService;
+  workerRegistry: WorkerRegistry;
+  daemonGateway: DaemonGateway;
+  daemonAuthToken: string;
 };
 
 type InMemoryServiceContainerOptions = {
@@ -51,6 +62,8 @@ type InMemoryServiceContainerOptions = {
   sandboxProvider?: SandboxProvider;
   workspaceRootPath?: string;
   encryptionKey?: string;
+  daemonAuthToken?: string;
+  workerStaleTimeoutMs?: number;
   now?: () => Date;
 };
 
@@ -83,6 +96,19 @@ export function createInMemoryServiceContainer(
     }),
     ...(options.now ? { now: options.now } : {})
   });
+  const workerRegistry = createWorkerRegistry({
+    repositories,
+    eventBus,
+    ...(options.now ? { now: options.now } : {}),
+    ...(options.workerStaleTimeoutMs
+      ? { staleAfterMs: options.workerStaleTimeoutMs }
+      : {})
+  });
+  const daemonGateway = createDaemonGateway({
+    repositories,
+    eventBus,
+    workerRegistry
+  });
   const executionService = createExecutionService({
     repositories,
     eventBus,
@@ -98,6 +124,7 @@ export function createInMemoryServiceContainer(
     executionService,
     ...(options.now ? { now: options.now } : {})
   });
+  const daemonAuthToken = options.daemonAuthToken ?? "test-daemon-token";
 
   return {
     repositories,
@@ -106,7 +133,10 @@ export function createInMemoryServiceContainer(
     approvalService,
     checkpointService,
     encryption,
-    routerService
+    routerService,
+    workerRegistry,
+    daemonGateway,
+    daemonAuthToken
   };
 }
 
@@ -124,6 +154,16 @@ export async function createServiceContainer(env: AppEnv): Promise<ServiceContai
     checkpointStore: new LocalFilesystemCheckpointStore({
       rootDir: env.CHECKPOINT_ROOT
     })
+  });
+  const workerRegistry = createWorkerRegistry({
+    repositories,
+    eventBus,
+    staleAfterMs: env.MYCELIUM_WORKER_STALE_TIMEOUT_MS
+  });
+  const daemonGateway = createDaemonGateway({
+    repositories,
+    eventBus,
+    workerRegistry
   });
   const sandboxProvider = new LocalDockerProvider(
     env.SANDBOX_IMAGE ? { image: env.SANDBOX_IMAGE } : {}
@@ -151,7 +191,10 @@ export async function createServiceContainer(env: AppEnv): Promise<ServiceContai
     approvalService,
     checkpointService,
     encryption,
-    routerService
+    routerService,
+    workerRegistry,
+    daemonGateway,
+    daemonAuthToken: env.MYCELIUM_DAEMON_TOKEN
   };
 }
 
