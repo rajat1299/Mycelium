@@ -285,7 +285,7 @@ Execution note:
 
 ### M7 Remote Workers and Daemon
 
-Status: `Execution-ready planning complete`
+Status: `Complete`
 
 Goal:
 
@@ -311,6 +311,14 @@ Ship gate:
 - a real run executes end to end on a remote daemon-backed worker
 - checkpoints, artifacts, and audit history remain durably visible from the control plane
 - worker disconnect or control-plane restart recovers through the existing M6 checkpoint model instead of losing durable state
+
+Completion notes:
+
+- the control plane now exposes authenticated worker registration, heartbeat, command-claim, event-ingest, disconnect, and worker-inventory routes
+- `packages/sandbox` now dispatches remote steps through `RemoteProvider`, while local Docker remains the fallback when no compatible worker is available
+- the operator console now shows remote worker assignment, worker lifecycle events, and remote-step status alongside the existing run, checkpoint, and review surfaces
+- the live M7 smoke was verified on `2026-03-17` with two worker sessions to keep the default fork/join draft plan fully remote, producing four artifacts, seven checkpoints, twelve logs, and seven audit entries on a completed remote run
+- restart and resume were also verified on `2026-03-17` from `checkpoint_a522da4b-9cad-44d2-a9a2-79214852894f`, and the resumed run completed after executing only `Draft brief`, `Draft operator summary`, and `Synthesize result`, so `Analyze outcome` did not rerun
 
 ### M8 Schedules, Messaging, and Local Companion
 

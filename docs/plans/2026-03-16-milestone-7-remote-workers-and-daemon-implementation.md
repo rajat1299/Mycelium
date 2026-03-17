@@ -615,6 +615,14 @@ git commit -m "docs: close milestone 7 remote worker execution"
 
 ---
 
+## Milestone verification evidence
+
+- `2026-03-17`: Verified remote completion on workspace `ws_smoke_full_1773769480092` by registering two worker sessions through `/api/worker-daemon/register`, running `run_d509a7d8-c5b9-4951-b28d-dfab48958d30`, uploading daemon `status`, `log`, `artifact`, `checkpoint`, and `terminal` events through `/api/worker-daemon/events`, and approving `approval_bdbaf465-a4e5-4389-aebd-f37f06b4a1df`. The completed run produced four artifacts, seven checkpoints, twelve persisted logs, and seven audit entries.
+- `2026-03-17`: Verified restart and resume on workspace `ws_smoke_resume_1773769802713` by interrupting `run_685d59d0-a7ca-4ba4-b463-efb16e30d0ce` after the first remote `step_completed` upload, restarting the control plane, confirming `interrupted` plus `resumable`, resuming from `checkpoint_a522da4b-9cad-44d2-a9a2-79214852894f`, and completing after only `Draft brief`, `Draft operator summary`, and `Synthesize result` were dispatched post-resume.
+- `2026-03-17`: Full workspace verification passed with `pnpm test`, `pnpm typecheck`, and `pnpm build`.
+
 ## Implementation Notes
 
 - `2026-03-16`: M7 scope is locked to remote execution only. The control plane remains authoritative for checkpoints, artifacts, and audit durability. Remote checkpoint or artifact backends are explicitly deferred to the next milestone.
+- `2026-03-17`: The repo-level M7 smoke uses the daemon HTTP contract directly because the repo does not yet ship a packaged daemon executable. Local docs should describe the worker bootstrap as `register -> claim -> events -> disconnect`, not as a nonexistent CLI daemon command.
+- `2026-03-17`: The shipped four-node draft plan needs two connected worker sessions to stay fully remote on both middle branch steps. With only one worker, the remaining branch can legitimately fall back to the local Docker provider.

@@ -1,6 +1,6 @@
 # Local Development
 
-This repository is currently shipping the Milestone 6 checkpoints-replay-and-audit slice on top of the Milestone 5 review queue, the Milestone 4 routing layer, and the Milestone 3 execution substrate:
+This repository is currently shipping the Milestone 7 remote-worker slice on top of the Milestone 6 checkpoints-replay-and-audit layer, the Milestone 5 review queue, the Milestone 4 routing layer, and the Milestone 3 execution substrate:
 
 - Postgres-backed outcome storage
 - Fastify control plane with outcome, draft-plan, run, log, and artifact APIs
@@ -12,7 +12,10 @@ This repository is currently shipping the Milestone 6 checkpoints-replay-and-aud
 - Review queue APIs and workspace review desk
 - Durable artifact-lineage edges plus outcome-detail lineage inspection
 - Local filesystem checkpoint capture, replay anchors, interruption recovery, and audit history
+- Authenticated remote worker registration, heartbeat, claim, event-ingest, and disconnect routes
+- Remote step execution with upload-back logs, artifacts, and checkpoint payloads
 - Next.js operator console for create, list, detail, settings, draft-plan, run timeline, review queue, persisted logs, and run artifact views
+- Remote worker visibility in the outcome console and live worker lifecycle SSE events
 
 ## Prerequisites
 
@@ -66,6 +69,14 @@ The repository does not commit a database password. You must set your own local 
 `MYCELIUM_ENCRYPTION_KEY` is required for workspace-credential create and update operations. A local generated key is enough for development.
 The local Docker sandbox defaults to `node:22-bookworm-slim`. If you need a different local image, set `SANDBOX_IMAGE` in `apps/control-plane/.env.local`.
 `CHECKPOINT_ROOT` is optional. If you leave it unset, the local M6 checkpoint backend writes versioned JSON manifests under `apps/control-plane/.mycelium/checkpoints`.
+`MYCELIUM_DAEMON_TOKEN` is optional. If unset, local daemon requests use `local-daemon-token`.
+
+The repo does not yet ship a packaged daemon executable. The verified M7 local smoke uses a thin local harness that calls the daemon HTTP contract directly:
+
+- `POST /api/worker-daemon/register`
+- `POST /api/worker-daemon/commands/claim`
+- `POST /api/worker-daemon/events`
+- `POST /api/worker-daemon/disconnect`
 
 ## Start the stack
 
@@ -82,35 +93,32 @@ Expected local services:
 ## Manual smoke path
 
 1. Open the web app at [http://127.0.0.1:3000](http://127.0.0.1:3000).
-2. Open the settings page.
-3. Create one workspace credential.
-4. Create one auth profile for that credential.
-5. Save router policy entries for `reasoning`, `coding`, and `document`.
-6. Preview `reasoning` and `document` and confirm the selected provider, model, and auth profile stay the same on repeated previews. The preview timestamp changes because each preview is a fresh resolution.
-7. The shipped plan uses `reasoning` once and `document` for the other three nodes, so keep `document` configured for the full M5 smoke path.
-8. Submit a new outcome from the home page.
-9. Confirm the new outcome appears in the list.
-10. Open the outcome detail page.
-11. Click `Generate draft plan` and confirm the four-node fork/join graph renders:
+2. Confirm `/settings` still loads provider catalog, credentials, auth profiles, and router policy.
+3. Create a fresh workspace id for the smoke, or reuse `ws_default` if the local DB is clean.
+4. Register two worker sessions in that workspace through `POST /api/worker-daemon/register`.
+5. Confirm `GET /api/workers?workspaceId=<WORKSPACE_ID>` returns both workers as `available`.
+6. Submit a new outcome from the home page.
+7. Confirm the new outcome appears in the list.
+8. Open the outcome detail page.
+9. Click `Generate draft plan` and confirm the four-node fork/join graph renders:
    `Analyze outcome`, `Draft brief`, `Draft operator summary`, and `Synthesize result`.
-12. Click `Start run` and confirm the run timeline shows `Analyze outcome` finishing first, `Draft brief` and `Draft operator summary` finishing before `Synthesize result`, then blocking on review instead of auto-completing.
-13. Confirm the selected run shows provider, model, auth profile, and route status badges plus the `Blocked on review` card.
-14. Open [http://127.0.0.1:3000/review](http://127.0.0.1:3000/review) and confirm the pending `Review final result` approval is auto-selected.
-15. Confirm the review detail shows the final artifact under review and that the outcome detail page renders an `Artifact lineage` panel for the selected run.
+10. Click `Start run`.
+11. From the worker harness, poll `POST /api/worker-daemon/commands/claim` for both worker sessions and mirror each `dispatch_step` command back through `POST /api/worker-daemon/events` with `status`, `log`, `artifact`, `checkpoint`, and `terminal` events.
+12. Confirm the selected run shows remote worker assignment and the remote worker panel updates as the daemon events arrive.
+13. Confirm the two middle draft steps stay on remote workers. The default fork/join plan needs two connected worker sessions to avoid falling back to the local Docker provider on one branch.
+14. Confirm persisted logs, four artifacts, artifact-lineage edges, checkpoint summaries, replay anchors, and audit history appear for the selected run.
+15. Open [http://127.0.0.1:3000/review](http://127.0.0.1:3000/review) and confirm the pending `Review final result` approval is auto-selected.
 16. Approve the blocked work and confirm the run reaches `completed`.
-17. Create a second outcome and start a second run.
-18. Wait until the second run shows at least one `step_completed` checkpoint while the run is still active.
-19. Stop only the control plane process and leave the web app running.
-20. Restart the control plane and confirm the second run becomes `interrupted` with `resumable: true` and the latest resumable checkpoint still selected.
-21. Use the outcome detail checkpoint panel or `POST /api/runs/<RUN_ID>/resume` to resume from the latest durable checkpoint.
-22. Confirm the step that had already completed before interruption still has exactly one `step_completed` checkpoint after resume, then approve the resumed final review step and confirm the run reaches `completed`.
-23. Confirm the checkpoint panel renders `Replay anchors`, the audit panel renders `Operator trail`, and the audit list includes interruption and resume entries in stable sequence order.
-24. Confirm the artifact panel shows exactly four persisted artifacts for the approved resumed run:
-   `artifacts/analyze-outcome.md`, `artifacts/brief.md`, `artifacts/operator-summary.md`, and `artifacts/final-result.md`.
-25. Confirm the lineage panel shows deterministic `derived_from` edges for the selected run.
-26. Confirm the replay detail shows the selected checkpoint payload, the audit trail explains what happened before and after that checkpoint, and the log panel still shows persisted step logs after a page refresh.
-27. Repeat with a third outcome and reject the blocked work. Confirm that run reaches `failed`.
-28. In a second terminal, append a message through the control plane:
+17. Start a second outcome and run for the restart or resume smoke.
+18. Let the first remote step upload a resumable `step_completed` checkpoint, then stop only the control plane before that worker sends its terminal event.
+19. Restart the control plane and confirm the second run becomes `interrupted`, `resumable`, and still points at the uploaded checkpoint.
+20. Resume from the checkpoint panel or `POST /api/runs/<RUN_ID>/resume`.
+21. Re-register worker sessions in the same workspace and continue polling `commands/claim`.
+22. Confirm `Analyze outcome` does not rerun after resume, the remaining three steps execute remotely, and the resumed run blocks on final review before approval.
+23. Approve the resumed final review step and confirm the run reaches `completed`.
+24. Confirm the audit trail includes interruption and resume entries in stable sequence order, and confirm replay, audit, and persisted logs still answer different questions.
+25. Optional: call `POST /api/worker-daemon/disconnect` for one worker session and confirm the worker list or outcome activity feed reflects the disconnect.
+26. Optional: append a message through the control plane:
 
 ```bash
 curl -X POST http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/messages \
@@ -118,8 +126,8 @@ curl -X POST http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/messages \
   -d '{"role":"assistant","content":"Smoke path event from the control plane."}'
 ```
 
-29. Confirm the detail page adds a new activity entry without a refresh.
-30. Optional API verification for the same workspace and outcome:
+27. Confirm the detail page adds a new activity entry without a refresh.
+28. Optional API verification for the same workspace and outcome:
 
 ```bash
 curl http://127.0.0.1:4000/api/providers/models
@@ -141,6 +149,15 @@ curl -X POST http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/runs \
   -H 'content-type: application/json' \
   -d '{"planId":"plan_<OUTCOME_ID>"}'
 curl http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/runs/latest
+curl "http://127.0.0.1:4000/api/workers?workspaceId=<WORKSPACE_ID>"
+curl -X POST http://127.0.0.1:4000/api/worker-daemon/register \
+  -H 'content-type: application/json' \
+  -H "x-mycelium-daemon-token: ${MYCELIUM_DAEMON_TOKEN:-local-daemon-token}" \
+  -d '{"workerId":"worker_smoke_a","workerSessionId":"session_smoke_a","workspaceId":"<WORKSPACE_ID>","label":"Smoke worker A","daemonVersion":"smoke-1.0.0","connectedAt":"<ISO_TIMESTAMP>","capabilities":{"capabilityFamilies":["reasoning","coding","document","terminal"],"supportsArtifacts":true,"supportsCheckpoints":true,"supportsLogs":true}}'
+curl -X POST http://127.0.0.1:4000/api/worker-daemon/commands/claim \
+  -H 'content-type: application/json' \
+  -H "x-mycelium-daemon-token: ${MYCELIUM_DAEMON_TOKEN:-local-daemon-token}" \
+  -d '{"workerId":"worker_smoke_a","workerSessionId":"session_smoke_a"}'
 curl http://127.0.0.1:4000/api/runs/<RUN_ID>/logs
 curl http://127.0.0.1:4000/api/runs/<RUN_ID>/artifacts
 curl http://127.0.0.1:4000/api/runs/<RUN_ID>/artifact-lineage
@@ -195,6 +212,8 @@ If the web UI loads but shows no outcomes, verify `CONTROL_PLANE_URL` in `apps/w
 If you already run Postgres locally on `5432`, that is expected. Mycelium uses `54321` locally to avoid connecting to the wrong database.
 
 If runs stay queued or step execution fails immediately, verify Docker Desktop is running, confirm the host has enough free space to pull and start `node:22-bookworm-slim`, and check whether `SANDBOX_IMAGE` points at a valid local image.
+
+If one of the two middle fork or join draft steps runs locally instead of on a remote worker, only one worker session is currently available. Connect two workers in the same workspace before starting the run if you want the entire shipped draft plan to stay remote.
 
 If a run shows unresolved route badges on `Draft brief`, `Draft operator summary`, or `Synthesize result`, verify the router policy includes a `document` candidate. The default M3 draft plan uses `document` for those three nodes.
 

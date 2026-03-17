@@ -292,3 +292,9 @@ M7 should leave Mycelium with one clear shape:
 - `packages/sandbox` remains the execution boundary
 - checkpoints and artifacts stay durably anchored to current control-plane stores
 - a future milestone can add remote durability backends without rewriting orchestration, replay, or audit
+
+## Validation notes
+
+- `2026-03-17`: The shipped repo was verified through the daemon HTTP contract instead of a packaged daemon binary. Two worker sessions in the same workspace kept the default fork/join draft plan fully remote from `Analyze outcome` through `Synthesize result`.
+- `2026-03-17`: A completed remote smoke run on workspace `ws_smoke_full_1773769480092` finished `run_d509a7d8-c5b9-4951-b28d-dfab48958d30` with four persisted artifacts, seven checkpoints, twelve persisted logs, and seven audit entries while the final synthesis step still blocked on approval as designed.
+- `2026-03-17`: A restart or resume smoke on workspace `ws_smoke_resume_1773769802713` interrupted `run_685d59d0-a7ca-4ba4-b463-efb16e30d0ce` from `checkpoint_a522da4b-9cad-44d2-a9a2-79214852894f`, resumed from that same durable checkpoint, and completed after running only the remaining three steps, proving that durable checkpoint state stayed authoritative in the control plane.

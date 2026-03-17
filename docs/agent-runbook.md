@@ -4,7 +4,7 @@ Use this file as the first stop for any Codex agent working on Mycelium.
 
 ## What this repository is
 
-Mycelium is an open-source control plane for outcome-driven AI work. The current integrated slice is `Milestone 6: Checkpoints, Replay, and Audit`, running on top of the verified `Milestone 5: Review Queue and Artifact Lineage`, `Milestone 4: Routing and BYO Keys`, and `Milestone 3: Execution Substrate V1` local execution path:
+Mycelium is an open-source control plane for outcome-driven AI work. The current integrated slice is `Milestone 7: Remote Workers and Daemon`, running on top of the verified `Milestone 6: Checkpoints, Replay, and Audit`, `Milestone 5: Review Queue and Artifact Lineage`, `Milestone 4: Routing and BYO Keys`, and `Milestone 3: Execution Substrate V1` local execution path:
 
 - `apps/control-plane`: Fastify API and SSE runtime
 - `apps/web`: Next.js operator console
@@ -12,7 +12,7 @@ Mycelium is an open-source control plane for outcome-driven AI work. The current
 - `packages/checkpoints`: backend-agnostic checkpoint store interface plus the shipped local filesystem backend
 - `packages/db`: Drizzle schema and repositories
 - `packages/orchestrator`: plan graph, planner, scheduler, and run-state primitives
-- `packages/sandbox`: local Docker sandbox provider and workspace management
+- `packages/sandbox`: local Docker fallback, remote worker provider, and workspace management
 - `packages/artifacts`: local artifact store and safe path resolution
 
 Read these next:
@@ -33,7 +33,7 @@ Read these next:
 14. [Milestone 7 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-16-milestone-7-remote-workers-and-daemon-design.md)
 15. [Milestone 7 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-16-milestone-7-remote-workers-and-daemon-implementation.md)
 
-The M4, M5, and M6 docs now include milestone-closure verification notes. M6 is integrated on `main`. M7 is now the active execution-ready milestone in this repo: it is scoped to remote daemon-backed execution with control-plane-hosted durability.
+The M4, M5, M6, and M7 docs now include milestone-closure verification notes. M7 is integrated on `main`. The next planned milestone in the roadmap is M8, but M7 is the currently shipped runtime in this repo.
 
 ## Local setup
 
@@ -62,6 +62,7 @@ set -a; source .env; set +a; pnpm db:push
 
 The default local sandbox image is `node:22-bookworm-slim`. If a machine needs a different image, set `SANDBOX_IMAGE` in `apps/control-plane/.env.local`.
 `CHECKPOINT_ROOT` is optional. If it is unset, the shipped M6 local checkpoint backend writes versioned JSON manifests under `apps/control-plane/.mycelium/checkpoints`.
+`MYCELIUM_DAEMON_TOKEN` is optional. If it is unset, local daemon requests use `local-daemon-token`.
 
 Set `MYCELIUM_ENCRYPTION_KEY` in `apps/control-plane/.env.local` before testing credential writes. Generate one local key with:
 
@@ -134,10 +135,18 @@ If the task touches the M6 checkpoint, replay, or audit surface, also verify:
 If the task touches the M7 remote-worker surface, also verify:
 
 - a worker daemon connects to the control plane and shows up as available
-- a real run executes on the remote worker instead of the local Docker path
+- two worker sessions are connected if you want the full shipped fork/join draft plan to stay remote on both middle branches
+- a real run executes on the remote worker instead of silently falling back to the local Docker path
 - step logs, artifacts, and checkpoint creation still persist through the control plane
 - approval-gated work still blocks and resolves normally after remote execution reaches review
 - a worker disconnect or control-plane restart leaves the run recoverable through the M6 resume path
+
+The repo does not yet ship a packaged daemon executable. For local verification, use a thin harness that exercises the daemon HTTP contract directly:
+
+- `POST /api/worker-daemon/register`
+- `POST /api/worker-daemon/commands/claim`
+- `POST /api/worker-daemon/events`
+- `POST /api/worker-daemon/disconnect`
 
 ## Stop commands
 
@@ -157,8 +166,8 @@ docker compose down -v
 
 ## Working agreement for agents
 
-- Do implementation work on a `codex/*` branch, not directly on `main`.
-- Keep `main` as the integration branch that gets reviewed and merged after verification.
+- Default to working directly on local `main` in this repo unless the human explicitly asks for isolated `codex/*` worktrees.
+- Keep GitHub remote branches limited to `main` unless the human explicitly asks for another flow.
 - Do not commit secrets or local passwords. Use placeholders in tracked files and real values only in ignored env files.
 - Prefer additive docs updates when the setup, architecture, or workflow changes.
 - If you change the local startup flow, update both [setup-local-dev.md](/Users/rajattiwari/swarm/computer-oss/docs/setup-local-dev.md) and this runbook.

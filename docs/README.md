@@ -34,4 +34,4 @@ Read these in order if you are new to the project:
 
 ## Current status
 
-Milestone 6 is integrated on `main`. The shipped local stack now includes checkpoint capture, interruption recovery, replay anchors, durable audit history, and manual resume on top of the Milestone 5 review queue, Milestone 4 routing, and Milestone 3 local Docker execution path. Milestone 7 is the next execution-ready milestone: it is locked to remote daemon-backed execution while keeping checkpoint and artifact durability authoritative in the control plane. Start with the runbook, then the local setup guide, then the M7 design and plan.
+Milestone 7 is integrated on `main`. The shipped stack now includes authenticated remote worker sessions, remote step execution through the daemon HTTP contract, upload-back logs or artifacts or checkpoints, worker visibility in the operator console, and the existing M6 interruption or resume model on top of the Milestone 5 review queue, Milestone 4 routing, and Milestone 3 local Docker fallback path. Start with the runbook, then the local setup guide, then the M7 design and implementation docs for the verified remote smoke path.

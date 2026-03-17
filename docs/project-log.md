@@ -48,14 +48,15 @@ Do not rewrite older entries except to correct factual mistakes.
 
 ## Current snapshot
 
-- Date: `2026-03-16`
+- Date: `2026-03-17`
 - Default branch: `main`
-- Current integrated runtime baseline: `Milestone 6 checkpoints, replay, and audit integrated on main`
-- Completed milestone: `M6 Checkpoints, Replay, and Audit`
-- Active execution-ready milestone: `M7 Remote Workers and Daemon`
+- Current integrated runtime baseline: `Milestone 7 remote workers and daemon integrated on main`
+- Completed milestone: `M7 Remote Workers and Daemon`
+- Active execution-ready milestone: `none`
+- Next planned milestone: `M8 Schedules, Messaging, and Local Companion`
 - Current mode:
   - this chat window is review/planning/management space
-  - implementation happens in separate Codex windows on `codex/*` branches
+  - implementation happens in separate Codex windows, landing reviewed work back on local `main`
 
 ## Milestone ledger
 
@@ -67,7 +68,7 @@ Do not rewrite older entries except to correct factual mistakes.
 | M4 Routing and BYO Keys | Complete | Static provider/model registry, encrypted credentials, auth profiles, router policy CRUD, deterministic route resolution, route preview, persisted step-route metadata, and operator settings surfaces verified against the local M3 execution path | [Milestone 4 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-13-milestone-4-routing-byo-keys-design.md), [Milestone 4 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-13-milestone-4-routing-byo-keys-implementation.md) |
 | M5 Review Queue and Artifact Lineage | Complete | First-class approvals, review queue, approval-aware execution blocking and resume, durable artifact-lineage inspection, and verified approve/reject review flows on the shipped local stack | [Milestone 5 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-14-milestone-5-review-queue-and-artifact-lineage-design.md), [Milestone 5 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-14-milestone-5-review-queue-and-artifact-lineage-implementation.md) |
 | M6 Checkpoints, Replay, and Audit | Complete | Remote-compatible checkpoint architecture with a shipped local filesystem backend, durable checkpoint and audit persistence, interruption recovery, manual resume, replay anchors, and checkpoint or audit outcome-console surfaces verified on the local stack | [Milestone 6 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-15-milestone-6-checkpoints-replay-and-audit-design.md), [Milestone 6 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-15-milestone-6-checkpoints-replay-and-audit-implementation.md) |
-| M7 Remote Workers and Daemon | Execution-ready | Remote daemon-backed execution with the control plane remaining authoritative for checkpoints, artifacts, approvals, audit history, and resumability; remote durability backends explicitly deferred to the next milestone | [Milestone 7 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-16-milestone-7-remote-workers-and-daemon-design.md), [Milestone 7 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-16-milestone-7-remote-workers-and-daemon-implementation.md) |
+| M7 Remote Workers and Daemon | Complete | Authenticated remote worker sessions, remote step dispatch through the daemon HTTP contract, upload-back logs/artifacts/checkpoints, operator worker visibility, and verified restart/resume recovery with durability still anchored in the control plane | [Milestone 7 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-16-milestone-7-remote-workers-and-daemon-design.md), [Milestone 7 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-16-milestone-7-remote-workers-and-daemon-implementation.md) |
 | Execution Roadmap | Active | Multi-milestone delivery order for future Codex agents | [Execution Roadmap](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-execution-roadmap.md) |
 
 ## Decision log
@@ -88,6 +89,8 @@ Do not rewrite older entries except to correct factual mistakes.
 - `2026-03-15`: Lock Milestone 6 to a remote-compatible `CheckpointStore` interface with only a local filesystem backend in M6. Remote checkpoint backends belong to M7 with remote workers and daemon protocol work.
 - `2026-03-16`: Keep the shipped M6 checkpoint backend local-only. Postgres persists relative checkpoint store keys, but the actual manifest root stays on the local filesystem under `CHECKPOINT_ROOT` and defaults to `apps/control-plane/.mycelium/checkpoints`.
 - `2026-03-16`: Lock Milestone 7 to remote daemon-backed execution only. The control plane remains authoritative for checkpoints, artifacts, and audit durability in M7; remote durability backends are deferred to the next milestone.
+- `2026-03-17`: The shipped M7 repo exposes the daemon HTTP contract but does not yet include a packaged daemon binary. Local smoke and operator verification should use a thin harness that calls `/api/worker-daemon/register`, `/commands/claim`, `/events`, and `/disconnect`.
+- `2026-03-17`: Keep the repo workflow main-only by default. Use local `codex/*` worktrees only when the human explicitly asks for that isolation, and keep GitHub remote branches limited to `main`.
 
 ## Activity log
 
@@ -154,3 +157,4 @@ Do not rewrite older entries except to correct factual mistakes.
 - `2026-03-16` | `Codex` | `codex/m6-task6-docs-verification` | Started Milestone 6 Task 6 in a fresh global worktree from merged `main`, reloaded the M6 closure plan plus the current runbook/setup surfaces, inspected the shipped checkpoint runtime to confirm `CHECKPOINT_ROOT` defaults and local-filesystem storage behavior, and scoped the batch to docs updates plus a live interruption-and-resume smoke path. | Baseline repo state was clean on `main` before the worktree was created; Task 6 begins by exercising the shipped checkpoint timeline, audit trail, interruption recovery, and resume flow against the local stack.
 - `2026-03-16` | `Codex` | `codex/m6-task6-docs-verification` | Completed Milestone 6 Task 6: updated the README, local-dev guide, runbook, roadmap, design doc, implementation notes, and project log for the shipped checkpoint workflow, then verified the live local stack end to end through interruption, restart recovery, resume, replay, audit, and final completion. | Verified with `pnpm db:up`, `set -a; source .env; set +a; pnpm db:push`, live `pnpm dev:web` and control-plane server runs, interruption before terminal state, restart to `interrupted` plus `resumable`, `POST /api/runs/:runId/resume`, confirmation that `Analyze outcome` kept exactly one `step_completed` checkpoint, rendered `Replay anchors` plus `Operator trail`, and fresh workspace `pnpm test`, `pnpm typecheck`, and `pnpm build`.
 - `2026-03-16` | `Codex` | `main` | Authored the Milestone 7 design and implementation plan for remote daemon-backed workers, verified every cited reference path against the current cloned repos, and updated the roadmap, docs index, runbook, and project status surfaces so future agents can start M7 from reviewed docs. | Planning update only. No runtime behavior changed.
+- `2026-03-17` | `Codex` | `main` | Completed Milestone 7 Task 6: updated the README, docs index, local-dev guide, runbook, roadmap, M7 design or implementation notes, and project status surfaces for the shipped remote-worker path, then verified live remote completion plus restart or resume against the daemon HTTP contract. | Verified with Docker-backed local Postgres, live `pnpm dev:control-plane`, a completed remote run on `ws_smoke_full_1773769480092`, restart or resume recovery on `ws_smoke_resume_1773769802713` from `checkpoint_a522da4b-9cad-44d2-a9a2-79214852894f`, and fresh workspace `pnpm test`, `pnpm typecheck`, and `pnpm build`.
