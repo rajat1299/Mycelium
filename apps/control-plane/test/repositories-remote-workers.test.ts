@@ -63,6 +63,90 @@ describe("in-memory remote worker repositories", () => {
     ]);
   });
 
+  it("does not let stale cleanup overwrite a reconnected worker session", async () => {
+    const repositories = createInMemoryRepositories();
+
+    await repositories.remoteWorkers.upsert({
+      id: "worker_1",
+      sessionId: "worker_session_1",
+      workspaceId: "ws_default",
+      label: "Primary remote worker",
+      daemonVersion: "1.0.0",
+      availability: "available",
+      capabilities: {
+        capabilityFamilies: ["coding", "terminal"],
+        supportsArtifacts: true,
+        supportsCheckpoints: true,
+        supportsLogs: true
+      },
+      health: {
+        status: "healthy",
+        lastHeartbeatAt: "2026-03-16T10:00:00.000Z"
+      },
+      connectedAt: "2026-03-16T09:59:00.000Z",
+      disconnectedAt: null,
+      updatedAt: "2026-03-16T10:00:00.000Z"
+    });
+
+    const originalGet = Map.prototype.get;
+    const originalSet = Map.prototype.set;
+    let simulatedReconnect = false;
+
+    Map.prototype.get = function patchedGet(key) {
+      if (!simulatedReconnect && key === "worker_1") {
+        simulatedReconnect = true;
+        originalSet.call(this, "worker_1", {
+          id: "worker_1",
+          sessionId: "worker_session_2",
+          workspaceId: "ws_default",
+          label: "Primary remote worker",
+          daemonVersion: "1.0.0",
+          availability: "available",
+          capabilities: {
+            capabilityFamilies: ["coding", "terminal"],
+            supportsArtifacts: true,
+            supportsCheckpoints: true,
+            supportsLogs: true
+          },
+          health: {
+            status: "healthy",
+            lastHeartbeatAt: "2026-03-16T10:11:00.000Z"
+          },
+          connectedAt: "2026-03-16T10:11:00.000Z",
+          disconnectedAt: null,
+          updatedAt: "2026-03-16T10:11:00.000Z"
+        });
+      }
+
+      return originalGet.call(this, key);
+    };
+
+    try {
+      await expect(
+        repositories.remoteWorkers.cleanupStaleSessions({
+          staleBefore: "2026-03-16T10:10:00.000Z",
+          disconnectedAt: "2026-03-16T10:15:00.000Z"
+        })
+      ).resolves.toEqual([]);
+    } finally {
+      Map.prototype.get = originalGet;
+    }
+
+    await expect(repositories.remoteWorkers.getById("worker_1")).resolves.toEqual(
+      expect.objectContaining({
+        id: "worker_1",
+        sessionId: "worker_session_2",
+        availability: "available",
+        disconnectedAt: null,
+        health: expect.objectContaining({
+          status: "healthy",
+          lastHeartbeatAt: "2026-03-16T10:11:00.000Z"
+        }),
+        updatedAt: "2026-03-16T10:11:00.000Z"
+      })
+    );
+  });
+
   it("enforces assignment conflicts and delete parity for assigned workers", async () => {
     const repositories = createInMemoryRepositories();
 

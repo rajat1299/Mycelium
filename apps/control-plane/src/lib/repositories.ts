@@ -1388,11 +1388,22 @@ function createInMemoryRepositoriesState() {
           continue;
         }
 
+        const current = remoteWorkersById.get(worker.id);
+
+        if (
+          !current ||
+          current.sessionId !== worker.sessionId ||
+          current.availability !== worker.availability ||
+          current.health.lastHeartbeatAt !== worker.health.lastHeartbeatAt
+        ) {
+          continue;
+        }
+
         const next: StoredRemoteWorker = {
-          ...worker,
+          ...current,
           availability: "offline",
           health: {
-            ...worker.health,
+            ...current.health,
             status: "offline"
           },
           disconnectedAt: input.disconnectedAt,
