@@ -11,6 +11,7 @@ import type {
   CreatePlanInput,
   CreateRunFromPlanInput,
   RecordRemoteWorkerHeartbeatInput,
+  UpdateRemoteWorkerSessionStateInput,
   ListApprovalsInput,
   RestoreFromCheckpointInput,
   StoredRemoteWorker,
@@ -166,6 +167,9 @@ export type RemoteWorkerStore = {
   listByWorkspace(workspaceId: string): Promise<StoredRemoteWorker[]>;
   recordHeartbeat(
     input: RecordRemoteWorkerHeartbeatInput
+  ): Promise<StoredRemoteWorker | null>;
+  updateSessionState(
+    input: UpdateRemoteWorkerSessionStateInput
   ): Promise<StoredRemoteWorker | null>;
   cleanupStaleSessions(
     input: CleanupStaleRemoteWorkersInput
@@ -1338,6 +1342,35 @@ function createInMemoryRepositoriesState() {
           lastHeartbeatAt: input.sentAt
         },
         updatedAt: input.sentAt
+      };
+
+      remoteWorkersById.set(updated.id, updated);
+      return updated;
+    },
+    async updateSessionState(input) {
+      const existing = remoteWorkersById.get(input.workerId);
+
+      if (!existing || existing.sessionId !== input.workerSessionId) {
+        return null;
+      }
+
+      const nextHealth = {
+        ...existing.health,
+        ...(input.healthStatus !== undefined ? { status: input.healthStatus } : {}),
+        ...(input.lastHeartbeatAt !== undefined
+          ? { lastHeartbeatAt: input.lastHeartbeatAt }
+          : {})
+      };
+      const updated: StoredRemoteWorker = {
+        ...existing,
+        ...(input.availability !== undefined
+          ? { availability: input.availability }
+          : {}),
+        ...(input.disconnectedAt !== undefined
+          ? { disconnectedAt: input.disconnectedAt }
+          : {}),
+        health: nextHealth,
+        updatedAt: input.updatedAt
       };
 
       remoteWorkersById.set(updated.id, updated);

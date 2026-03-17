@@ -24,6 +24,16 @@ export type CleanupStaleRemoteWorkersInput = {
   disconnectedAt: string;
 };
 
+export type UpdateRemoteWorkerSessionStateInput = {
+  workerId: string;
+  workerSessionId: string;
+  availability?: StoredRemoteWorker["availability"];
+  healthStatus?: RemoteWorkerHealthStatus;
+  lastHeartbeatAt?: string;
+  disconnectedAt?: string | null;
+  updatedAt: string;
+};
+
 function mapRemoteWorkerRow(row: RemoteWorkerRow): StoredRemoteWorker {
   return {
     id: row.id,
@@ -163,12 +173,38 @@ export class RemoteWorkerRepository {
   async recordHeartbeat(
     input: RecordRemoteWorkerHeartbeatInput
   ): Promise<StoredRemoteWorker | null> {
+    return this.updateSessionState({
+      workerId: input.workerId,
+      workerSessionId: input.workerSessionId,
+      healthStatus: input.healthStatus,
+      lastHeartbeatAt: input.sentAt,
+      updatedAt: input.sentAt
+    });
+  }
+
+  async updateSessionState(
+    input: UpdateRemoteWorkerSessionStateInput
+  ): Promise<StoredRemoteWorker | null> {
     const [updated] = await this.db
       .update(remoteWorkers)
       .set({
-        healthStatus: input.healthStatus,
-        lastHeartbeatAt: new Date(input.sentAt),
-        updatedAt: new Date(input.sentAt)
+        ...(input.availability !== undefined
+          ? { availability: input.availability }
+          : {}),
+        ...(input.healthStatus !== undefined
+          ? { healthStatus: input.healthStatus }
+          : {}),
+        ...(input.lastHeartbeatAt !== undefined
+          ? { lastHeartbeatAt: new Date(input.lastHeartbeatAt) }
+          : {}),
+        ...(input.disconnectedAt !== undefined
+          ? {
+              disconnectedAt: input.disconnectedAt
+                ? new Date(input.disconnectedAt)
+                : null
+            }
+          : {}),
+        updatedAt: new Date(input.updatedAt)
       })
       .where(
         and(

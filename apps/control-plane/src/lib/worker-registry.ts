@@ -36,20 +36,6 @@ export function createWorkerRegistry(options: WorkerRegistryOptions) {
   const staleAfterMs =
     options.staleAfterMs ?? DEFAULT_WORKER_STALE_TIMEOUT_MS;
 
-  async function mergeWorker(
-    workerId: string,
-    workerSessionId: string,
-    mutate: (worker: RemoteWorker) => RemoteWorker
-  ): Promise<RemoteWorker | null> {
-    const current = await options.repositories.remoteWorkers.getById(workerId);
-
-    if (!current || current.sessionId !== workerSessionId) {
-      return null;
-    }
-
-    return options.repositories.remoteWorkers.upsert(mutate(current));
-  }
-
   async function cleanupStaleWorkers(): Promise<RemoteWorker[]> {
     const currentTime = now();
     const staleBefore = new Date(currentTime.getTime() - staleAfterMs).toISOString();
@@ -88,53 +74,38 @@ export function createWorkerRegistry(options: WorkerRegistryOptions) {
     },
 
     async recordHeartbeat(input: RemoteWorkerHeartbeat): Promise<RemoteWorker | null> {
-      return mergeWorker(
-        input.workerId,
-        input.workerSessionId,
-        (current) => ({
-          ...current,
-          availability: current.availability === "busy" ? "busy" : "available",
-          health: input.health,
-          disconnectedAt: null,
-          updatedAt: input.sentAt
-        })
-      );
+      return options.repositories.remoteWorkers.updateSessionState({
+        workerId: input.workerId,
+        workerSessionId: input.workerSessionId,
+        healthStatus: input.health.status,
+        lastHeartbeatAt: input.health.lastHeartbeatAt,
+        updatedAt: input.sentAt
+      });
     },
 
     async disconnectWorker(input: DisconnectWorkerInput): Promise<RemoteWorker | null> {
-      return mergeWorker(
-        input.workerId,
-        input.workerSessionId,
-        (current) => ({
-          ...current,
-          availability: "offline",
-          health: {
-            ...current.health,
-            status: "offline",
-            lastHeartbeatAt: input.disconnectedAt
-          },
-          disconnectedAt: input.disconnectedAt,
-          updatedAt: input.disconnectedAt
-        })
-      );
+      return options.repositories.remoteWorkers.updateSessionState({
+        workerId: input.workerId,
+        workerSessionId: input.workerSessionId,
+        availability: "offline",
+        healthStatus: "offline",
+        lastHeartbeatAt: input.disconnectedAt,
+        disconnectedAt: input.disconnectedAt,
+        updatedAt: input.disconnectedAt
+      });
     },
 
     async setWorkerAvailability(
       input: UpdateWorkerAvailabilityInput
     ): Promise<RemoteWorker | null> {
-      return mergeWorker(
-        input.workerId,
-        input.workerSessionId,
-        (current) => ({
-          ...current,
-          availability: input.availability,
-          disconnectedAt:
-            input.availability === "offline"
-              ? input.updatedAt
-              : null,
-          updatedAt: input.updatedAt
-        })
-      );
+      return options.repositories.remoteWorkers.updateSessionState({
+        workerId: input.workerId,
+        workerSessionId: input.workerSessionId,
+        availability: input.availability,
+        disconnectedAt:
+          input.availability === "offline" ? input.updatedAt : null,
+        updatedAt: input.updatedAt
+      });
     },
 
     async listWorkers(workspaceId: string): Promise<RemoteWorker[]> {
