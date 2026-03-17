@@ -37,8 +37,9 @@ Then read the repo-specific notes based on the milestone:
 
 - Milestone plans are execution specs.
 - [Project Log](/Users/rajattiwari/swarm/computer-oss/docs/project-log.md) is the cross-milestone source of truth for what has been done.
-- Agents should work on `codex/*` branches.
-- `main` remains the reviewed integration branch.
+- Default to landing reviewed work on local `main`.
+- Use isolated local `codex/*` worktrees only when the human explicitly asks for that workflow.
+- Keep GitHub remote branches limited to `main` unless the human explicitly asks for another flow.
 - Each milestone should end with:
   - fresh verification
   - a project-log entry
