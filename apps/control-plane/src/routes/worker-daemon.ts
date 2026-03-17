@@ -5,6 +5,7 @@ import {
   RemoteWorkerHeartbeatSchema,
   RemoteWorkerRegistrationSchema
 } from "@computer-oss/protocol";
+import type { RemoteProvider } from "@computer-oss/sandbox";
 import type { DaemonGateway } from "../lib/daemon-gateway";
 
 const DisconnectWorkerRequestSchema = z.object({
@@ -12,10 +13,15 @@ const DisconnectWorkerRequestSchema = z.object({
   workerSessionId: z.string().min(1),
   disconnectedAt: z.string().datetime()
 });
+const ClaimCommandsRequestSchema = z.object({
+  workerId: z.string().min(1),
+  workerSessionId: z.string().min(1)
+});
 
 type WorkerDaemonRouteOptions = {
   daemonGateway: DaemonGateway;
   daemonAuthToken: string;
+  remoteProvider: Pick<RemoteProvider, "claimCommands">;
 };
 
 function errorResponse(message: string) {
@@ -110,6 +116,27 @@ export function registerWorkerDaemonRoutes(
     }
 
     return reply.code(202).send({ accepted: true });
+  });
+
+  app.post("/api/worker-daemon/commands/claim", async (request, reply) => {
+    if (
+      !isAuthorized(
+        options.daemonAuthToken,
+        request.headers["x-mycelium-daemon-token"]
+      )
+    ) {
+      return reply.code(401).send(errorResponse("Unauthorized daemon token."));
+    }
+
+    const parsed = ClaimCommandsRequestSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      return reply.code(400).send(errorResponse("Invalid command claim payload."));
+    }
+
+    return reply.code(200).send({
+      commands: options.remoteProvider.claimCommands(parsed.data)
+    });
   });
 
   app.post("/api/worker-daemon/disconnect", async (request, reply) => {

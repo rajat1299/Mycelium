@@ -48,10 +48,15 @@ export function buildApp(options: BuildAppOptions = {}) {
   const workerRegistry = services.workerRegistry;
   const daemonGateway = services.daemonGateway;
   const daemonAuthToken = services.daemonAuthToken;
+  const remoteProvider = services.remoteProvider;
 
   registerHealthRoutes(app);
   registerProviderRoutes(app);
-  registerWorkerDaemonRoutes(app, { daemonGateway, daemonAuthToken });
+  registerWorkerDaemonRoutes(app, {
+    daemonGateway,
+    daemonAuthToken,
+    remoteProvider
+  });
   registerWorkerRoutes(app, { workerRegistry });
   registerApprovalRoutes(app, { repositories, approvalService });
   registerWorkspaceCredentialRoutes(app, { repositories, encryption });

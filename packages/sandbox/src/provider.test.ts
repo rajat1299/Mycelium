@@ -53,6 +53,7 @@ describe("LocalDockerProvider", () => {
     const result = await provider.execute({
       runId: "run_123",
       context: {
+        workspaceId: "ws_123",
         outcomeId: "outcome_123",
         outcomePrompt: "Draft the operator brief."
       },
@@ -144,6 +145,7 @@ describe("LocalDockerProvider", () => {
       provider.execute({
         runId: "run_123",
         context: {
+          workspaceId: "ws_123",
           outcomeId: "outcome_123",
           outcomePrompt: "Draft the operator brief."
         },
@@ -186,6 +188,7 @@ describe("LocalDockerProvider", () => {
       provider.execute({
         runId: "run_123",
         context: {
+          workspaceId: "ws_123",
           outcomeId: "outcome_123",
           outcomePrompt: "Draft the operator brief."
         },
@@ -261,6 +264,7 @@ describe("LocalDockerProvider", () => {
     const result = await provider.execute({
       runId: "run_123",
       context: {
+        workspaceId: "ws_123",
         outcomeId: "outcome_123",
         outcomePrompt: "Draft the operator brief."
       },
@@ -302,6 +306,7 @@ describe("LocalDockerProvider", () => {
       provider.execute({
         runId: "run_123",
         context: {
+          workspaceId: "ws_123",
           outcomeId: "outcome_123",
           outcomePrompt: "Draft the operator brief."
         },
@@ -355,6 +360,7 @@ describe("LocalDockerProvider", () => {
     await provider.execute({
       runId: "run_123",
       context: {
+        workspaceId: "ws_123",
         outcomeId: "outcome_123",
         outcomePrompt: "Draft the operator brief."
       },

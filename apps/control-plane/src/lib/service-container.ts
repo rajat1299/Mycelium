@@ -1,10 +1,17 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { LocalArtifactStore } from "@computer-oss/artifacts";
 import { LocalFilesystemCheckpointStore } from "@computer-oss/checkpoints";
+import {
+  ArtifactSchema,
+  RunLogDataSchema
+} from "@computer-oss/protocol";
 import type { SandboxProvider } from "@computer-oss/sandbox";
 import {
   LocalDockerProvider,
+  RemoteProvider,
   WorkspaceManager
 } from "@computer-oss/sandbox";
 import type { AppEnv } from "./env";
@@ -54,6 +61,7 @@ export type ServiceContainer = {
   workerRegistry: WorkerRegistry;
   daemonGateway: DaemonGateway;
   daemonAuthToken: string;
+  remoteProvider: RemoteProvider;
 };
 
 type InMemoryServiceContainerOptions = {
@@ -83,7 +91,12 @@ export function createInMemoryServiceContainer(
       join(tmpdir(), "mycelium-control-plane-workspaces"),
     ...(options.now ? { now: options.now } : {})
   });
-  const sandboxProvider = options.sandboxProvider ?? createInlineSandboxProvider();
+  const remoteProvider =
+    options.sandboxProvider instanceof RemoteProvider
+      ? options.sandboxProvider
+      : new RemoteProvider({
+          fallbackProvider: options.sandboxProvider ?? createInlineSandboxProvider()
+        });
   const checkpointService = createCheckpointService({
     repositories,
     eventBus,
@@ -107,13 +120,97 @@ export function createInMemoryServiceContainer(
   const daemonGateway = createDaemonGateway({
     repositories,
     eventBus,
-    workerRegistry
+    workerRegistry,
+    onDisconnectWorker(input) {
+      remoteProvider.interruptWorkerSession({
+        workerId: input.workerId,
+        workerSessionId: input.workerSessionId,
+        message: `Remote worker ${input.workerId} disconnected.`
+      });
+    },
+    async onLogEvent(event, context) {
+      const data = RunLogDataSchema.parse({
+        runId: context.runId,
+        stepId: context.step.id,
+        stepTitle: context.step.title,
+        level: event.level,
+        message: event.message,
+        createdAt: event.createdAt
+      });
+
+      await repositories.runs.appendEvent({
+        id: `event_${randomUUID()}`,
+        runId: data.runId,
+        eventType: "run.log",
+        payload: data,
+        createdAt: data.createdAt
+      });
+    },
+    async onArtifactEvent(event, context) {
+      const lease = await repositories.workspaceLeases.getActiveByRun(context.runId);
+
+      if (!lease) {
+        remoteProvider.recordArtifactUpload(event);
+        return;
+      }
+
+      const artifactStore = new LocalArtifactStore({
+        rootPath: lease.rootPath
+      });
+      const written = await artifactStore.put({
+        relativePath: event.artifact.relativePath,
+        body: Buffer.from(event.artifact.contentBase64, "base64")
+      });
+      const artifact = await repositories.artifacts.create({
+        id: `artifact_${randomUUID()}`,
+        outcomeId: context.outcomeId,
+        runId: context.runId,
+        stepId: context.step.id,
+        kind: event.artifact.kind,
+        relativePath: written.relativePath,
+        size: written.size,
+        metadata: {
+          workerId: event.workerId,
+          stepTitle: context.step.title,
+          ...(event.artifact.metadata ?? {})
+        },
+        createdAt: event.artifact.createdAt
+      });
+
+      await repositories.runs.appendEvent({
+        id: `event_${randomUUID()}`,
+        runId: context.runId,
+        eventType: "artifact.created",
+        payload: artifact,
+        createdAt: artifact.createdAt
+      });
+
+      eventBus.publish({
+        outcomeId: context.outcomeId,
+        type: "artifact.created",
+        data: ArtifactSchema.parse(artifact)
+      });
+      remoteProvider.recordArtifactUpload(event);
+    },
+    async onCheckpointEvent(event, context) {
+      await checkpointService.createUploadedCheckpoint({
+        runId: context.runId,
+        kind: event.checkpoint.kind,
+        stepId: context.step.id,
+        createdAt: event.checkpoint.createdAt,
+        payload: event.checkpoint.payload
+      });
+      remoteProvider.recordCheckpointUpload(event);
+    },
+    async onTerminalEvent(event) {
+      remoteProvider.completeAttempt(event);
+    }
   });
   const executionService = createExecutionService({
     repositories,
     eventBus,
     checkpointService,
-    sandboxProvider,
+    sandboxProvider: remoteProvider,
     workspaceManager,
     ...(options.now ? { now: options.now } : {})
   });
@@ -136,7 +233,8 @@ export function createInMemoryServiceContainer(
     routerService,
     workerRegistry,
     daemonGateway,
-    daemonAuthToken
+    daemonAuthToken,
+    remoteProvider
   };
 }
 
@@ -160,20 +258,106 @@ export async function createServiceContainer(env: AppEnv): Promise<ServiceContai
     eventBus,
     staleAfterMs: env.MYCELIUM_WORKER_STALE_TIMEOUT_MS
   });
-  const daemonGateway = createDaemonGateway({
-    repositories,
-    eventBus,
-    workerRegistry
+  const remoteProvider = new RemoteProvider({
+    fallbackProvider: new LocalDockerProvider(
+      env.SANDBOX_IMAGE ? { image: env.SANDBOX_IMAGE } : {}
+    )
   });
-  const sandboxProvider = new LocalDockerProvider(
-    env.SANDBOX_IMAGE ? { image: env.SANDBOX_IMAGE } : {}
-  );
   const executionService = createExecutionService({
     repositories,
     eventBus,
     checkpointService,
-    sandboxProvider,
+    sandboxProvider: remoteProvider,
     workspaceManager
+  });
+  const daemonGateway = createDaemonGateway({
+    repositories,
+    eventBus,
+    workerRegistry,
+    onDisconnectWorker(input) {
+      remoteProvider.interruptWorkerSession({
+        workerId: input.workerId,
+        workerSessionId: input.workerSessionId,
+        message: `Remote worker ${input.workerId} disconnected.`
+      });
+    },
+    async onLogEvent(event, context) {
+      const data = RunLogDataSchema.parse({
+        runId: context.runId,
+        stepId: context.step.id,
+        stepTitle: context.step.title,
+        level: event.level,
+        message: event.message,
+        createdAt: event.createdAt
+      });
+
+      await repositories.runs.appendEvent({
+        id: `event_${randomUUID()}`,
+        runId: data.runId,
+        eventType: "run.log",
+        payload: data,
+        createdAt: data.createdAt
+      });
+    },
+    async onArtifactEvent(event, context) {
+      const lease = await repositories.workspaceLeases.getActiveByRun(context.runId);
+
+      if (!lease) {
+        remoteProvider.recordArtifactUpload(event);
+        return;
+      }
+
+      const artifactStore = new LocalArtifactStore({
+        rootPath: lease.rootPath
+      });
+      const written = await artifactStore.put({
+        relativePath: event.artifact.relativePath,
+        body: Buffer.from(event.artifact.contentBase64, "base64")
+      });
+      const artifact = await repositories.artifacts.create({
+        id: `artifact_${randomUUID()}`,
+        outcomeId: context.outcomeId,
+        runId: context.runId,
+        stepId: context.step.id,
+        kind: event.artifact.kind,
+        relativePath: written.relativePath,
+        size: written.size,
+        metadata: {
+          workerId: event.workerId,
+          stepTitle: context.step.title,
+          ...(event.artifact.metadata ?? {})
+        },
+        createdAt: event.artifact.createdAt
+      });
+
+      await repositories.runs.appendEvent({
+        id: `event_${randomUUID()}`,
+        runId: context.runId,
+        eventType: "artifact.created",
+        payload: artifact,
+        createdAt: artifact.createdAt
+      });
+
+      eventBus.publish({
+        outcomeId: context.outcomeId,
+        type: "artifact.created",
+        data: ArtifactSchema.parse(artifact)
+      });
+      remoteProvider.recordArtifactUpload(event);
+    },
+    async onCheckpointEvent(event, context) {
+      await checkpointService.createUploadedCheckpoint({
+        runId: context.runId,
+        kind: event.checkpoint.kind,
+        stepId: context.step.id,
+        createdAt: event.checkpoint.createdAt,
+        payload: event.checkpoint.payload
+      });
+      remoteProvider.recordCheckpointUpload(event);
+    },
+    async onTerminalEvent(event) {
+      remoteProvider.completeAttempt(event);
+    }
   });
   const approvalService = createApprovalService({
     repositories,
@@ -194,7 +378,8 @@ export async function createServiceContainer(env: AppEnv): Promise<ServiceContai
     routerService,
     workerRegistry,
     daemonGateway,
-    daemonAuthToken: env.MYCELIUM_DAEMON_TOKEN
+    daemonAuthToken: env.MYCELIUM_DAEMON_TOKEN,
+    remoteProvider
   };
 }
 

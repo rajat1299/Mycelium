@@ -10,10 +10,11 @@ import {
   RunSchema,
   RunStepSchema
 } from "@computer-oss/protocol";
-import type {
-  SandboxProvider,
-  WorkspaceLease as RuntimeWorkspaceLease,
-  WorkspaceManager
+import {
+  RemoteProvider,
+  type SandboxProvider,
+  type WorkspaceLease as RuntimeWorkspaceLease,
+  type WorkspaceManager
 } from "@computer-oss/sandbox";
 import type { CheckpointService } from "./checkpoint-service";
 import type { EventBus } from "./event-bus";
@@ -49,6 +50,7 @@ export function createExecutionService(
 ): ExecutionService {
   const inFlightRuns = new Map<string, Promise<void>>();
   const settledRuns = new Map<string, Promise<void>>();
+  const claimedRemoteWorkerSessions = new Set<string>();
   const now = options.now ?? (() => new Date());
   const startRun = (runId: string) => {
       if (inFlightRuns.has(runId)) {
@@ -64,6 +66,7 @@ export function createExecutionService(
         checkpointService: options.checkpointService,
         sandboxProvider: options.sandboxProvider,
         workspaceManager: options.workspaceManager,
+        claimedRemoteWorkerSessions,
         now
       });
 
@@ -212,6 +215,7 @@ type ExecuteRunOptions = {
   checkpointService: CheckpointService;
   sandboxProvider: SandboxProvider;
   workspaceManager: WorkspaceManager;
+  claimedRemoteWorkerSessions: Set<string>;
   now: () => Date;
 };
 
@@ -337,6 +341,10 @@ async function executeRun(options: ExecuteRunOptions): Promise<void> {
         return;
       }
 
+      if (results.some((result) => result.status === "interrupted")) {
+        return;
+      }
+
       if (results.some((result) => result.status === "blocked")) {
         return;
       }
@@ -373,99 +381,80 @@ async function executeReadyStep(
     lease: RuntimeWorkspaceLease;
     step: Awaited<ReturnType<Repositories["runs"]["listReadySteps"]>>[number];
   }
-): Promise<{ status: "completed" | "failed" | "blocked" }> {
-  const runningAt = options.now().toISOString();
-  const runningStep = await options.repositories.runs.updateStepStatus({
-    stepId: input.step.id,
-    status: "running",
-    updatedAt: runningAt
-  });
+): Promise<{ status: "completed" | "failed" | "blocked" | "interrupted" }> {
+  const prepared = await prepareStepForExecution(options, input);
 
-  if (!runningStep) {
-    throw new Error(`Step ${input.step.id} no longer exists.`);
-  }
-
-  await emitRunStepUpdated(options, input.outcomeId, runningStep);
+  await emitRunStepUpdated(options, input.outcomeId, prepared.step);
   await emitRunLog(options, {
     outcomeId: input.outcomeId,
     runId: input.runId,
-    stepId: runningStep.id,
-    stepTitle: runningStep.title,
+    stepId: prepared.step.id,
+    stepTitle: prepared.step.title,
     level: "info",
-    message: `Starting ${runningStep.title}`
+    message: prepared.remoteWorker
+      ? `Dispatched ${prepared.step.title} to remote worker ${prepared.remoteWorker.id}`
+      : `Starting ${prepared.step.title}`
   });
 
   try {
     const result = await options.sandboxProvider.execute({
       runId: input.runId,
-      step: runningStep,
+      step: prepared.step,
       context: {
+        workspaceId: input.workspaceId,
         outcomeId: input.outcomeId,
         outcomePrompt: input.outcomePrompt
       },
       workspace: input.lease.paths
     });
 
-    await emitSandboxLogs(options, {
-      outcomeId: input.outcomeId,
-      runId: input.runId,
-      step: runningStep,
-      stdout: result.stdout,
-      stderr: result.stderr
-    });
+    if (!prepared.remoteWorker) {
+      await emitSandboxLogs(options, {
+        outcomeId: input.outcomeId,
+        runId: input.runId,
+        step: prepared.step,
+        stdout: result.stdout,
+        stderr: result.stderr
+      });
+    }
 
     if (result.exitCode !== 0) {
       const failedStep = await options.repositories.runs.updateStepStatus({
-        stepId: runningStep.id,
+        stepId: prepared.step.id,
         status: "failed",
         updatedAt: options.now().toISOString()
       });
 
       if (!failedStep) {
-        throw new Error(`Failed step ${runningStep.id} disappeared during update.`);
+        throw new Error(`Failed step ${prepared.step.id} disappeared during update.`);
       }
 
       await emitRunStepUpdated(options, input.outcomeId, failedStep);
       return { status: "failed" };
     }
 
-    const artifactStore = new LocalArtifactStore({
-      rootPath: input.lease.paths.rootPath
-    });
-    const createdArtifacts: Array<
-      Awaited<ReturnType<Repositories["artifacts"]["create"]>>
-    > = [];
-
-    for (const relativePath of result.producedArtifactPaths) {
-      const body = await artifactStore.read(relativePath);
-      const artifact = await options.repositories.artifacts.create({
-        id: `artifact_${randomUUID()}`,
-        outcomeId: input.outcomeId,
-        runId: input.runId,
-        stepId: runningStep.id,
-        kind: runningStep.expectedArtifactKind ?? "artifact",
-        relativePath,
-        size: body.byteLength,
-        metadata: {
-          containerName: result.containerName,
-          stepTitle: runningStep.title
-        },
-        createdAt: options.now().toISOString()
-      });
-
-      await emitArtifactCreated(options, input.outcomeId, artifact);
-      createdArtifacts.push(artifact);
-    }
+    const createdArtifacts = prepared.remoteWorker
+      ? (await options.repositories.artifacts.listByRun(input.runId)).filter(
+          (artifact) => artifact.stepId === prepared.step.id
+        )
+      : await persistLocalArtifacts(options, {
+          outcomeId: input.outcomeId,
+          runId: input.runId,
+          step: prepared.step,
+          workspaceRootPath: input.lease.paths.rootPath,
+          producedArtifactPaths: result.producedArtifactPaths,
+          containerName: result.containerName
+        });
 
     await createArtifactLineage(options, {
       runId: input.runId,
       planId: input.planId,
-      stepId: runningStep.id,
-      planNodeId: runningStep.planNodeId,
+      stepId: prepared.step.id,
+      planNodeId: prepared.step.planNodeId,
       childArtifacts: createdArtifacts
     });
 
-    if (runningStep.approvalRequirement) {
+    if (prepared.step.approvalRequirement) {
       const blockedAt = options.now().toISOString();
       let blockedStep: Awaited<
         ReturnType<Repositories["runs"]["updateStepStatus"]>
@@ -476,13 +465,13 @@ async function executeReadyStep(
 
       try {
         blockedStep = await options.repositories.runs.updateStepStatus({
-          stepId: runningStep.id,
+          stepId: prepared.step.id,
           status: "blocked",
           updatedAt: blockedAt
         });
 
         if (!blockedStep) {
-          throw new Error(`Blocked step ${runningStep.id} disappeared during update.`);
+          throw new Error(`Blocked step ${prepared.step.id} disappeared during update.`);
         }
 
         approval = await options.repositories.approvals.createPending({
@@ -490,11 +479,11 @@ async function executeReadyStep(
           workspaceId: input.workspaceId,
           outcomeId: input.outcomeId,
           runId: input.runId,
-          stepId: runningStep.id,
-          kind: runningStep.approvalRequirement.kind,
-          title: runningStep.approvalRequirement.title,
-          summary: runningStep.approvalRequirement.summary,
-          instruction: runningStep.approvalRequirement.instruction,
+          stepId: prepared.step.id,
+          kind: prepared.step.approvalRequirement.kind,
+          title: prepared.step.approvalRequirement.title,
+          summary: prepared.step.approvalRequirement.summary,
+          instruction: prepared.step.approvalRequirement.instruction,
           artifactIds: createdArtifacts.map((artifact) => artifact.id),
           requestedAt: blockedAt
         });
@@ -515,11 +504,13 @@ async function executeReadyStep(
         await emitRunUpdated(options, input.outcomeId, updatedLifecycle.run);
         await emitOutcomeUpdated(options, updatedLifecycle.outcome);
         await emitApprovalRequested(options, input.outcomeId, approval);
-        await options.checkpointService.createCheckpoint({
-          runId: input.runId,
-          kind: "step_blocked_on_approval",
-          stepId: blockedStep.id
-        });
+        if (!prepared.remoteWorker) {
+          await options.checkpointService.createCheckpoint({
+            runId: input.runId,
+            kind: "step_blocked_on_approval",
+            stepId: blockedStep.id
+          });
+        }
         await emitRunLog(options, {
           outcomeId: input.outcomeId,
           runId: input.runId,
@@ -549,13 +540,13 @@ async function executeReadyStep(
 
     const completedAt = options.now().toISOString();
     const completedStep = await options.repositories.runs.updateStepStatus({
-      stepId: runningStep.id,
+      stepId: prepared.step.id,
       status: "completed",
       updatedAt: completedAt
     });
 
     if (!completedStep) {
-      throw new Error(`Completed step ${runningStep.id} disappeared during update.`);
+      throw new Error(`Completed step ${prepared.step.id} disappeared during update.`);
     }
 
     await emitRunStepUpdated(options, input.outcomeId, completedStep);
@@ -578,16 +569,42 @@ async function executeReadyStep(
       await emitRunStepUpdated(options, input.outcomeId, readyStep);
     }
 
-    await options.checkpointService.createCheckpoint({
-      runId: input.runId,
-      kind: "step_completed",
-      stepId: completedStep.id
-    });
+    if (!prepared.remoteWorker) {
+      await options.checkpointService.createCheckpoint({
+        runId: input.runId,
+        kind: "step_completed",
+        stepId: completedStep.id
+      });
+    }
 
     return { status: "completed" };
   } catch (error) {
+    if (error instanceof Error && error.name === "RemoteExecutionInterruptedError") {
+      const interrupted = await options.checkpointService.interruptRun({
+        runId: input.runId,
+        eventType: "run.interrupted",
+        summary: "Interrupted remote run after the assigned worker disconnected.",
+        payload: {
+          stepId: prepared.step.id,
+          remoteWorkerId: prepared.step.remoteWorkerId
+        }
+      });
+
+      if (interrupted) {
+        await emitRunLog(options, {
+          outcomeId: input.outcomeId,
+          runId: input.runId,
+          stepId: prepared.step.id,
+          stepTitle: prepared.step.title,
+          level: "error",
+          message: toErrorMessage(error)
+        });
+        return { status: "interrupted" };
+      }
+    }
+
     const failedStep = await options.repositories.runs.updateStepStatus({
-      stepId: runningStep.id,
+      stepId: prepared.step.id,
       status: "failed",
       updatedAt: options.now().toISOString()
     });
@@ -599,14 +616,200 @@ async function executeReadyStep(
     await emitRunLog(options, {
       outcomeId: input.outcomeId,
       runId: input.runId,
-      stepId: runningStep.id,
-      stepTitle: runningStep.title,
+      stepId: prepared.step.id,
+      stepTitle: prepared.step.title,
       level: "error",
       message: toErrorMessage(error)
     });
 
     return { status: "failed" };
+  } finally {
+    if (prepared.remoteWorker) {
+      options.claimedRemoteWorkerSessions.delete(
+        getRemoteWorkerSessionKey(
+          prepared.remoteWorker.id,
+          prepared.remoteWorker.sessionId
+        )
+      );
+    }
   }
+}
+
+async function prepareStepForExecution(
+  options: ExecuteRunOptions,
+  input: {
+    runId: string;
+    outcomeId: string;
+    workspaceId: string;
+    planId: string;
+    outcomePrompt: string;
+    lease: RuntimeWorkspaceLease;
+    step: Awaited<ReturnType<Repositories["runs"]["listReadySteps"]>>[number];
+  }
+): Promise<{
+  step: Awaited<ReturnType<Repositories["runs"]["listSteps"]>>[number];
+  remoteWorker:
+    | Awaited<ReturnType<Repositories["remoteWorkers"]["listByWorkspace"]>>[number]
+    | null;
+}> {
+  const remoteWorker = await selectRemoteWorker(options, input);
+
+  if (!remoteWorker) {
+    const runningAt = options.now().toISOString();
+    const runningStep = await options.repositories.runs.updateStepStatus({
+      stepId: input.step.id,
+      status: "running",
+      updatedAt: runningAt
+    });
+
+    if (!runningStep) {
+      throw new Error(`Step ${input.step.id} no longer exists.`);
+    }
+
+    return {
+      step: runningStep,
+      remoteWorker: null
+    };
+  }
+
+  const sessionKey = getRemoteWorkerSessionKey(
+    remoteWorker.id,
+    remoteWorker.sessionId
+  );
+  options.claimedRemoteWorkerSessions.add(sessionKey);
+
+  try {
+    const assignedAt = options.now().toISOString();
+    const assignedStep = await options.repositories.runs.assignStepToWorker({
+      stepId: input.step.id,
+      workerId: remoteWorker.id,
+      workerSessionId: remoteWorker.sessionId,
+      attemptId: `attempt_${randomUUID()}`,
+      assignedAt,
+      updatedAt: assignedAt
+    });
+
+    if (!assignedStep) {
+      throw new Error(`Step ${input.step.id} disappeared during remote assignment.`);
+    }
+
+    await options.repositories.remoteWorkers.updateSessionState({
+      workerId: remoteWorker.id,
+      workerSessionId: remoteWorker.sessionId,
+      availability: "busy",
+      updatedAt: assignedAt
+    });
+
+    const claimedStep = await options.repositories.runs.updateStepStatus({
+      stepId: assignedStep.id,
+      status: "claimed",
+      updatedAt: assignedAt
+    });
+
+    if (!claimedStep) {
+      throw new Error(`Claimed step ${assignedStep.id} disappeared during update.`);
+    }
+
+    return {
+      step: claimedStep,
+      remoteWorker
+    };
+  } catch (error) {
+    options.claimedRemoteWorkerSessions.delete(sessionKey);
+    throw error;
+  }
+}
+
+async function selectRemoteWorker(
+  options: ExecuteRunOptions,
+  input: {
+    workspaceId: string;
+    step: Awaited<ReturnType<Repositories["runs"]["listReadySteps"]>>[number];
+  }
+) {
+  if (!(options.sandboxProvider instanceof RemoteProvider)) {
+    return null;
+  }
+
+  const workers = await options.repositories.remoteWorkers.listByWorkspace(
+    input.workspaceId
+  );
+
+  return (
+    workers.find((worker) => {
+      if (worker.availability !== "available" || worker.health.status === "offline") {
+        return false;
+      }
+
+      if (
+        options.claimedRemoteWorkerSessions.has(
+          getRemoteWorkerSessionKey(worker.id, worker.sessionId)
+        )
+      ) {
+        return false;
+      }
+
+      if (
+        !worker.capabilities.capabilityFamilies.includes(
+          input.step.capability as (typeof worker.capabilities.capabilityFamilies)[number]
+        )
+      ) {
+        return false;
+      }
+
+      return (
+        worker.capabilities.supportsArtifacts &&
+        worker.capabilities.supportsCheckpoints &&
+        worker.capabilities.supportsLogs
+      );
+    }) ?? null
+  );
+}
+
+async function persistLocalArtifacts(
+  options: ExecuteRunOptions,
+  input: {
+    outcomeId: string;
+    runId: string;
+    step: Awaited<ReturnType<Repositories["runs"]["listSteps"]>>[number];
+    workspaceRootPath: string;
+    producedArtifactPaths: string[];
+    containerName: string;
+  }
+) {
+  const artifactStore = new LocalArtifactStore({
+    rootPath: input.workspaceRootPath
+  });
+  const createdArtifacts: Array<
+    Awaited<ReturnType<Repositories["artifacts"]["create"]>>
+  > = [];
+
+  for (const relativePath of input.producedArtifactPaths) {
+    const body = await artifactStore.read(relativePath);
+    const artifact = await options.repositories.artifacts.create({
+      id: `artifact_${randomUUID()}`,
+      outcomeId: input.outcomeId,
+      runId: input.runId,
+      stepId: input.step.id,
+      kind: input.step.expectedArtifactKind ?? "artifact",
+      relativePath,
+      size: body.byteLength,
+      metadata: {
+        containerName: input.containerName,
+        stepTitle: input.step.title
+      },
+      createdAt: options.now().toISOString()
+    });
+
+    await emitArtifactCreated(options, input.outcomeId, artifact);
+    createdArtifacts.push(artifact);
+  }
+
+  return createdArtifacts;
+}
+
+function getRemoteWorkerSessionKey(workerId: string, workerSessionId: string) {
+  return `${workerId}:${workerSessionId}`;
 }
 
 async function acquireWorkspaceLease(

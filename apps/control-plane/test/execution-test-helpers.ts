@@ -11,6 +11,7 @@ import { createExecutionService } from "../src/lib/execution-service";
 import { createRouterService } from "../src/lib/router-service";
 import { createWorkerRegistry } from "../src/lib/worker-registry";
 import { LocalFilesystemCheckpointStore } from "@computer-oss/checkpoints";
+import { RemoteProvider } from "@computer-oss/sandbox";
 import {
   createInMemoryRepositories,
   type Repositories
@@ -137,11 +138,14 @@ export async function createExecutionHarness(
       rootDir: resolve(workspaceRootPath, ".checkpoints")
     })
   });
+  const remoteProvider = new RemoteProvider({
+    fallbackProvider: fakeSandbox.provider as never
+  });
   const executionService = createExecutionService({
     repositories,
     eventBus,
     checkpointService,
-    sandboxProvider: fakeSandbox.provider as never,
+    sandboxProvider: remoteProvider,
     workspaceManager: workspaceManager as never
   });
   const approvalService = createApprovalService({
@@ -169,7 +173,8 @@ export async function createExecutionHarness(
     approvalService,
     workerRegistry,
     daemonGateway,
-    daemonAuthToken: "test-daemon-token"
+    daemonAuthToken: "test-daemon-token",
+    remoteProvider
   };
   const events: Array<{ outcomeId: string; type: string; data: unknown }> = [];
   const unsubscribe = eventBus.subscribeAll((event) => {

@@ -32,6 +32,11 @@ type DaemonGatewayOptions = {
   repositories: Repositories;
   eventBus: EventBus;
   workerRegistry: WorkerRegistry;
+  onDisconnectWorker?: (input: {
+    workerId: string;
+    workerSessionId: string;
+    disconnectedAt: string;
+  }) => Promise<void> | void;
   onLogEvent?: (
     event: DaemonLogEvent,
     context: DaemonEventContext
@@ -146,13 +151,20 @@ export function createDaemonGateway(options: DaemonGatewayOptions) {
       workerSessionId: string;
       disconnectedAt: string;
     }) {
-      return options.workerRegistry.disconnectWorker(input);
+      const worker = await options.workerRegistry.disconnectWorker(input);
+
+      if (worker) {
+        await options.onDisconnectWorker?.(input);
+      }
+
+      return worker;
     },
 
     async ingestEvent(event: DaemonEvent) {
       const context = await resolveContext(event);
 
       if (event.type === "log") {
+        await options.onLogEvent?.(event, context);
         options.eventBus.publish({
           outcomeId: context.outcomeId,
           type: "run.log",
@@ -165,7 +177,6 @@ export function createDaemonGateway(options: DaemonGatewayOptions) {
             createdAt: event.createdAt
           }
         });
-        await options.onLogEvent?.(event, context);
         return;
       }
 

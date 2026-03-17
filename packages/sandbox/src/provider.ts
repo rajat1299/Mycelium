@@ -12,6 +12,7 @@ export interface WorkspaceLease {
 }
 
 export interface SandboxExecutionContext {
+  workspaceId: string;
   outcomeId: string;
   outcomePrompt: string;
 }
@@ -49,8 +50,26 @@ export interface SandboxExecutionStep {
   capability: string;
   instruction?: string;
   template?: string;
+  approvalRequirement?: {
+    kind: string;
+    title: string;
+    summary: string | null;
+    instruction: string | null;
+  };
   expectedArtifactPath?: string;
   expectedArtifactKind?: string;
+  routeProviderId?: string | null;
+  routeModelId?: string | null;
+  routeAuthProfileId?: string | null;
+  routePolicyVersion?: number;
+  routeStatus?: string;
+  routeReason?: string | null;
+  routeResolvedAt?: string;
+  executionTarget?: "local_docker" | "remote_worker" | null;
+  remoteWorkerId?: string | null;
+  remoteWorkerSessionId?: string | null;
+  remoteExecutionAttemptId?: string | null;
+  remoteAssignedAt?: string | null;
   status: string;
   position: number;
   createdAt: string;
