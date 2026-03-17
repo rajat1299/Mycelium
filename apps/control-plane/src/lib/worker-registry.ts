@@ -27,6 +27,8 @@ type WorkerRegistryOptions = {
   eventBus: EventBus;
   now?: () => Date;
   staleAfterMs?: number;
+  sweepIntervalMs?: number;
+  onWorkersExpired?: (workers: RemoteWorker[]) => Promise<void> | void;
 };
 
 export type WorkerRegistry = ReturnType<typeof createWorkerRegistry>;
@@ -35,6 +37,8 @@ export function createWorkerRegistry(options: WorkerRegistryOptions) {
   const now = options.now ?? (() => new Date());
   const staleAfterMs =
     options.staleAfterMs ?? DEFAULT_WORKER_STALE_TIMEOUT_MS;
+  const sweepIntervalMs =
+    options.sweepIntervalMs ?? Math.max(1_000, Math.floor(staleAfterMs / 2));
 
   async function cleanupStaleWorkers(): Promise<RemoteWorker[]> {
     const currentTime = now();
@@ -45,6 +49,34 @@ export function createWorkerRegistry(options: WorkerRegistryOptions) {
       disconnectedAt: currentTime.toISOString()
     });
   }
+
+  let inFlightSweep: Promise<RemoteWorker[]> | null = null;
+  const runSweep = async () => {
+    if (inFlightSweep) {
+      return inFlightSweep;
+    }
+
+    inFlightSweep = (async () => {
+      const staleWorkers = await cleanupStaleWorkers();
+
+      if (staleWorkers.length > 0) {
+        await options.onWorkersExpired?.(staleWorkers);
+      }
+
+      return staleWorkers;
+    })();
+
+    try {
+      return await inFlightSweep;
+    } finally {
+      inFlightSweep = null;
+    }
+  };
+
+  const sweepTimer = setInterval(() => {
+    void runSweep();
+  }, sweepIntervalMs);
+  sweepTimer.unref?.();
 
   return {
     async registerWorker(input: RemoteWorkerRegistration): Promise<RemoteWorker> {
@@ -109,17 +141,21 @@ export function createWorkerRegistry(options: WorkerRegistryOptions) {
     },
 
     async listWorkers(workspaceId: string): Promise<RemoteWorker[]> {
-      await cleanupStaleWorkers();
+      await runSweep();
       return options.repositories.remoteWorkers.listByWorkspace(workspaceId);
     },
 
     async getWorker(workerId: string): Promise<RemoteWorker | null> {
-      await cleanupStaleWorkers();
+      await runSweep();
       return options.repositories.remoteWorkers.getById(workerId);
     },
 
     async cleanupStaleWorkers(): Promise<RemoteWorker[]> {
-      return cleanupStaleWorkers();
+      return runSweep();
+    },
+
+    close() {
+      clearInterval(sweepTimer);
     }
   };
 }

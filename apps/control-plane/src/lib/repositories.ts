@@ -33,6 +33,7 @@ import type {
   UpsertRemoteWorkerInput,
   StoredWorkspaceLease,
   AssignStepToWorkerInput,
+  ReleaseStepWorkerAssignmentInput,
   UpdateAuthProfileInput,
   UpdateRunLifecycleStatusInput,
   UpdateRunStatusInput,
@@ -97,6 +98,9 @@ export type RunStore = {
   updateStepRoute(input: UpdateStepRouteInput): Promise<StoredRunStep | null>;
   assignStepToWorker(
     input: AssignStepToWorkerInput
+  ): Promise<StoredRunStep | null>;
+  releaseStepWorkerAssignment(
+    input: ReleaseStepWorkerAssignmentInput
   ): Promise<StoredRunStep | null>;
   releaseReadyDependents(
     input: ReleaseReadyDependentsInput
@@ -839,6 +843,38 @@ function createInMemoryRepositoriesState() {
         remoteWorkerSessionId: input.workerSessionId,
         remoteExecutionAttemptId: input.attemptId,
         remoteAssignedAt: input.assignedAt,
+        updatedAt: input.updatedAt
+      };
+      const updatedSteps =
+        runStepsByRunId.get(located.runId)?.map((candidate) =>
+          candidate.id === input.stepId ? updatedStep : candidate
+        ) ?? [];
+
+      runStepsByRunId.set(located.runId, updatedSteps);
+      return updatedStep;
+    },
+    async releaseStepWorkerAssignment(input) {
+      const located = getStoredRunStep(state, input.stepId);
+
+      if (!located) {
+        return null;
+      }
+
+      if (
+        located.step.remoteWorkerId !== input.workerId ||
+        located.step.remoteWorkerSessionId !== input.workerSessionId ||
+        located.step.remoteExecutionAttemptId !== input.attemptId
+      ) {
+        return null;
+      }
+
+      const updatedStep: StoredRunStep = {
+        ...located.step,
+        executionTarget: null,
+        remoteWorkerId: null,
+        remoteWorkerSessionId: null,
+        remoteExecutionAttemptId: null,
+        remoteAssignedAt: null,
         updatedAt: input.updatedAt
       };
       const updatedSteps =

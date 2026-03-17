@@ -652,72 +652,92 @@ async function prepareStepForExecution(
     | Awaited<ReturnType<Repositories["remoteWorkers"]["listByWorkspace"]>>[number]
     | null;
 }> {
-  const remoteWorker = await selectRemoteWorker(options, input);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const remoteWorker = await selectRemoteWorker(options, input);
 
-  if (!remoteWorker) {
-    const runningAt = options.now().toISOString();
-    const runningStep = await options.repositories.runs.updateStepStatus({
-      stepId: input.step.id,
-      status: "running",
-      updatedAt: runningAt
-    });
+    if (!remoteWorker) {
+      const runningAt = options.now().toISOString();
+      const runningStep = await options.repositories.runs.updateStepStatus({
+        stepId: input.step.id,
+        status: "running",
+        updatedAt: runningAt
+      });
 
-    if (!runningStep) {
-      throw new Error(`Step ${input.step.id} no longer exists.`);
+      if (!runningStep) {
+        throw new Error(`Step ${input.step.id} no longer exists.`);
+      }
+
+      return {
+        step: runningStep,
+        remoteWorker: null
+      };
     }
 
-    return {
-      step: runningStep,
-      remoteWorker: null
-    };
+    const sessionKey = getRemoteWorkerSessionKey(
+      remoteWorker.id,
+      remoteWorker.sessionId
+    );
+    options.claimedRemoteWorkerSessions.add(sessionKey);
+
+    try {
+      const assignedAt = options.now().toISOString();
+      const attemptId = `attempt_${randomUUID()}`;
+      const assignedStep = await options.repositories.runs.assignStepToWorker({
+        stepId: input.step.id,
+        workerId: remoteWorker.id,
+        workerSessionId: remoteWorker.sessionId,
+        attemptId,
+        assignedAt,
+        updatedAt: assignedAt
+      });
+
+      if (!assignedStep) {
+        throw new Error(`Step ${input.step.id} disappeared during remote assignment.`);
+      }
+
+      const claimedWorkerSession =
+        await options.repositories.remoteWorkers.updateSessionState({
+          workerId: remoteWorker.id,
+          workerSessionId: remoteWorker.sessionId,
+          availability: "busy",
+          updatedAt: assignedAt
+        });
+
+      if (!claimedWorkerSession) {
+        await options.repositories.runs.releaseStepWorkerAssignment({
+          stepId: assignedStep.id,
+          workerId: remoteWorker.id,
+          workerSessionId: remoteWorker.sessionId,
+          attemptId,
+          updatedAt: assignedAt
+        });
+        options.claimedRemoteWorkerSessions.delete(sessionKey);
+        continue;
+      }
+
+      const claimedStep = await options.repositories.runs.updateStepStatus({
+        stepId: assignedStep.id,
+        status: "claimed",
+        updatedAt: assignedAt
+      });
+
+      if (!claimedStep) {
+        throw new Error(`Claimed step ${assignedStep.id} disappeared during update.`);
+      }
+
+      return {
+        step: claimedStep,
+        remoteWorker: claimedWorkerSession
+      };
+    } catch (error) {
+      options.claimedRemoteWorkerSessions.delete(sessionKey);
+      throw error;
+    }
   }
 
-  const sessionKey = getRemoteWorkerSessionKey(
-    remoteWorker.id,
-    remoteWorker.sessionId
+  throw new Error(
+    `Failed to claim a live remote worker session for step ${input.step.id}.`
   );
-  options.claimedRemoteWorkerSessions.add(sessionKey);
-
-  try {
-    const assignedAt = options.now().toISOString();
-    const assignedStep = await options.repositories.runs.assignStepToWorker({
-      stepId: input.step.id,
-      workerId: remoteWorker.id,
-      workerSessionId: remoteWorker.sessionId,
-      attemptId: `attempt_${randomUUID()}`,
-      assignedAt,
-      updatedAt: assignedAt
-    });
-
-    if (!assignedStep) {
-      throw new Error(`Step ${input.step.id} disappeared during remote assignment.`);
-    }
-
-    await options.repositories.remoteWorkers.updateSessionState({
-      workerId: remoteWorker.id,
-      workerSessionId: remoteWorker.sessionId,
-      availability: "busy",
-      updatedAt: assignedAt
-    });
-
-    const claimedStep = await options.repositories.runs.updateStepStatus({
-      stepId: assignedStep.id,
-      status: "claimed",
-      updatedAt: assignedAt
-    });
-
-    if (!claimedStep) {
-      throw new Error(`Claimed step ${assignedStep.id} disappeared during update.`);
-    }
-
-    return {
-      step: claimedStep,
-      remoteWorker
-    };
-  } catch (error) {
-    options.claimedRemoteWorkerSessions.delete(sessionKey);
-    throw error;
-  }
 }
 
 async function selectRemoteWorker(

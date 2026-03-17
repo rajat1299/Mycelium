@@ -74,5 +74,9 @@ export function buildApp(options: BuildAppOptions = {}) {
   registerArtifactRoutes(app, { repositories });
   registerOutcomeEventRoutes(app, { repositories, eventBus });
 
+  app.addHook("onClose", async () => {
+    services.workerRegistry.close();
+  });
+
   return app;
 }

@@ -72,6 +72,7 @@ type InMemoryServiceContainerOptions = {
   encryptionKey?: string;
   daemonAuthToken?: string;
   workerStaleTimeoutMs?: number;
+  workerSweepIntervalMs?: number;
   now?: () => Date;
 };
 
@@ -112,9 +113,21 @@ export function createInMemoryServiceContainer(
   const workerRegistry = createWorkerRegistry({
     repositories,
     eventBus,
+    onWorkersExpired(workers) {
+      for (const worker of workers) {
+        remoteProvider.interruptWorkerSession({
+          workerId: worker.id,
+          workerSessionId: worker.sessionId,
+          message: `Remote worker ${worker.id} expired after heartbeat timeout.`
+        });
+      }
+    },
     ...(options.now ? { now: options.now } : {}),
     ...(options.workerStaleTimeoutMs
       ? { staleAfterMs: options.workerStaleTimeoutMs }
+      : {}),
+    ...(options.workerSweepIntervalMs
+      ? { sweepIntervalMs: options.workerSweepIntervalMs }
       : {})
   });
   const daemonGateway = createDaemonGateway({
@@ -253,15 +266,24 @@ export async function createServiceContainer(env: AppEnv): Promise<ServiceContai
       rootDir: env.CHECKPOINT_ROOT
     })
   });
-  const workerRegistry = createWorkerRegistry({
-    repositories,
-    eventBus,
-    staleAfterMs: env.MYCELIUM_WORKER_STALE_TIMEOUT_MS
-  });
   const remoteProvider = new RemoteProvider({
     fallbackProvider: new LocalDockerProvider(
       env.SANDBOX_IMAGE ? { image: env.SANDBOX_IMAGE } : {}
     )
+  });
+  const workerRegistry = createWorkerRegistry({
+    repositories,
+    eventBus,
+    staleAfterMs: env.MYCELIUM_WORKER_STALE_TIMEOUT_MS,
+    onWorkersExpired(workers) {
+      for (const worker of workers) {
+        remoteProvider.interruptWorkerSession({
+          workerId: worker.id,
+          workerSessionId: worker.sessionId,
+          message: `Remote worker ${worker.id} expired after heartbeat timeout.`
+        });
+      }
+    }
   });
   const executionService = createExecutionService({
     repositories,

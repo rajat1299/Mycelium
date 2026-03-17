@@ -128,6 +128,14 @@ export type AssignStepToWorkerInput = {
   updatedAt: string;
 };
 
+export type ReleaseStepWorkerAssignmentInput = {
+  stepId: string;
+  workerId: string;
+  workerSessionId: string;
+  attemptId: string;
+  updatedAt: string;
+};
+
 export type UpdateRunStatusInput = {
   runId: string;
   status: RunRow["status"];
@@ -654,6 +662,32 @@ export class RunRepository {
 
       return mapRunStepRow(current);
     });
+  }
+
+  async releaseStepWorkerAssignment(
+    input: ReleaseStepWorkerAssignmentInput
+  ): Promise<StoredRunStep | null> {
+    const [updated] = await this.db
+      .update(runSteps)
+      .set({
+        executionTarget: null,
+        remoteWorkerId: null,
+        remoteWorkerSessionId: null,
+        remoteExecutionAttemptId: null,
+        remoteAssignedAt: null,
+        updatedAt: new Date(input.updatedAt)
+      })
+      .where(
+        and(
+          eq(runSteps.id, input.stepId),
+          eq(runSteps.remoteWorkerId, input.workerId),
+          eq(runSteps.remoteWorkerSessionId, input.workerSessionId),
+          eq(runSteps.remoteExecutionAttemptId, input.attemptId)
+        )
+      )
+      .returning();
+
+    return updated ? mapRunStepRow(updated) : null;
   }
 
   async updateApprovalResolutionLifecycle(
