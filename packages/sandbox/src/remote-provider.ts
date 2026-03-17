@@ -25,7 +25,6 @@ type PendingAttempt = {
   resolve: (result: SandboxExecutionResult) => void;
   reject: (error: Error) => void;
   artifactPaths: Set<string>;
-  uploadedArtifactCount: number;
   checkpointUploaded: boolean;
   terminalEvent: DaemonTerminalEvent | null;
 };
@@ -106,7 +105,6 @@ export class RemoteProvider implements SandboxProvider {
         resolve,
         reject,
         artifactPaths: new Set<string>(),
-        uploadedArtifactCount: 0,
         checkpointUploaded: false,
         terminalEvent: null
       });
@@ -128,7 +126,6 @@ export class RemoteProvider implements SandboxProvider {
     }
 
     pending.artifactPaths.add(event.artifact.relativePath);
-    pending.uploadedArtifactCount += 1;
     this.maybeResolveAttempt(event.attemptId);
   }
 
@@ -205,7 +202,7 @@ export class RemoteProvider implements SandboxProvider {
 
     if (
       terminal.status === "completed" &&
-      pending.uploadedArtifactCount < terminal.expectedArtifactCount
+      pending.artifactPaths.size < terminal.expectedArtifactCount
     ) {
       return;
     }
