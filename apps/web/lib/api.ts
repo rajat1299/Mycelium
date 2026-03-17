@@ -13,6 +13,7 @@ import {
   OutcomeSchema,
   PlanSchema,
   ProviderCatalogSchema,
+  RemoteWorkerSchema,
   ResumeRunResponseSchema,
   RunDetailSchema,
   RunLogListResponseSchema,
@@ -26,7 +27,8 @@ import {
   type ArtifactLineageEdge,
   type CheckpointDetail,
   type CheckpointSummary,
-  type Outcome
+  type Outcome,
+  type RemoteWorker
 } from "@computer-oss/protocol";
 import { z } from "zod";
 
@@ -60,6 +62,10 @@ const AuthProfileListEnvelopeSchema = z.object({
 
 const RouterPolicyResponseEnvelopeSchema = z.object({
   policy: z.unknown().nullable()
+});
+
+const WorkerListEnvelopeSchema = z.object({
+  workers: z.array(z.unknown())
 });
 
 export async function listOutcomes(workspaceId: string): Promise<Outcome[]> {
@@ -457,6 +463,29 @@ export async function listApprovals(workspaceId: string): Promise<Approval[]> {
     );
 
     return parsed.approvals.map((approval) => ApprovalSchema.parse(approval));
+  } catch {
+    return [];
+  }
+}
+
+export async function listWorkers(workspaceId: string): Promise<RemoteWorker[]> {
+  try {
+    const response = await fetch(
+      `${getControlPlaneBaseUrl()}/api/workers?workspaceId=${encodeURIComponent(workspaceId)}`,
+      {
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const parsed = await parseJson(response, (value) =>
+      WorkerListEnvelopeSchema.parse(value)
+    );
+
+    return parsed.workers.map((worker) => RemoteWorkerSchema.parse(worker));
   } catch {
     return [];
   }

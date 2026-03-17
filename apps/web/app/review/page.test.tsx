@@ -119,4 +119,53 @@ describe("ReviewPage", () => {
       ]
     });
   });
+
+  it("keeps the review desk seeded when the blocked approval came from a remote worker run", async () => {
+    mocks.listApprovals.mockResolvedValue([
+      {
+        id: "approval_remote",
+        workspaceId: "ws_default",
+        outcomeId: "outcome_2",
+        runId: "run_remote",
+        stepId: "step_remote",
+        status: "pending",
+        kind: "output_review_required",
+        title: "Review remote result",
+        summary: "Inspect the remote final artifact before marking the run complete.",
+        instruction: "Approve to complete the run or reject to fail it.",
+        artifactIds: ["artifact_remote"],
+        requestedAt: "2026-03-17T00:00:00.000Z",
+        resolvedAt: null,
+        resolution: null,
+        resolutionNote: null
+      }
+    ]);
+    mocks.getRunArtifacts.mockResolvedValue([
+      {
+        id: "artifact_remote",
+        outcomeId: "outcome_2",
+        runId: "run_remote",
+        stepId: "step_remote",
+        kind: "result",
+        relativePath: "artifacts/remote-result.md",
+        size: 512,
+        metadata: {
+          workerId: "worker_1"
+        },
+        createdAt: "2026-03-17T00:00:01.000Z"
+      }
+    ]);
+
+    render(await ReviewPage());
+
+    expect(screen.getByTestId("review-queue")).toHaveTextContent("Review remote result");
+    expect(observedArtifactMap).toEqual({
+      run_remote: [
+        expect.objectContaining({
+          id: "artifact_remote",
+          relativePath: "artifacts/remote-result.md"
+        })
+      ]
+    });
+  });
 });

@@ -6,6 +6,8 @@ import type {
   Artifact,
   ArtifactLineageEdge,
   AuditEvent,
+  RemoteStepLifecycleEventData,
+  RemoteWorker,
   CheckpointDetail,
   CheckpointSummary,
   AuthProfile,
@@ -24,6 +26,7 @@ import { ArtifactList } from "./artifact-list";
 import { Badge } from "../ui/badge";
 import { CheckpointDetailCard } from "./checkpoint-detail-card";
 import { CheckpointTimeline } from "./checkpoint-timeline";
+import { RemoteWorkerPanel } from "./remote-worker-panel";
 import { RunLogPanel } from "./run-log-panel";
 import { RunTimeline } from "./run-timeline";
 
@@ -35,6 +38,7 @@ type ExecutionConsoleProps = {
   initialPendingApprovals?: Approval[];
   initialLineageEdges?: ArtifactLineageEdge[];
   initialAuthProfiles?: AuthProfile[];
+  initialWorkers?: RemoteWorker[];
   initialCheckpoints?: CheckpointSummary[];
   initialSelectedCheckpoint?: CheckpointDetail | null;
   initialAuditEvents?: AuditEvent[];
@@ -46,6 +50,8 @@ type ExecutionConsoleState = {
   artifacts: Artifact[];
   logs: RunLogData[];
   pendingApprovals: Approval[];
+  workers: RemoteWorker[];
+  remoteStepStates: Record<string, RemoteStepLifecycleEventData>;
   checkpoints: CheckpointSummary[];
   selectedCheckpointId: string | null;
   checkpointDetailsById: Record<string, CheckpointDetail>;
@@ -60,6 +66,7 @@ type ExecutionConsoleState = {
 const EMPTY_APPROVALS: Approval[] = [];
 const EMPTY_LINEAGE_EDGES: ArtifactLineageEdge[] = [];
 const EMPTY_AUTH_PROFILES: AuthProfile[] = [];
+const EMPTY_WORKERS: RemoteWorker[] = [];
 const EMPTY_CHECKPOINTS: CheckpointSummary[] = [];
 const EMPTY_AUDIT_EVENTS: AuditEvent[] = [];
 
@@ -136,11 +143,87 @@ function sortAuditEvents(events: AuditEvent[]) {
   });
 }
 
+function sortWorkers(workers: RemoteWorker[]) {
+  return [...workers].sort((left, right) => {
+    const updatedDelta = right.updatedAt.localeCompare(left.updatedAt);
+
+    if (updatedDelta !== 0) {
+      return updatedDelta;
+    }
+
+    return left.label.localeCompare(right.label);
+  });
+}
+
+function shouldReplaceWorker(current: RemoteWorker, incoming: RemoteWorker) {
+  const updatedDelta = incoming.updatedAt.localeCompare(current.updatedAt);
+
+  if (updatedDelta !== 0) {
+    return updatedDelta > 0;
+  }
+
+  const heartbeatDelta = incoming.health.lastHeartbeatAt.localeCompare(
+    current.health.lastHeartbeatAt
+  );
+
+  if (heartbeatDelta !== 0) {
+    return heartbeatDelta > 0;
+  }
+
+  return incoming.connectedAt.localeCompare(current.connectedAt) >= 0;
+}
+
+function upsertWorker(workers: RemoteWorker[], incoming: RemoteWorker) {
+  const existing = workers.find((worker) => worker.id === incoming.id);
+
+  if (!existing) {
+    return sortWorkers([incoming, ...workers]);
+  }
+
+  if (!shouldReplaceWorker(existing, incoming)) {
+    return sortWorkers(workers);
+  }
+
+  return sortWorkers(
+    workers.map((worker) => (worker.id === incoming.id ? incoming : worker))
+  );
+}
+
+function shouldReplaceRemoteStepState(
+  current: RemoteStepLifecycleEventData,
+  incoming: RemoteStepLifecycleEventData
+) {
+  const occurredDelta = incoming.occurredAt.localeCompare(current.occurredAt);
+
+  if (occurredDelta !== 0) {
+    return occurredDelta > 0;
+  }
+
+  return incoming.assignment.assignedAt.localeCompare(current.assignment.assignedAt) >= 0;
+}
+
+function upsertRemoteStepState(
+  current: Record<string, RemoteStepLifecycleEventData>,
+  incoming: RemoteStepLifecycleEventData
+) {
+  const existing = current[incoming.stepId];
+
+  if (existing && !shouldReplaceRemoteStepState(existing, incoming)) {
+    return current;
+  }
+
+  return {
+    ...current,
+    [incoming.stepId]: incoming
+  };
+}
+
 function buildInitialState(
   initialRun: RunDetail | null,
   initialArtifacts: Artifact[],
   initialLogs: RunLogData[],
   initialPendingApprovals: Approval[],
+  initialWorkers: RemoteWorker[],
   initialCheckpoints: CheckpointSummary[],
   initialSelectedCheckpoint: CheckpointDetail | null,
   initialAuditEvents: AuditEvent[]
@@ -158,6 +241,8 @@ function buildInitialState(
     artifacts: sortArtifacts(initialArtifacts),
     logs: sortLogs(initialLogs),
     pendingApprovals: initialPendingApprovals,
+    workers: sortWorkers(initialWorkers),
+    remoteStepStates: {},
     checkpoints: orderedCheckpoints,
     selectedCheckpointId,
     checkpointDetailsById: initialSelectedCheckpoint
@@ -192,6 +277,7 @@ export function ExecutionConsole({
   initialPendingApprovals = EMPTY_APPROVALS,
   initialLineageEdges = EMPTY_LINEAGE_EDGES,
   initialAuthProfiles = EMPTY_AUTH_PROFILES,
+  initialWorkers = EMPTY_WORKERS,
   initialCheckpoints = EMPTY_CHECKPOINTS,
   initialSelectedCheckpoint = null,
   initialAuditEvents = EMPTY_AUDIT_EVENTS
@@ -202,6 +288,7 @@ export function ExecutionConsole({
       initialArtifacts,
       initialLogs,
       initialPendingApprovals,
+      initialWorkers,
       initialCheckpoints,
       initialSelectedCheckpoint,
       initialAuditEvents
@@ -399,6 +486,7 @@ export function ExecutionConsole({
         initialArtifacts,
         initialLogs,
         initialPendingApprovals,
+        initialWorkers,
         initialCheckpoints,
         initialSelectedCheckpoint,
         initialAuditEvents
@@ -409,6 +497,7 @@ export function ExecutionConsole({
     initialArtifacts,
     initialLogs,
     initialPendingApprovals,
+    initialWorkers,
     initialCheckpoints,
     initialSelectedCheckpoint,
     initialAuditEvents
@@ -477,6 +566,9 @@ export function ExecutionConsole({
                 current.selectedRunId === event.data.id ? current.artifacts : [],
               logs: current.selectedRunId === event.data.id ? current.logs : [],
               pendingApprovals: current.pendingApprovals,
+              workers: current.workers,
+              remoteStepStates:
+                current.selectedRunId === event.data.id ? current.remoteStepStates : {},
               checkpoints: current.selectedRunId === event.data.id ? current.checkpoints : [],
               selectedCheckpointId:
                 current.selectedRunId === event.data.id
@@ -569,6 +661,30 @@ export function ExecutionConsole({
             };
           }
 
+          if (
+            event.type === "worker.connected" ||
+            event.type === "worker.disconnected"
+          ) {
+            return {
+              ...current,
+              workers: upsertWorker(current.workers, event.data)
+            };
+          }
+
+          if (event.type === "remote.step.updated") {
+            if (!current.selectedRunId || event.data.runId !== current.selectedRunId) {
+              return current;
+            }
+
+            return {
+              ...current,
+              remoteStepStates: upsertRemoteStepState(
+                current.remoteStepStates,
+                event.data
+              )
+            };
+          }
+
           if (event.type === "run.interrupted") {
             if (
               !current.currentRun ||
@@ -649,6 +765,13 @@ export function ExecutionConsole({
         initialRun={state.currentRun}
         selectedRunId={state.selectedRunId}
         authProfiles={initialAuthProfiles}
+        remoteStepStates={state.remoteStepStates}
+      />
+      <RemoteWorkerPanel
+        run={state.currentRun}
+        workers={state.workers}
+        remoteStepStates={state.remoteStepStates}
+        statusMessage={state.resumeStatusMessage}
       />
       {currentPendingApproval ? (
         <section className="rounded-[2rem] border border-amber-200/80 bg-amber-50/90 p-6 shadow-panel">

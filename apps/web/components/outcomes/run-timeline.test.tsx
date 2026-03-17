@@ -169,4 +169,60 @@ describe("RunTimeline routing", () => {
 
     expect(screen.getByText("running")).toBeInTheDocument();
   });
+
+  it("shows remote worker assignment and remote lifecycle state for a step", () => {
+    render(
+      <RunTimeline
+        outcomeId="outcome_123"
+        initialRun={{
+          id: "run_123",
+          outcomeId: "outcome_123",
+          planId: "plan_outcome_123",
+          status: "running",
+          createdAt: "2026-03-17T00:00:00.000Z",
+          updatedAt: "2026-03-17T00:01:00.000Z",
+          steps: [
+            {
+              id: "step_remote",
+              runId: "run_123",
+              planNodeId: "plan_outcome_123:draft-brief",
+              title: "Draft brief",
+              kind: "task",
+              capability: "coding",
+              instruction: "Write the brief artifact.",
+              template: "draft_brief",
+              status: "claimed",
+              position: 0,
+              executionTarget: "remote_worker",
+              remoteWorkerId: "worker_1",
+              remoteWorkerSessionId: "worker_session_1",
+              remoteExecutionAttemptId: "attempt_1",
+              remoteAssignedAt: "2026-03-17T00:01:00.000Z",
+              createdAt: "2026-03-17T00:00:00.000Z",
+              updatedAt: "2026-03-17T00:01:00.000Z"
+            }
+          ]
+        }}
+        remoteStepStates={{
+          step_remote: {
+            runId: "run_123",
+            stepId: "step_remote",
+            status: "running",
+            assignment: {
+              executionTarget: "remote_worker",
+              workerId: "worker_1",
+              workerSessionId: "worker_session_1",
+              attemptId: "attempt_1",
+              assignedAt: "2026-03-17T00:01:00.000Z"
+            },
+            message: "Remote execution started",
+            occurredAt: "2026-03-17T00:02:00.000Z"
+          }
+        }}
+      />
+    );
+
+    expect(screen.getByText("worker_1")).toBeInTheDocument();
+    expect(screen.getByText("Remote execution started")).toBeInTheDocument();
+  });
 });

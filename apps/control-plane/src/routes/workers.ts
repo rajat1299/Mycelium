@@ -28,7 +28,17 @@ export function registerWorkerRoutes(
       return reply.code(400).send(errorResponse("workspaceId is required."));
     }
 
-    const workers = await options.workerRegistry.listWorkers(query.workspaceId);
+    const workers = [...(await options.workerRegistry.listWorkers(query.workspaceId))].sort(
+      (left, right) => {
+        const updatedDelta = right.updatedAt.localeCompare(left.updatedAt);
+
+        if (updatedDelta !== 0) {
+          return updatedDelta;
+        }
+
+        return left.id.localeCompare(right.id);
+      }
+    );
 
     return reply.code(200).send(
       WorkerListResponseSchema.parse({

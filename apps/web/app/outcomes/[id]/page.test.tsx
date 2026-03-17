@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   getRunLogs: vi.fn(),
   getRunArtifactLineage: vi.fn(),
   listApprovals: vi.fn(),
+  listWorkers: vi.fn(),
   listAuthProfiles: vi.fn(),
   createPlan: vi.fn(),
   createRun: vi.fn(),
@@ -44,6 +45,7 @@ let observedLineageEdges: ArtifactLineageEdge[] = [];
 let observedCheckpoints: CheckpointSummary[] = [];
 let observedSelectedCheckpoint: CheckpointDetail | null = null;
 let observedAuditEvents: AuditEvent[] = [];
+let observedWorkers: Array<{ id: string; label: string; availability: string }> = [];
 
 vi.mock("next/cache", () => ({
   revalidatePath: mocks.revalidatePath
@@ -84,6 +86,7 @@ vi.mock("../../../components/outcomes/execution-console", () => ({
     initialAuthProfiles,
     initialPendingApprovals = [],
     initialLineageEdges = [],
+    initialWorkers = [],
     initialCheckpoints = [],
     initialSelectedCheckpoint = null,
     initialAuditEvents = []
@@ -94,6 +97,7 @@ vi.mock("../../../components/outcomes/execution-console", () => ({
     initialAuthProfiles: Array<{ id: string; label: string }>;
     initialPendingApprovals?: Approval[];
     initialLineageEdges?: ArtifactLineageEdge[];
+    initialWorkers?: Array<{ id: string; label: string; availability: string }>;
     initialCheckpoints?: CheckpointSummary[];
     initialSelectedCheckpoint?: CheckpointDetail | null;
     initialAuditEvents?: AuditEvent[];
@@ -105,6 +109,7 @@ vi.mock("../../../components/outcomes/execution-console", () => ({
     observedAuthProfiles = initialAuthProfiles;
     observedPendingApprovals = initialPendingApprovals;
     observedLineageEdges = initialLineageEdges;
+    observedWorkers = initialWorkers;
     observedCheckpoints = initialCheckpoints;
     observedSelectedCheckpoint = initialSelectedCheckpoint;
     observedAuditEvents = initialAuditEvents;
@@ -153,6 +158,7 @@ vi.mock("../../../lib/api", () => ({
   getRunLogs: mocks.getRunLogs,
   getRunArtifactLineage: mocks.getRunArtifactLineage,
   listApprovals: mocks.listApprovals,
+  listWorkers: mocks.listWorkers,
   listAuthProfiles: mocks.listAuthProfiles
 }));
 
@@ -172,6 +178,7 @@ describe("OutcomeDetailPage", () => {
     observedCheckpoints = [];
     observedSelectedCheckpoint = null;
     observedAuditEvents = [];
+    observedWorkers = [];
     vi.clearAllMocks();
 
     mocks.getOutcome.mockResolvedValue({
@@ -332,6 +339,29 @@ describe("OutcomeDetailPage", () => {
         updatedAt: "2026-03-11T00:00:00.000Z"
       }
     ]);
+    mocks.listWorkers.mockResolvedValue([
+      {
+        id: "worker_1",
+        sessionId: "worker_session_1",
+        workspaceId: "ws_default",
+        label: "Primary remote worker",
+        daemonVersion: "1.0.0",
+        availability: "available",
+        capabilities: {
+          capabilityFamilies: ["coding", "terminal"],
+          supportsArtifacts: true,
+          supportsCheckpoints: true,
+          supportsLogs: true
+        },
+        health: {
+          status: "healthy",
+          lastHeartbeatAt: "2026-03-11T00:09:00.000Z"
+        },
+        connectedAt: "2026-03-11T00:08:00.000Z",
+        disconnectedAt: null,
+        updatedAt: "2026-03-11T00:09:00.000Z"
+      }
+    ]);
   });
 
   it("loads the latest persisted run when no runId query param is provided", async () => {
@@ -345,6 +375,7 @@ describe("OutcomeDetailPage", () => {
     expect(mocks.getLatestRun).toHaveBeenCalledWith("outcome_123");
     expect(mocks.getRun).not.toHaveBeenCalled();
     expect(mocks.listAuthProfiles).toHaveBeenCalledWith("ws_default");
+    expect(mocks.listWorkers).toHaveBeenCalledWith("ws_default");
     expect(mocks.listApprovals).toHaveBeenCalledWith("ws_default");
     expect(mocks.getRunArtifacts).toHaveBeenCalledWith("run_latest");
     expect(mocks.getRunArtifactLineage).toHaveBeenCalledWith("run_latest");
@@ -373,6 +404,13 @@ describe("OutcomeDetailPage", () => {
       expect.objectContaining({
         id: "profile_openai_primary",
         label: "OpenAI Primary"
+      })
+    ]);
+    expect(observedWorkers).toEqual([
+      expect.objectContaining({
+        id: "worker_1",
+        label: "Primary remote worker",
+        availability: "available"
       })
     ]);
     expect(observedPendingApprovals).toEqual([

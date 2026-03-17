@@ -45,7 +45,9 @@ async function buildRunDetail(
     return null;
   }
 
-  const steps = await repositories.runs.listSteps(run.id);
+  const steps = [...(await repositories.runs.listSteps(run.id))].sort(
+    (left, right) => left.position - right.position
+  );
 
   return RunDetailSchema.parse({
     ...run,

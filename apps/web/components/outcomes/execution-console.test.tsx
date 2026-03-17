@@ -118,7 +118,7 @@ describe("ExecutionConsole", () => {
       }
     });
 
-    expect(screen.getByText("queued")).toBeInTheDocument();
+    expect(screen.getAllByText("queued").length).toBeGreaterThan(0);
     expect(screen.getByText("artifacts/analyze-outcome.md")).toBeInTheDocument();
     expect(screen.getByText("Recovered log history is visible.")).toBeInTheDocument();
   });
@@ -244,6 +244,202 @@ describe("ExecutionConsole", () => {
     });
 
     expect(screen.queryByText("Blocked on review")).not.toBeInTheDocument();
+  });
+
+  it("shows remote worker state and updates it when worker lifecycle events arrive", () => {
+    render(
+      <ExecutionConsole
+        outcomeId="outcome_123"
+        initialRun={{
+          id: "run_123",
+          outcomeId: "outcome_123",
+          planId: "plan_outcome_123",
+          status: "running",
+          createdAt: "2026-03-17T00:00:00.000Z",
+          updatedAt: "2026-03-17T00:01:00.000Z",
+          steps: [
+            {
+              id: "step_remote",
+              runId: "run_123",
+              planNodeId: "plan_outcome_123:draft-brief",
+              title: "Draft brief",
+              kind: "task",
+              capability: "coding",
+              instruction: "Write the brief artifact.",
+              template: "draft_brief",
+              status: "claimed",
+              position: 0,
+              executionTarget: "remote_worker",
+              remoteWorkerId: "worker_1",
+              remoteWorkerSessionId: "worker_session_1",
+              remoteExecutionAttemptId: "attempt_1",
+              remoteAssignedAt: "2026-03-17T00:01:00.000Z",
+              createdAt: "2026-03-17T00:00:00.000Z",
+              updatedAt: "2026-03-17T00:01:00.000Z"
+            }
+          ]
+        }}
+        initialArtifacts={[]}
+        initialLogs={[]}
+        initialPendingApprovals={[]}
+        initialLineageEdges={[]}
+        initialWorkers={[
+          {
+            id: "worker_1",
+            sessionId: "worker_session_1",
+            workspaceId: "ws_default",
+            label: "Primary remote worker",
+            daemonVersion: "1.0.0",
+            availability: "available",
+            capabilities: {
+              capabilityFamilies: ["coding", "terminal"],
+              supportsArtifacts: true,
+              supportsCheckpoints: true,
+              supportsLogs: true
+            },
+            health: {
+              status: "healthy",
+              lastHeartbeatAt: "2026-03-17T00:01:00.000Z"
+            },
+            connectedAt: "2026-03-17T00:00:00.000Z",
+            disconnectedAt: null,
+            updatedAt: "2026-03-17T00:01:00.000Z"
+          }
+        ]}
+      />
+    );
+
+    expect(screen.getByText("Primary remote worker")).toBeInTheDocument();
+    expect(screen.getByText("available")).toBeInTheDocument();
+
+    act(() => {
+      for (const handler of eventStream.handlers) {
+        handler({
+          outcomeId: "outcome_123",
+          type: "worker.disconnected",
+          data: {
+            id: "worker_1",
+            sessionId: "worker_session_1",
+            workspaceId: "ws_default",
+            label: "Primary remote worker",
+            daemonVersion: "1.0.0",
+            availability: "offline",
+            capabilities: {
+              capabilityFamilies: ["coding", "terminal"],
+              supportsArtifacts: true,
+              supportsCheckpoints: true,
+              supportsLogs: true
+            },
+            health: {
+              status: "offline",
+              lastHeartbeatAt: "2026-03-17T00:02:00.000Z"
+            },
+            connectedAt: "2026-03-17T00:00:00.000Z",
+            disconnectedAt: "2026-03-17T00:02:00.000Z",
+            updatedAt: "2026-03-17T00:02:00.000Z"
+          }
+        });
+      }
+    });
+
+    expect(screen.getAllByText("offline").length).toBeGreaterThan(0);
+  });
+
+  it("ignores stale worker lifecycle events when a newer worker state is already visible", () => {
+    render(
+      <ExecutionConsole
+        outcomeId="outcome_123"
+        initialRun={{
+          id: "run_123",
+          outcomeId: "outcome_123",
+          planId: "plan_outcome_123",
+          status: "running",
+          createdAt: "2026-03-17T00:00:00.000Z",
+          updatedAt: "2026-03-17T00:01:00.000Z",
+          steps: [
+            {
+              id: "step_remote",
+              runId: "run_123",
+              planNodeId: "plan_outcome_123:draft-brief",
+              title: "Draft brief",
+              kind: "task",
+              capability: "coding",
+              instruction: "Write the brief artifact.",
+              template: "draft_brief",
+              status: "claimed",
+              position: 0,
+              executionTarget: "remote_worker",
+              remoteWorkerId: "worker_1",
+              remoteWorkerSessionId: "worker_session_1",
+              remoteExecutionAttemptId: "attempt_1",
+              remoteAssignedAt: "2026-03-17T00:01:00.000Z",
+              createdAt: "2026-03-17T00:00:00.000Z",
+              updatedAt: "2026-03-17T00:01:00.000Z"
+            }
+          ]
+        }}
+        initialArtifacts={[]}
+        initialLogs={[]}
+        initialPendingApprovals={[]}
+        initialLineageEdges={[]}
+        initialWorkers={[
+          {
+            id: "worker_1",
+            sessionId: "worker_session_1",
+            workspaceId: "ws_default",
+            label: "Primary remote worker",
+            daemonVersion: "1.0.0",
+            availability: "offline",
+            capabilities: {
+              capabilityFamilies: ["coding", "terminal"],
+              supportsArtifacts: true,
+              supportsCheckpoints: true,
+              supportsLogs: true
+            },
+            health: {
+              status: "offline",
+              lastHeartbeatAt: "2026-03-17T00:03:00.000Z"
+            },
+            connectedAt: "2026-03-17T00:00:00.000Z",
+            disconnectedAt: "2026-03-17T00:03:00.000Z",
+            updatedAt: "2026-03-17T00:03:00.000Z"
+          }
+        ]}
+      />
+    );
+
+    act(() => {
+      for (const handler of eventStream.handlers) {
+        handler({
+          outcomeId: "outcome_123",
+          type: "worker.connected",
+          data: {
+            id: "worker_1",
+            sessionId: "worker_session_1",
+            workspaceId: "ws_default",
+            label: "Primary remote worker",
+            daemonVersion: "1.0.0",
+            availability: "available",
+            capabilities: {
+              capabilityFamilies: ["coding", "terminal"],
+              supportsArtifacts: true,
+              supportsCheckpoints: true,
+              supportsLogs: true
+            },
+            health: {
+              status: "healthy",
+              lastHeartbeatAt: "2026-03-17T00:01:00.000Z"
+            },
+            connectedAt: "2026-03-17T00:00:00.000Z",
+            disconnectedAt: null,
+            updatedAt: "2026-03-17T00:01:00.000Z"
+          }
+        });
+      }
+    });
+
+    expect(screen.getAllByText("offline").length).toBeGreaterThan(0);
+    expect(screen.queryByText("healthy")).not.toBeInTheDocument();
   });
 
   it("adds live checkpoints and clears resume controls after a resume event arrives", async () => {

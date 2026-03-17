@@ -3,6 +3,7 @@
 import { startTransition, useEffect, useState } from "react";
 import type {
   AuthProfile,
+  RemoteStepLifecycleEventData,
   RunDetail,
   RunStep
 } from "@computer-oss/protocol";
@@ -19,6 +20,7 @@ type RunTimelineProps = {
   initialRun: RunDetail | null;
   selectedRunId?: string | null;
   authProfiles?: AuthProfile[];
+  remoteStepStates?: Record<string, RemoteStepLifecycleEventData>;
 };
 
 function sortSteps(steps: RunStep[]) {
@@ -69,7 +71,8 @@ export function RunTimeline({
   outcomeId,
   initialRun,
   selectedRunId = null,
-  authProfiles = []
+  authProfiles = [],
+  remoteStepStates = {}
 }: RunTimelineProps) {
   const [state, setState] = useState<RunTimelineState>({
     pinnedRunId: selectedRunId ?? initialRun?.id ?? null,
@@ -255,6 +258,33 @@ export function RunTimeline({
                   Position {step.position + 1}. Updated{" "}
                   {new Date(step.updatedAt).toLocaleTimeString()}.
                 </p>
+                {step.executionTarget === "remote_worker" ? (
+                  <div className="mt-3 space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="slate" size="sm">
+                        remote worker
+                      </Badge>
+                      {step.remoteWorkerId ? (
+                        <Badge variant="sky" size="sm">
+                          {step.remoteWorkerId}
+                        </Badge>
+                      ) : null}
+                      {remoteStepStates[step.id] ? (
+                        <Badge
+                          variant={statusVariant(remoteStepStates[step.id].status)}
+                          size="sm"
+                        >
+                          {remoteStepStates[step.id].status}
+                        </Badge>
+                      ) : null}
+                    </div>
+                    {remoteStepStates[step.id]?.message ? (
+                      <p className="text-sm leading-6 text-muted">
+                        {remoteStepStates[step.id]?.message}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
                 {step.routeStatus ? (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {step.routeProviderId ? (

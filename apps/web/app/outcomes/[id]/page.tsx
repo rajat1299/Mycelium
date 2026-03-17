@@ -19,7 +19,8 @@ import {
   getRunCheckpoints,
   getRunArtifacts,
   getRunLogs,
-  getRun
+  getRun,
+  listWorkers
 } from "../../../lib/api";
 
 export const dynamic = "force-dynamic";
@@ -61,8 +62,9 @@ export default async function OutcomeDetailPage({
 
   const authProfilesPromise = listAuthProfiles(outcome.workspaceId);
   const approvalsPromise = listApprovals(outcome.workspaceId);
+  const workersPromise = listWorkers(outcome.workspaceId);
   const checkpointsPromise = run ? getRunCheckpoints(run.id) : Promise.resolve([]);
-  const [artifacts, logs, authProfiles, lineageEdges, approvals, checkpoints, auditEvents] = run
+  const [artifacts, logs, authProfiles, lineageEdges, approvals, checkpoints, auditEvents, workers] = run
     ? await Promise.all([
         getRunArtifacts(run.id),
         getRunLogs(run.id),
@@ -70,9 +72,19 @@ export default async function OutcomeDetailPage({
         getRunArtifactLineage(run.id),
         approvalsPromise,
         checkpointsPromise,
-        getRunAudit(run.id)
+        getRunAudit(run.id),
+        workersPromise
       ])
-    : [[], [], await authProfilesPromise, [], await approvalsPromise, [], []];
+    : [
+        [],
+        [],
+        await authProfilesPromise,
+        [],
+        await approvalsPromise,
+        [],
+        [],
+        await workersPromise
+      ];
   const pendingApprovalsForRun = run
     ? approvals.filter((approval) => approval.runId === run.id)
     : [];
@@ -159,6 +171,7 @@ export default async function OutcomeDetailPage({
             initialPendingApprovals={pendingApprovalsForRun}
             initialLineageEdges={lineageEdges}
             initialAuthProfiles={authProfiles}
+            initialWorkers={workers}
             initialCheckpoints={checkpoints}
             initialSelectedCheckpoint={selectedCheckpoint}
             initialAuditEvents={auditEvents}
