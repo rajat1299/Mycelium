@@ -242,6 +242,15 @@ describe("worker daemon routes", () => {
       expect.arrayContaining([
         expect.objectContaining({
           outcomeId: seeded.outcome.id,
+          type: "worker.connected",
+          data: expect.objectContaining({
+            id: "worker_1",
+            sessionId: "worker_session_1",
+            availability: "available"
+          })
+        }),
+        expect.objectContaining({
+          outcomeId: seeded.outcome.id,
           type: "remote.step.updated",
           data: expect.objectContaining({
             runId: "run_123",
@@ -272,6 +281,7 @@ describe("worker daemon routes", () => {
         exitCode: 0,
         stdoutSummary: "completed successfully",
         stderrSummary: "",
+        expectedArtifactCount: 1,
         finishedAt: "2026-03-16T10:05:00.000Z"
       }
     });
@@ -367,6 +377,20 @@ describe("worker daemon routes", () => {
         disconnectedAt: "2026-03-16T10:06:00.000Z"
       })
     });
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          outcomeId: seeded.outcome.id,
+          type: "worker.disconnected",
+          data: expect.objectContaining({
+            id: "worker_1",
+            sessionId: "worker_session_1",
+            availability: "offline",
+            disconnectedAt: "2026-03-16T10:06:00.000Z"
+          })
+        })
+      ])
+    );
 
     unsubscribe();
   });

@@ -88,6 +88,7 @@ export const DaemonTerminalEventSchema = DaemonEventBaseSchema.extend({
   exitCode: z.number().int(),
   stdoutSummary: z.string(),
   stderrSummary: z.string(),
+  expectedArtifactCount: z.number().int().nonnegative(),
   finishedAt: z.string().datetime()
 });
 

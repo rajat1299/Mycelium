@@ -119,6 +119,7 @@ describe("RemoteProvider", () => {
       exitCode: 0,
       stdoutSummary: "remote execution complete",
       stderrSummary: "",
+      expectedArtifactCount: 1,
       finishedAt: "2026-03-17T10:00:05.000Z"
     });
 
@@ -210,6 +211,99 @@ describe("RemoteProvider", () => {
 
     await expect(pendingRemote).rejects.toBeInstanceOf(
       RemoteExecutionInterruptedError
+    );
+  });
+
+  it("waits for the declared remote artifact uploads even when terminal and checkpoint arrive first", async () => {
+    const provider = new RemoteProvider();
+    const executePromise = provider.execute(createRemoteRequest());
+
+    provider.claimCommands({
+      workerId: "worker_1",
+      workerSessionId: "worker_session_1"
+    });
+
+    provider.recordCheckpointUpload({
+      type: "checkpoint",
+      workerId: "worker_1",
+      workerSessionId: "worker_session_1",
+      runId: "run_123",
+      stepId: "step_123",
+      attemptId: "attempt_1",
+      checkpoint: {
+        kind: "step_completed",
+        resumable: true,
+        createdAt: "2026-03-17T10:00:04.000Z",
+        payload: {
+          version: 1,
+          run: {
+            id: "run_123",
+            outcomeId: "outcome_123",
+            workspaceId: "ws_123",
+            status: "running"
+          },
+          steps: [
+            {
+              stepId: "step_123",
+              title: "Draft brief",
+              status: "completed"
+            }
+          ],
+          readyStepIds: [],
+          blockedStepIds: [],
+          workspacePaths: {
+            inputDir: "/tmp/mycelium/run_123/input",
+            logsDir: "/tmp/mycelium/run_123/logs",
+            artifactsDir: "/tmp/mycelium/run_123/artifacts"
+          },
+          artifactIds: [],
+          latestAuditSequence: 0
+        }
+      }
+    });
+
+    provider.completeAttempt({
+      type: "terminal",
+      workerId: "worker_1",
+      workerSessionId: "worker_session_1",
+      runId: "run_123",
+      stepId: "step_123",
+      attemptId: "attempt_1",
+      status: "completed",
+      exitCode: 0,
+      stdoutSummary: "remote execution complete",
+      stderrSummary: "",
+      expectedArtifactCount: 1,
+      finishedAt: "2026-03-17T10:00:05.000Z"
+    });
+
+    let resolved = false;
+    void executePromise.then(() => {
+      resolved = true;
+    });
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+
+    provider.recordArtifactUpload({
+      type: "artifact",
+      workerId: "worker_1",
+      workerSessionId: "worker_session_1",
+      runId: "run_123",
+      stepId: "step_123",
+      attemptId: "attempt_1",
+      artifact: {
+        kind: "brief",
+        relativePath: "artifacts/brief.md",
+        size: 20,
+        contentBase64: Buffer.from("# Draft brief\n").toString("base64"),
+        createdAt: "2026-03-17T10:00:06.000Z"
+      }
+    });
+
+    await expect(executePromise).resolves.toEqual(
+      expect.objectContaining({
+        producedArtifactPaths: ["artifacts/brief.md"]
+      })
     );
   });
 });

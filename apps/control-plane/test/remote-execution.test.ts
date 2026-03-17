@@ -242,6 +242,7 @@ describe("remote execution", () => {
         exitCode: 0,
         stdoutSummary: "remote execution complete",
         stderrSummary: "",
+        expectedArtifactCount: 1,
         finishedAt: "2026-03-17T10:05:00.000Z"
       }
     });
@@ -545,5 +546,134 @@ describe("remote execution", () => {
         latestCheckpointId: expect.any(String)
       })
     );
+  });
+
+  it("does not complete a remote step until the declared artifact uploads have persisted", async () => {
+    const services = createInMemoryServiceContainer({
+      workerStaleTimeoutMs: 24 * 60 * 60 * 1000
+    });
+    const app = buildApp({ services });
+    appsToClose.add(app);
+    const outcome = await seedOutcomePlanAndWorker(services);
+
+    const created = await app.inject({
+      method: "POST",
+      url: `/api/outcomes/${outcome.id}/runs`,
+      payload: {
+        planId: "plan_outcome_123"
+      }
+    });
+
+    expect(created.statusCode).toBe(201);
+    const run = created.json();
+    const claimedCommands = await claimCommandsEventually(app, services);
+    const [step] = await services.repositories.runs.listSteps(run.id);
+
+    expect(claimedCommands.statusCode).toBe(200);
+    expect(step?.remoteExecutionAttemptId).toBeTruthy();
+
+    await app.inject({
+      method: "POST",
+      url: "/api/worker-daemon/events",
+      headers: daemonHeaders(services.daemonAuthToken),
+      payload: {
+        type: "checkpoint",
+        workerId: "worker_1",
+        workerSessionId: "worker_session_1",
+        runId: run.id,
+        stepId: step!.id,
+        attemptId: step!.remoteExecutionAttemptId,
+        checkpoint: {
+          kind: "step_completed",
+          resumable: true,
+          createdAt: "2026-03-17T10:04:00.000Z",
+          payload: {
+            version: 1,
+            run: {
+              id: run.id,
+              outcomeId: outcome.id,
+              workspaceId: outcome.workspaceId,
+              status: "running"
+            },
+            steps: [
+              {
+                stepId: step!.id,
+                title: step!.title,
+                status: "completed"
+              }
+            ],
+            readyStepIds: [],
+            blockedStepIds: [],
+            workspacePaths: {
+              inputDir: `/tmp/input/${run.id}`,
+              logsDir: `/tmp/logs/${run.id}`,
+              artifactsDir: `/tmp/artifacts/${run.id}`
+            },
+            artifactIds: [],
+            latestAuditSequence: 0
+          }
+        }
+      }
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/worker-daemon/events",
+      headers: daemonHeaders(services.daemonAuthToken),
+      payload: {
+        type: "terminal",
+        workerId: "worker_1",
+        workerSessionId: "worker_session_1",
+        runId: run.id,
+        stepId: step!.id,
+        attemptId: step!.remoteExecutionAttemptId,
+        status: "completed",
+        exitCode: 0,
+        stdoutSummary: "remote execution complete",
+        stderrSummary: "",
+        expectedArtifactCount: 1,
+        finishedAt: "2026-03-17T10:05:00.000Z"
+      }
+    });
+
+    await expect(services.repositories.runs.getById(run.id)).resolves.toEqual(
+      expect.objectContaining({
+        status: "running"
+      })
+    );
+
+    await app.inject({
+      method: "POST",
+      url: "/api/worker-daemon/events",
+      headers: daemonHeaders(services.daemonAuthToken),
+      payload: {
+        type: "artifact",
+        workerId: "worker_1",
+        workerSessionId: "worker_session_1",
+        runId: run.id,
+        stepId: step!.id,
+        attemptId: step!.remoteExecutionAttemptId,
+        artifact: {
+          kind: "brief",
+          relativePath: "artifacts/brief.md",
+          size: 14,
+          contentBase64: Buffer.from("# Launch brief\n").toString("base64"),
+          createdAt: "2026-03-17T10:06:00.000Z"
+        }
+      }
+    });
+
+    await services.executionService.waitForRun(run.id);
+    await expect(services.repositories.runs.getById(run.id)).resolves.toEqual(
+      expect.objectContaining({
+        status: "completed"
+      })
+    );
+    await expect(services.repositories.artifacts.listByRun(run.id)).resolves.toEqual([
+      expect.objectContaining({
+        stepId: step!.id,
+        relativePath: "artifacts/brief.md"
+      })
+    ]);
   });
 });

@@ -40,6 +40,23 @@ export function createWorkerRegistry(options: WorkerRegistryOptions) {
   const sweepIntervalMs =
     options.sweepIntervalMs ?? Math.max(1_000, Math.floor(staleAfterMs / 2));
 
+  async function publishWorkerEvent(
+    type: "worker.connected" | "worker.disconnected",
+    worker: RemoteWorker
+  ) {
+    const outcomes = await options.repositories.outcomes.listByWorkspace(
+      worker.workspaceId
+    );
+
+    for (const outcome of outcomes) {
+      options.eventBus.publish({
+        outcomeId: outcome.id,
+        type,
+        data: worker
+      });
+    }
+  }
+
   async function cleanupStaleWorkers(): Promise<RemoteWorker[]> {
     const currentTime = now();
     const staleBefore = new Date(currentTime.getTime() - staleAfterMs).toISOString();
@@ -60,6 +77,9 @@ export function createWorkerRegistry(options: WorkerRegistryOptions) {
       const staleWorkers = await cleanupStaleWorkers();
 
       if (staleWorkers.length > 0) {
+        for (const worker of staleWorkers) {
+          await publishWorkerEvent("worker.disconnected", worker);
+        }
         await options.onWorkersExpired?.(staleWorkers);
       }
 
@@ -84,7 +104,7 @@ export function createWorkerRegistry(options: WorkerRegistryOptions) {
         input.workerId
       );
 
-      return options.repositories.remoteWorkers.upsert({
+      const worker = await options.repositories.remoteWorkers.upsert({
         id: input.workerId,
         sessionId: input.workerSessionId,
         workspaceId: input.workspaceId,
@@ -103,6 +123,16 @@ export function createWorkerRegistry(options: WorkerRegistryOptions) {
             ? existing.updatedAt
             : input.connectedAt
       });
+
+      if (
+        !existing ||
+        existing.sessionId !== worker.sessionId ||
+        existing.availability === "offline"
+      ) {
+        await publishWorkerEvent("worker.connected", worker);
+      }
+
+      return worker;
     },
 
     async recordHeartbeat(input: RemoteWorkerHeartbeat): Promise<RemoteWorker | null> {
@@ -116,7 +146,7 @@ export function createWorkerRegistry(options: WorkerRegistryOptions) {
     },
 
     async disconnectWorker(input: DisconnectWorkerInput): Promise<RemoteWorker | null> {
-      return options.repositories.remoteWorkers.updateSessionState({
+      const worker = await options.repositories.remoteWorkers.updateSessionState({
         workerId: input.workerId,
         workerSessionId: input.workerSessionId,
         availability: "offline",
@@ -125,6 +155,12 @@ export function createWorkerRegistry(options: WorkerRegistryOptions) {
         disconnectedAt: input.disconnectedAt,
         updatedAt: input.disconnectedAt
       });
+
+      if (worker) {
+        await publishWorkerEvent("worker.disconnected", worker);
+      }
+
+      return worker;
     },
 
     async setWorkerAvailability(

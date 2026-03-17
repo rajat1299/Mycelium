@@ -150,6 +150,7 @@ describe("daemon protocol contracts", () => {
       exitCode: 0,
       stdoutSummary: "Step completed successfully.",
       stderrSummary: "",
+      expectedArtifactCount: 1,
       finishedAt: "2026-03-16T12:00:14.000Z"
     });
 
