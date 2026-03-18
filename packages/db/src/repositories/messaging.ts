@@ -210,6 +210,12 @@ export class MessagingRepository {
         );
       }
 
+      if (connection.externalWorkspaceId !== input.externalWorkspaceId) {
+        throw new Error(
+          `Messaging connection ${input.connectionId} is authenticated to external workspace ${connection.externalWorkspaceId}, not ${input.externalWorkspaceId}.`
+        );
+      }
+
       const outcome = outcomeRows.find((row) => row.id === input.outcomeId);
 
       if (!outcome) {

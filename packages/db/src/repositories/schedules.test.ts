@@ -143,4 +143,90 @@ describe("ScheduleRepository", () => {
       })
     ]);
   });
+
+  it("rejects schedule fires that point at outcomes or runs outside the schedule workspace", async () => {
+    const { db, state } = createRepositoryTestDatabase();
+    const repository = new ScheduleRepository(db as never);
+
+    await repository.create({
+      id: "schedule_1",
+      workspaceId: "ws_default",
+      title: "Morning workspace brief",
+      prompt: "Create the daily workspace briefing.",
+      status: "active",
+      trigger: {
+        kind: "cron",
+        expression: "0 9 * * 1-5",
+        timezone: "America/Chicago"
+      },
+      outcomeMode: "create_outcome",
+      dispatchMode: "create_run",
+      nextFireAt: "2026-03-18T14:00:00.000Z",
+      lastFiredAt: null,
+      validationDiagnostics: [],
+      createdAt: "2026-03-17T12:00:00.000Z",
+      updatedAt: "2026-03-17T12:00:00.000Z"
+    });
+
+    state.outcomes.push({
+      id: "outcome_default",
+      workspaceId: "ws_default",
+      userId: "user_123",
+      prompt: "Create the workspace brief.",
+      source: "schedule",
+      status: "queued",
+      createdAt: new Date("2026-03-17T12:00:00.000Z"),
+      updatedAt: new Date("2026-03-17T12:00:00.000Z")
+    });
+    state.outcomes.push({
+      id: "outcome_other",
+      workspaceId: "ws_other",
+      userId: "user_456",
+      prompt: "Create a different workspace brief.",
+      source: "schedule",
+      status: "queued",
+      createdAt: new Date("2026-03-17T12:01:00.000Z"),
+      updatedAt: new Date("2026-03-17T12:01:00.000Z")
+    });
+    state.outcomeRuns.push({
+      id: "run_other",
+      outcomeId: "outcome_other",
+      planId: "plan_outcome_other",
+      status: "queued",
+      latestCheckpointId: null,
+      resumable: false,
+      createdAt: new Date("2026-03-17T12:02:00.000Z"),
+      updatedAt: new Date("2026-03-17T12:02:00.000Z")
+    });
+
+    await expect(
+      repository.recordFire({
+        id: "schedule_fire_cross_workspace",
+        scheduleId: "schedule_1",
+        occurrenceKey: "schedule_1:2026-03-18T14:00:00.000Z:cross-workspace",
+        scheduledFor: "2026-03-18T14:00:00.000Z",
+        firedAt: "2026-03-18T14:00:02.000Z",
+        status: "triggered",
+        outcomeId: "outcome_other",
+        runId: null,
+        errorMessage: null
+      })
+    ).rejects.toThrow("Outcome outcome_other belongs to ws_other, not ws_default.");
+
+    await expect(
+      repository.recordFire({
+        id: "schedule_fire_run_mismatch",
+        scheduleId: "schedule_1",
+        occurrenceKey: "schedule_1:2026-03-18T14:00:00.000Z:run-mismatch",
+        scheduledFor: "2026-03-18T14:00:00.000Z",
+        firedAt: "2026-03-18T14:00:03.000Z",
+        status: "triggered",
+        outcomeId: "outcome_default",
+        runId: "run_other",
+        errorMessage: null
+      })
+    ).rejects.toThrow(
+      "Run run_other belongs to outcome outcome_other, not outcome_default."
+    );
+  });
 });

@@ -1647,6 +1647,35 @@ function createInMemoryRepositoriesState() {
         throw new Error(`Schedule ${input.scheduleId} does not exist.`);
       }
 
+      const outcome =
+        input.outcomeId === null ? null : outcomes.get(input.outcomeId);
+
+      if (input.outcomeId !== null && !outcome) {
+        throw new Error(`Outcome ${input.outcomeId} does not exist.`);
+      }
+
+      if (outcome && outcome.workspaceId !== schedule.workspaceId) {
+        throw new Error(
+          `Outcome ${input.outcomeId} belongs to ${outcome.workspaceId}, not ${schedule.workspaceId}.`
+        );
+      }
+
+      const run = input.runId === null ? null : runsById.get(input.runId);
+
+      if (input.runId !== null && !run) {
+        throw new Error(`Run ${input.runId} does not exist.`);
+      }
+
+      if (run && input.outcomeId === null) {
+        throw new Error(`Schedule fire ${input.id} cannot record run ${input.runId} without an outcome.`);
+      }
+
+      if (run && run.outcomeId !== input.outcomeId) {
+        throw new Error(
+          `Run ${input.runId} belongs to outcome ${run.outcomeId}, not ${input.outcomeId}.`
+        );
+      }
+
       const fire: StoredScheduleFire = { ...input };
       scheduleFiresById.set(fire.id, fire);
 
@@ -1722,6 +1751,12 @@ function createInMemoryRepositoriesState() {
       ) {
         throw new Error(
           `Messaging connection ${input.connectionId} does not belong to ${input.workspaceId}/${input.channel}.`
+        );
+      }
+
+      if (connection.externalWorkspaceId !== input.externalWorkspaceId) {
+        throw new Error(
+          `Messaging connection ${input.connectionId} is authenticated to external workspace ${connection.externalWorkspaceId}, not ${input.externalWorkspaceId}.`
         );
       }
 

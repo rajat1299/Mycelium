@@ -1,10 +1,16 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type {
   Schedule,
   ScheduleFireSummary
 } from "@computer-oss/protocol";
 import type { DatabaseClient } from "../client";
-import { scheduleFires, schedules, workspaces } from "../schema";
+import {
+  outcomeRuns,
+  outcomes,
+  scheduleFires,
+  schedules,
+  workspaces
+} from "../schema";
 
 type ScheduleRow = typeof schedules.$inferSelect;
 type ScheduleFireRow = typeof scheduleFires.$inferSelect;
@@ -174,7 +180,12 @@ export class ScheduleRepository {
 
   async recordFire(input: RecordScheduleFireInput): Promise<StoredScheduleFire> {
     return this.db.transaction(async (transaction) => {
-      const existingRows = await transaction.select().from(scheduleFires);
+      const [existingRows, scheduleRows, outcomeRows, runRows] = await Promise.all([
+        transaction.select().from(scheduleFires),
+        transaction.select().from(schedules),
+        transaction.select().from(outcomes),
+        transaction.select().from(outcomeRuns)
+      ]);
       const existing = existingRows.find(
         (row) =>
           row.scheduleId === input.scheduleId && row.occurrenceKey === input.occurrenceKey
@@ -182,6 +193,44 @@ export class ScheduleRepository {
 
       if (existing) {
         return mapScheduleFireRow(existing);
+      }
+
+      const schedule = scheduleRows.find((row) => row.id === input.scheduleId);
+
+      if (!schedule) {
+        throw new Error(`Schedule ${input.scheduleId} does not exist.`);
+      }
+
+      const outcome =
+        input.outcomeId === null
+          ? null
+          : outcomeRows.find((row) => row.id === input.outcomeId);
+
+      if (input.outcomeId !== null && !outcome) {
+        throw new Error(`Outcome ${input.outcomeId} does not exist.`);
+      }
+
+      if (outcome && outcome.workspaceId !== schedule.workspaceId) {
+        throw new Error(
+          `Outcome ${input.outcomeId} belongs to ${outcome.workspaceId}, not ${schedule.workspaceId}.`
+        );
+      }
+
+      const run =
+        input.runId === null ? null : runRows.find((row) => row.id === input.runId);
+
+      if (input.runId !== null && !run) {
+        throw new Error(`Run ${input.runId} does not exist.`);
+      }
+
+      if (run && input.outcomeId === null) {
+        throw new Error(`Schedule fire ${input.id} cannot record run ${input.runId} without an outcome.`);
+      }
+
+      if (run && run.outcomeId !== input.outcomeId) {
+        throw new Error(
+          `Run ${input.runId} belongs to outcome ${run.outcomeId}, not ${input.outcomeId}.`
+        );
       }
 
       const [created] = await transaction

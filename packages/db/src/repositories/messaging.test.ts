@@ -181,4 +181,56 @@ describe("MessagingRepository", () => {
 
     expect(state.messagingConversationBindings).toHaveLength(1);
   });
+
+  it("rejects bindings whose external workspace does not match the live connection", async () => {
+    const { db, state } = createRepositoryTestDatabase();
+    const repository = new MessagingRepository(db as never);
+
+    state.outcomes.push({
+      id: "outcome_123",
+      workspaceId: "ws_default",
+      userId: "user_123",
+      prompt: "Draft a launch brief",
+      source: "slack",
+      status: "draft",
+      createdAt: new Date("2026-03-17T12:00:00.000Z"),
+      updatedAt: new Date("2026-03-17T12:00:00.000Z")
+    });
+
+    const connection = await repository.upsertConnection({
+      id: "connection_slack_1",
+      workspaceId: "ws_default",
+      channel: "slack",
+      transport: "socket_mode",
+      status: "connected",
+      enabled: true,
+      accountLabel: "Ops workspace",
+      externalWorkspaceId: "T123456",
+      externalWorkspaceLabel: "Mycelium Ops",
+      connectedAt: "2026-03-17T12:00:00.000Z",
+      lastInboundAt: null,
+      lastOutboundAt: null,
+      lastError: null,
+      updatedAt: "2026-03-17T12:00:00.000Z"
+    });
+
+    await expect(
+      repository.bindConversation({
+        id: "binding_1",
+        workspaceId: "ws_default",
+        outcomeId: "outcome_123",
+        channel: "slack",
+        connectionId: connection.id,
+        externalWorkspaceId: "T999999",
+        conversationId: "C123456",
+        threadId: "1710763200.000100",
+        lastInboundMessageId: "1710763200.000100",
+        lastOutboundDeliveryId: null,
+        createdAt: "2026-03-17T12:10:00.000Z",
+        updatedAt: "2026-03-17T12:10:00.000Z"
+      })
+    ).rejects.toThrow(
+      "Messaging connection connection_slack_1 is authenticated to external workspace T123456, not T999999."
+    );
+  });
 });
