@@ -323,27 +323,40 @@ Completion notes:
 
 ### M8 Schedules, Messaging, and Local Companion
 
-Status: `Planned`
+Status: `Execution-ready planning complete on 2026-03-17`
 
 Goal:
 
-Add additional ingress and deferred execution once the kernel is stable.
+Add the first deferred and conversational ingress surfaces to Mycelium without forking the core execution model, while keeping the local companion limited to reviewed groundwork.
 
 Primary references:
 
-- `Middleman`: cron reusing the main execution path
-- `OpenClaw`: cron and isolated-agent runs, messaging adapter patterns
-- `Terragon`: automation trigger validation
+- `Middleman`: cron reusing the main execution path and integration-service boundaries
+- `OpenClaw`: cron normalization, channel adapter patterns, and companion install/bootstrap discipline
+- `Terragon`: automation trigger validation and scheduled resume instincts
+- `Deer Flow`: self-host-friendly Slack and Telegram connection patterns
 
 Deliverables:
 
-- scheduled runs enter the normal execution pipeline
-- messaging ingress can create or continue work
-- local companion design can begin without owning the core
+- durable schedules enter the normal outcome, plan, and run pipeline
+- Slack and Telegram can create or continue work and receive outbound status or result delivery
+- local companion design, protocol, scope model, and install/bootstrap groundwork land in-repo without shipping a packaged binary
 
 Ship gate:
 
-- scheduled and external-triggered work does not fork the core execution model
+- scheduled and messaging-triggered work does not fork the core execution model
+- Slack and Telegram both work on the shipped local stack without requiring public webhook ingress
+- local companion groundwork is reviewed, but no packaged companion runtime is required
+
+Primary docs:
+
+- [Milestone 8 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-17-milestone-8-schedules-messaging-and-local-companion-design.md)
+- [Milestone 8 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-17-milestone-8-schedules-messaging-and-local-companion-implementation.md)
+
+Execution note:
+
+- M8 is the next execution-ready milestone in this repo
+- the local companion runtime is explicitly out of scope for M8; only protocol and bootstrap groundwork ship in this planning slice
 
 ## Extraction matrix by subsystem
 
@@ -357,6 +370,8 @@ Ship gate:
 | Skills/workspace context | OpenClaw | Middleman | Runtime context should be durable and explicit |
 | Realtime fanout | Deer Flow | OpenClaw | Stream execution state, not just messages |
 | Scheduling | Middleman | OpenClaw | Scheduled work must enter the same core path |
+| Messaging ingress | Middleman | OpenClaw | Normalize Slack/Telegram into the same outcome and run path |
+| Companion bootstrap | OpenClaw | Terragon | Protocol-first groundwork only in M8 |
 
 ## What not to do
 
@@ -365,3 +380,4 @@ Ship gate:
 - do not hide lifecycle in prompts instead of state
 - do not let the web app become the orchestration core
 - do not commit real secrets in tracked files
+- do not ship a packaged local companion runtime in M8

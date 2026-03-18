@@ -32,8 +32,10 @@ Read these next:
 13. [Milestone 6 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-15-milestone-6-checkpoints-replay-and-audit-implementation.md)
 14. [Milestone 7 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-16-milestone-7-remote-workers-and-daemon-design.md)
 15. [Milestone 7 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-16-milestone-7-remote-workers-and-daemon-implementation.md)
+16. [Milestone 8 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-17-milestone-8-schedules-messaging-and-local-companion-design.md)
+17. [Milestone 8 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-17-milestone-8-schedules-messaging-and-local-companion-implementation.md)
 
-The M4, M5, M6, and M7 docs now include milestone-closure verification notes. M7 is integrated on `main`. The next planned milestone in the roadmap is M8, but M7 is the currently shipped runtime in this repo.
+The M4, M5, M6, and M7 docs now include milestone-closure verification notes. M7 is integrated on `main` and remains the currently shipped runtime in this repo. M8 is the next execution-ready milestone in the roadmap, locked to schedules plus Slack and Telegram runtime delivery with local companion groundwork only.
 
 ## Local setup
 

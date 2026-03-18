@@ -22,7 +22,9 @@ Read these in order if you are new to the project:
 18. [Milestone 6 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-15-milestone-6-checkpoints-replay-and-audit-implementation.md)
 19. [Milestone 7 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-16-milestone-7-remote-workers-and-daemon-design.md)
 20. [Milestone 7 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-16-milestone-7-remote-workers-and-daemon-implementation.md)
-21. [Architecture Design Record](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-v1-architecture-design.md)
+21. [Milestone 8 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-17-milestone-8-schedules-messaging-and-local-companion-design.md)
+22. [Milestone 8 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-17-milestone-8-schedules-messaging-and-local-companion-implementation.md)
+23. [Architecture Design Record](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-11-v1-architecture-design.md)
 
 ## How to use this docs set
 
@@ -34,4 +36,4 @@ Read these in order if you are new to the project:
 
 ## Current status
 
-Milestone 7 is integrated on `main`. The shipped stack now includes authenticated remote worker sessions, remote step execution through the daemon HTTP contract, upload-back logs or artifacts or checkpoints, worker visibility in the operator console, and the existing M6 interruption or resume model on top of the Milestone 5 review queue, Milestone 4 routing, and Milestone 3 local Docker fallback path. Start with the runbook, then the local setup guide, then the M7 design and implementation docs for the verified remote smoke path.
+Milestone 7 is integrated on `main`. The shipped stack now includes authenticated remote worker sessions, remote step execution through the daemon HTTP contract, upload-back logs or artifacts or checkpoints, worker visibility in the operator console, and the existing M6 interruption or resume model on top of the Milestone 5 review queue, Milestone 4 routing, and the Milestone 3 local Docker fallback path. Milestone 8 is the next execution-ready milestone and is locked to schedules plus Slack and Telegram runtime delivery, with the local companion limited to design or protocol or bootstrap groundwork only. Start with the runbook, then the local setup guide, then the M8 design and implementation docs.
