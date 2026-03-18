@@ -16,6 +16,7 @@ import { registerOutcomeRoutes } from "./routes/outcomes";
 import { registerPlanRoutes } from "./routes/plans";
 import { registerProviderRoutes } from "./routes/providers";
 import { registerRouterRoutes } from "./routes/router";
+import { registerScheduleRoutes } from "./routes/schedules";
 import { registerWorkspaceCredentialRoutes } from "./routes/workspace-credentials";
 import { registerRunRoutes } from "./routes/runs";
 import { registerWorkerDaemonRoutes } from "./routes/worker-daemon";
@@ -45,6 +46,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   const checkpointService = services.checkpointService;
   const encryption = services.encryption;
   const routerService = services.routerService;
+  const scheduleService = services.scheduleService;
   const workerRegistry = services.workerRegistry;
   const daemonGateway = services.daemonGateway;
   const daemonAuthToken = services.daemonAuthToken;
@@ -62,6 +64,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   registerWorkspaceCredentialRoutes(app, { repositories, encryption });
   registerAuthProfileRoutes(app, { repositories, encryption });
   registerRouterRoutes(app, { routerService });
+  registerScheduleRoutes(app, { scheduleService });
   registerOutcomeRoutes(app, { repositories, eventBus });
   registerPlanRoutes(app, { repositories, eventBus });
   registerCheckpointRoutes(app, { repositories, checkpointService });
@@ -74,7 +77,12 @@ export function buildApp(options: BuildAppOptions = {}) {
   registerArtifactRoutes(app, { repositories });
   registerOutcomeEventRoutes(app, { repositories, eventBus });
 
+  app.addHook("onReady", async () => {
+    await services.scheduleService.start();
+  });
+
   app.addHook("onClose", async () => {
+    services.scheduleService.close();
     services.workerRegistry.close();
   });
 

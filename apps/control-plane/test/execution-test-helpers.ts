@@ -9,6 +9,7 @@ import { createEncryptionService } from "../src/lib/encryption";
 import { createEventBus } from "../src/lib/event-bus";
 import { createExecutionService } from "../src/lib/execution-service";
 import { createRouterService } from "../src/lib/router-service";
+import { createScheduleService } from "../src/lib/schedule-service";
 import { createWorkerRegistry } from "../src/lib/worker-registry";
 import { LocalFilesystemCheckpointStore } from "@computer-oss/checkpoints";
 import { RemoteProvider } from "@computer-oss/sandbox";
@@ -158,6 +159,13 @@ export async function createExecutionHarness(
     repositories,
     eventBus
   });
+  const routerService = createRouterService({ repositories });
+  const scheduleService = createScheduleService({
+    repositories,
+    eventBus,
+    executionService,
+    routerService
+  });
   const daemonGateway = createDaemonGateway({
     repositories,
     eventBus,
@@ -167,7 +175,8 @@ export async function createExecutionHarness(
     repositories,
     eventBus,
     encryption: createEncryptionService(TEST_ENCRYPTION_KEY),
-    routerService: createRouterService({ repositories }),
+    routerService,
+    scheduleService,
     checkpointService,
     executionService,
     approvalService,

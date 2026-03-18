@@ -41,6 +41,10 @@ import {
   type RouterService
 } from "./router-service";
 import {
+  createScheduleService,
+  type ScheduleService
+} from "./schedule-service";
+import {
   createWorkerRegistry,
   type WorkerRegistry
 } from "./worker-registry";
@@ -58,6 +62,7 @@ export type ServiceContainer = {
   checkpointService: CheckpointService;
   encryption: EncryptionService;
   routerService: RouterService;
+  scheduleService: ScheduleService;
   workerRegistry: WorkerRegistry;
   daemonGateway: DaemonGateway;
   daemonAuthToken: string;
@@ -234,6 +239,13 @@ export function createInMemoryServiceContainer(
     executionService,
     ...(options.now ? { now: options.now } : {})
   });
+  const scheduleService = createScheduleService({
+    repositories,
+    eventBus,
+    executionService,
+    routerService,
+    ...(options.now ? { now: options.now } : {})
+  });
   const daemonAuthToken = options.daemonAuthToken ?? "test-daemon-token";
 
   return {
@@ -244,6 +256,7 @@ export function createInMemoryServiceContainer(
     checkpointService,
     encryption,
     routerService,
+    scheduleService,
     workerRegistry,
     daemonGateway,
     daemonAuthToken,
@@ -387,6 +400,12 @@ export async function createServiceContainer(env: AppEnv): Promise<ServiceContai
     checkpointService,
     executionService
   });
+  const scheduleService = createScheduleService({
+    repositories,
+    eventBus,
+    executionService,
+    routerService
+  });
 
   await executionService.recoverInterruptedRuns();
 
@@ -398,6 +417,7 @@ export async function createServiceContainer(env: AppEnv): Promise<ServiceContai
     checkpointService,
     encryption,
     routerService,
+    scheduleService,
     workerRegistry,
     daemonGateway,
     daemonAuthToken: env.MYCELIUM_DAEMON_TOKEN,

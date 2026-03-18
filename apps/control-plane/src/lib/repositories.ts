@@ -198,9 +198,11 @@ export type ScheduleStore = {
   create(input: CreateScheduleInput): Promise<StoredSchedule>;
   getById(id: string): Promise<StoredSchedule | null>;
   listByWorkspace(workspaceId: string): Promise<StoredSchedule[]>;
+  listAll(): Promise<StoredSchedule[]>;
   update(input: UpdateScheduleInput): Promise<StoredSchedule | null>;
   recordFire(input: RecordScheduleFireInput): Promise<StoredScheduleFire>;
   listFiresBySchedule(scheduleId: string): Promise<StoredScheduleFire[]>;
+  delete(id: string): Promise<boolean>;
 };
 
 export type MessagingStore = {
@@ -1600,6 +1602,11 @@ function createInMemoryRepositoriesState() {
         .sort(compareSchedules)
         .map((schedule) => ({ ...schedule }));
     },
+    async listAll() {
+      return Array.from(schedulesById.values())
+        .sort(compareSchedules)
+        .map((schedule) => ({ ...schedule }));
+    },
     async update(input) {
       const existing = schedulesById.get(input.id);
 
@@ -1694,6 +1701,21 @@ function createInMemoryRepositoriesState() {
         .filter((fire) => fire.scheduleId === scheduleId)
         .sort(compareScheduleFires)
         .map((fire) => ({ ...fire }));
+    },
+    async delete(id) {
+      if (
+        Array.from(scheduleFiresById.values()).some(
+          (fire) => fire.scheduleId === id
+        )
+      ) {
+        throw foreignKeyDeleteError(
+          "schedules",
+          "schedule_fires_schedule_id_fkey",
+          "schedule_fires"
+        );
+      }
+
+      return schedulesById.delete(id);
     }
   };
 

@@ -147,6 +147,11 @@ export class ScheduleRepository {
       .sort(compareSchedules);
   }
 
+  async listAll(): Promise<StoredSchedule[]> {
+    const rows = await this.db.select().from(schedules);
+    return rows.map(mapScheduleRow).sort(compareSchedules);
+  }
+
   async update(input: UpdateScheduleInput): Promise<StoredSchedule | null> {
     const [updated] = await this.db
       .update(schedules)
@@ -273,5 +278,14 @@ export class ScheduleRepository {
       .filter((row) => row.scheduleId === scheduleId)
       .map(mapScheduleFireRow)
       .sort(compareScheduleFires);
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const [deleted] = await this.db
+      .delete(schedules)
+      .where(eq(schedules.id, id))
+      .returning();
+
+    return Boolean(deleted);
   }
 }
