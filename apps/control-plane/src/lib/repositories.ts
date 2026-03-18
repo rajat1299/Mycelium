@@ -560,6 +560,7 @@ function createInMemoryRepositoriesState() {
     string,
     StoredExternalConversationBinding
   >();
+  const outcomeMessageIds = new Set<string>();
   const workspaceLeasesByRunId = new Map<string, StoredWorkspaceLease>();
   const workspaceCredentialsById = new Map<string, CreateWorkspaceCredentialInput>();
   const authProfilesById = new Map<string, AuthProfile>();
@@ -583,6 +584,7 @@ function createInMemoryRepositoriesState() {
     scheduleFiresById,
     messagingConnectionsById,
     conversationBindingsById,
+    outcomeMessageIds,
     workspaceLeasesByRunId,
     workspaceCredentialsById,
     authProfilesById,
@@ -631,8 +633,16 @@ function createInMemoryRepositoriesState() {
       outcomes.set(updated.id, updated);
       return updated;
     },
-    async appendMessage(_input) {
-      return;
+    async appendMessage(input) {
+      if (!outcomes.has(input.outcomeId)) {
+        throw new Error(`Outcome ${input.outcomeId} does not exist.`);
+      }
+
+      if (outcomeMessageIds.has(input.id)) {
+        throw new Error('duplicate key value violates unique constraint "outcome_messages_pkey"');
+      }
+
+      outcomeMessageIds.add(input.id);
     }
   };
 

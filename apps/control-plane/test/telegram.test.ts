@@ -189,4 +189,109 @@ describe("telegram routes and runtime", () => {
       services.repositories.outcomes.listByWorkspace("ws_456")
     ).resolves.toEqual([]);
   });
+
+  it("treats retries of older Telegram messages as duplicates after newer messages arrive", async () => {
+    const sentDeliveries: Array<{ body: string; conversationId: string; threadId: string | null }> = [];
+    const services = createInMemoryServiceContainer({
+      now: () => new Date("2026-03-18T15:07:00.000Z"),
+      telegramTransport: {
+        async deliver(delivery) {
+          sentDeliveries.push({
+            body: delivery.body,
+            conversationId: delivery.conversationId,
+            threadId: delivery.threadId
+          });
+
+          return {
+            externalDeliveryId: `telegram_delivery_${sentDeliveries.length}`
+          };
+        }
+      }
+    });
+    const app = buildApp({ services });
+    appsToClose.add(app);
+
+    await app.inject({
+      method: "PUT",
+      url: "/api/workspaces/ws_456/telegram/connection",
+      payload: {
+        enabled: true,
+        accountLabel: "Ops bot",
+        externalWorkspaceId: "bot:telegram_ops",
+        externalWorkspaceLabel: "Mycelium Telegram Bot"
+      }
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/telegram/updates",
+      payload: {
+        workspaceId: "ws_456",
+        botId: "bot:telegram_ops",
+        botUsername: "mycelium_ops_bot",
+        chatId: "99887766",
+        messageId: "111",
+        replyToMessageId: null,
+        userId: "tg_user_123",
+        userDisplayName: "Rajat",
+        text: "Summarize the release train"
+      }
+    });
+
+    const newer = await app.inject({
+      method: "POST",
+      url: "/api/telegram/updates",
+      payload: {
+        workspaceId: "ws_456",
+        botId: "bot:telegram_ops",
+        botUsername: "mycelium_ops_bot",
+        chatId: "99887766",
+        messageId: "112",
+        replyToMessageId: null,
+        userId: "tg_user_123",
+        userDisplayName: "Rajat",
+        text: "Also include risks"
+      }
+    });
+
+    const retriedOld = await app.inject({
+      method: "POST",
+      url: "/api/telegram/updates",
+      payload: {
+        workspaceId: "ws_456",
+        botId: "bot:telegram_ops",
+        botUsername: "mycelium_ops_bot",
+        chatId: "99887766",
+        messageId: "111",
+        replyToMessageId: null,
+        userId: "tg_user_123",
+        userDisplayName: "Rajat",
+        text: "Summarize the release train"
+      }
+    });
+
+    expect(newer.statusCode).toBe(202);
+    expect(retriedOld.statusCode).toBe(202);
+    expect(retriedOld.json()).toEqual(
+      expect.objectContaining({
+        accepted: true,
+        created: false,
+        duplicate: true,
+        outcomeId: newer.json().outcomeId
+      })
+    );
+
+    const binding = ExternalConversationBindingSchema.parse(
+      await services.repositories.messaging.getBindingByExternalConversation({
+        workspaceId: "ws_456",
+        channel: "telegram",
+        externalWorkspaceId: "bot:telegram_ops",
+        conversationId: "99887766",
+        threadId: null
+      })
+    );
+
+    expect(binding.lastInboundMessageId).toBe("112");
+    expect(sentDeliveries).toHaveLength(2);
+  });
 });

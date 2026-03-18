@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   MessagingConnectionSchema,
   MessagingDeliverySchema,
@@ -122,6 +122,31 @@ async function createOrReuseOutcome(
       if (existing) {
         return { outcome: existing, created: false };
       }
+    }
+
+    throw error;
+  }
+}
+
+async function appendInboundMessage(
+  repositories: Repositories,
+  message: MessagingInboundMessage,
+  outcomeId: string
+) {
+  const appendedMessage = {
+    id: deterministicId("msg", message.dedupeKey),
+    outcomeId,
+    role: "user" as const,
+    content: message.text,
+    createdAt: message.receivedAt
+  };
+
+  try {
+    await repositories.outcomes.appendMessage(appendedMessage);
+    return { appended: true, message: appendedMessage };
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("duplicate")) {
+      return { appended: false, message: appendedMessage };
     }
 
     throw error;
@@ -371,18 +396,25 @@ export function createMessagingService(
         });
       }
 
-      const appendedMessage = {
-        id: `msg_${randomUUID()}`,
-        outcomeId: outcome.id,
-        role: "user" as const,
-        content: message.text,
-        createdAt: message.receivedAt
-      };
-      await options.repositories.outcomes.appendMessage(appendedMessage);
+      const appendedMessage = await appendInboundMessage(
+        options.repositories,
+        message,
+        outcome.id
+      );
+
+      if (!appendedMessage.appended) {
+        return {
+          accepted: true,
+          outcomeId: outcome.id,
+          created: false,
+          duplicate: true
+        };
+      }
+
       options.eventBus.publish({
         outcomeId: outcome.id,
         type: "message.created",
-        data: appendedMessage
+        data: appendedMessage.message
       });
 
       const binding = await options.repositories.messaging.bindConversation({

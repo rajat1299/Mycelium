@@ -195,4 +195,109 @@ describe("slack routes and runtime", () => {
       services.repositories.outcomes.listByWorkspace("ws_123")
     ).resolves.toEqual([]);
   });
+
+  it("treats retries of older Slack events as duplicates after newer messages arrive", async () => {
+    const sentDeliveries: Array<{ body: string; conversationId: string; threadId: string | null }> = [];
+    const services = createInMemoryServiceContainer({
+      now: () => new Date("2026-03-18T15:02:00.000Z"),
+      slackTransport: {
+        async deliver(delivery) {
+          sentDeliveries.push({
+            body: delivery.body,
+            conversationId: delivery.conversationId,
+            threadId: delivery.threadId
+          });
+
+          return {
+            externalDeliveryId: `slack_delivery_${sentDeliveries.length}`
+          };
+        }
+      }
+    });
+    const app = buildApp({ services });
+    appsToClose.add(app);
+
+    await app.inject({
+      method: "PUT",
+      url: "/api/workspaces/ws_123/slack/connection",
+      payload: {
+        enabled: true,
+        accountLabel: "Ops workspace",
+        externalWorkspaceId: "T123456",
+        externalWorkspaceLabel: "Mycelium Ops"
+      }
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/slack/socket-mode/messages",
+      payload: {
+        workspaceId: "ws_123",
+        teamId: "T123456",
+        teamName: "Mycelium Ops",
+        channelId: "C123456",
+        threadTs: "1710763200.000100",
+        eventTs: "111",
+        userId: "U123456",
+        userDisplayName: "Rajat",
+        text: "Draft the launch brief"
+      }
+    });
+
+    const newer = await app.inject({
+      method: "POST",
+      url: "/api/slack/socket-mode/messages",
+      payload: {
+        workspaceId: "ws_123",
+        teamId: "T123456",
+        teamName: "Mycelium Ops",
+        channelId: "C123456",
+        threadTs: "1710763200.000100",
+        eventTs: "112",
+        userId: "U123456",
+        userDisplayName: "Rajat",
+        text: "Also include risks"
+      }
+    });
+
+    const retriedOld = await app.inject({
+      method: "POST",
+      url: "/api/slack/socket-mode/messages",
+      payload: {
+        workspaceId: "ws_123",
+        teamId: "T123456",
+        teamName: "Mycelium Ops",
+        channelId: "C123456",
+        threadTs: "1710763200.000100",
+        eventTs: "111",
+        userId: "U123456",
+        userDisplayName: "Rajat",
+        text: "Draft the launch brief"
+      }
+    });
+
+    expect(newer.statusCode).toBe(202);
+    expect(retriedOld.statusCode).toBe(202);
+    expect(retriedOld.json()).toEqual(
+      expect.objectContaining({
+        accepted: true,
+        created: false,
+        duplicate: true,
+        outcomeId: newer.json().outcomeId
+      })
+    );
+
+    const binding = ExternalConversationBindingSchema.parse(
+      await services.repositories.messaging.getBindingByExternalConversation({
+        workspaceId: "ws_123",
+        channel: "slack",
+        externalWorkspaceId: "T123456",
+        conversationId: "C123456",
+        threadId: "1710763200.000100"
+      })
+    );
+
+    expect(binding.lastInboundMessageId).toBe("112");
+    expect(sentDeliveries).toHaveLength(2);
+  });
 });
