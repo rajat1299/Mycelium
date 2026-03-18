@@ -412,6 +412,10 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
     const value = readColumnValue(row, predicate.column);
 
     if (predicate.type === "eq") {
+      if (value instanceof Date && predicate.value instanceof Date) {
+        return value.getTime() === predicate.value.getTime();
+      }
+
       return value === predicate.value;
     }
 

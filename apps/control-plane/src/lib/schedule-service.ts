@@ -166,6 +166,26 @@ function computeNextFireAfterRun(schedule: Schedule, scheduledFor: string): stri
   return iterator.next().toDate().toISOString();
 }
 
+function shouldAdvanceLastFiredAt(current: string | null, candidate: string | null) {
+  if (!candidate) {
+    return current;
+  }
+
+  if (!current) {
+    return candidate;
+  }
+
+  return new Date(candidate).getTime() > new Date(current).getTime()
+    ? candidate
+    : current;
+}
+
+function mergeScheduleUpdatedAt(current: string, candidate: string) {
+  return new Date(candidate).getTime() > new Date(current).getTime()
+    ? candidate
+    : current;
+}
+
 function deriveScheduleState(
   current: Pick<
     Schedule,
@@ -539,12 +559,10 @@ export function createScheduleService(
           errorMessage: null
         })
       );
-      const updatedSchedule = await options.repositories.schedules.update({
-        id: schedule.id,
-        status: schedule.status,
-        lastFiredAt: fire.firedAt,
-        nextFireAt: computeNextFireAfterRun(schedule, schedule.nextFireAt),
-        updatedAt: firedAt
+      const updatedSchedule = await finalizeScheduleAfterFire({
+        schedule,
+        fire,
+        firedAt
       });
 
       if (updatedSchedule) {
@@ -573,6 +591,50 @@ export function createScheduleService(
         errorMessage: error instanceof Error ? error.message : String(error)
       });
     }
+  }
+
+  async function finalizeScheduleAfterFire(input: {
+    schedule: Schedule;
+    fire: ScheduleFireSummary;
+    firedAt: string;
+  }) {
+    let current = await options.repositories.schedules.getById(input.schedule.id);
+
+    for (let attempts = 0; current && attempts < 3; attempts += 1) {
+      const scheduleWasEdited = current.updatedAt !== input.schedule.updatedAt;
+      const nextFireAt = scheduleWasEdited
+        ? current.nextFireAt
+        : computeNextFireAfterRun(input.schedule, input.schedule.nextFireAt!);
+      const lastFiredAt = shouldAdvanceLastFiredAt(
+        current.lastFiredAt,
+        input.fire.firedAt
+      );
+      const updatedAt = scheduleWasEdited
+        ? mergeScheduleUpdatedAt(current.updatedAt, input.firedAt)
+        : input.firedAt;
+      const updated = await options.repositories.schedules.update({
+        id: current.id,
+        title: current.title,
+        prompt: current.prompt,
+        status: current.status,
+        trigger: current.trigger,
+        outcomeMode: current.outcomeMode,
+        dispatchMode: current.dispatchMode,
+        nextFireAt,
+        lastFiredAt,
+        validationDiagnostics: current.validationDiagnostics,
+        expectedUpdatedAt: current.updatedAt,
+        updatedAt
+      });
+
+      if (updated) {
+        return updated;
+      }
+
+      current = await options.repositories.schedules.getById(input.schedule.id);
+    }
+
+    return current;
   }
 
   async function processDueSchedulesInternal(_reason: string) {

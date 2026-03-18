@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type {
   Schedule,
   ScheduleFireSummary
@@ -31,6 +31,7 @@ export type UpdateScheduleInput = {
   nextFireAt?: string | null;
   lastFiredAt?: string | null;
   validationDiagnostics?: StoredSchedule["validationDiagnostics"];
+  expectedUpdatedAt?: string;
   updatedAt: string;
 };
 
@@ -177,7 +178,14 @@ export class ScheduleRepository {
           : {}),
         updatedAt: new Date(input.updatedAt)
       })
-      .where(eq(schedules.id, input.id))
+      .where(
+        input.expectedUpdatedAt
+          ? and(
+              eq(schedules.id, input.id),
+              eq(schedules.updatedAt, new Date(input.expectedUpdatedAt))
+            )
+          : eq(schedules.id, input.id)
+      )
       .returning();
 
     return updated ? mapScheduleRow(updated) : null;

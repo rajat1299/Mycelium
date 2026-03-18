@@ -251,4 +251,84 @@ describe("schedule routes and runtime", () => {
 
     await reader.cancel();
   });
+
+  it("preserves a concurrent pause or trigger edit while persisting fire completion metadata", async () => {
+    let currentNow = new Date("2026-03-18T14:00:00.000Z");
+    const services = createInMemoryServiceContainer({
+      now: () => currentNow
+    });
+    const app = buildApp({ services });
+    appsToClose.add(app);
+
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/workspaces/ws_123/schedules",
+      payload: buildSchedulePayload({
+        dispatchMode: "outcome_only"
+      })
+    });
+
+    expect(create.statusCode).toBe(201);
+    const schedule = ScheduleSchema.parse(create.json());
+    const originalRecordFire = services.repositories.schedules.recordFire.bind(
+      services.repositories.schedules
+    );
+    let injected = false;
+
+    services.repositories.schedules.recordFire = async (input) => {
+      if (!injected) {
+        injected = true;
+        currentNow = new Date("2026-03-18T14:00:30.000Z");
+        await (services as unknown as {
+          scheduleService: {
+            updateSchedule(
+              id: string,
+              input: {
+                status?: "active" | "paused" | "disabled" | "error";
+                trigger?: {
+                  kind: "every";
+                  everyMs: number;
+                  anchorAt: string;
+                  timezone: string;
+                };
+              }
+            ): Promise<unknown>;
+          };
+        }).scheduleService.updateSchedule(schedule.id, {
+          status: "paused",
+          trigger: {
+            kind: "every",
+            everyMs: 300_000,
+            anchorAt: "2026-03-18T14:00:00.000Z",
+            timezone: "America/Chicago"
+          }
+        });
+      }
+
+      return originalRecordFire(input);
+    };
+
+    await (services as unknown as {
+      scheduleService: {
+        processDueSchedules(reason: string): Promise<void>;
+      };
+    }).scheduleService.processDueSchedules("test");
+
+    const updated = await services.repositories.schedules.getById(schedule.id);
+
+    expect(updated).toEqual(
+      expect.objectContaining({
+        id: schedule.id,
+        status: "paused",
+        trigger: {
+          kind: "every",
+          everyMs: 300_000,
+          anchorAt: "2026-03-18T14:00:00.000Z",
+          timezone: "America/Chicago"
+        },
+        nextFireAt: null,
+        lastFiredAt: "2026-03-18T14:00:00.000Z"
+      })
+    );
+  });
 });

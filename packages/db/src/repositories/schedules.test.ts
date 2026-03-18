@@ -229,4 +229,53 @@ describe("ScheduleRepository", () => {
       "Run run_other belongs to outcome outcome_other, not outcome_default."
     );
   });
+
+  it("supports compare-and-set schedule updates by updatedAt", async () => {
+    const { db } = createRepositoryTestDatabase();
+    const repository = new ScheduleRepository(db as never);
+
+    const created = await repository.create({
+      id: "schedule_1",
+      workspaceId: "ws_default",
+      title: "Morning workspace brief",
+      prompt: "Create the daily workspace briefing.",
+      status: "active",
+      trigger: {
+        kind: "cron",
+        expression: "0 9 * * 1-5",
+        timezone: "America/Chicago"
+      },
+      outcomeMode: "create_outcome",
+      dispatchMode: "create_run",
+      nextFireAt: "2026-03-18T14:00:00.000Z",
+      lastFiredAt: null,
+      validationDiagnostics: [],
+      createdAt: "2026-03-17T12:00:00.000Z",
+      updatedAt: "2026-03-17T12:00:00.000Z"
+    });
+
+    const updated = await repository.update({
+      id: created.id,
+      status: "paused",
+      expectedUpdatedAt: "2026-03-17T12:00:00.000Z",
+      updatedAt: "2026-03-17T12:05:00.000Z"
+    });
+
+    expect(updated).toEqual(
+      expect.objectContaining({
+        id: created.id,
+        status: "paused",
+        updatedAt: "2026-03-17T12:05:00.000Z"
+      })
+    );
+
+    await expect(
+      repository.update({
+        id: created.id,
+        status: "active",
+        expectedUpdatedAt: "2026-03-17T12:00:00.000Z",
+        updatedAt: "2026-03-17T12:06:00.000Z"
+      })
+    ).resolves.toBeNull();
+  });
 });

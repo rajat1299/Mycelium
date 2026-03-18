@@ -1614,6 +1614,13 @@ function createInMemoryRepositoriesState() {
         return null;
       }
 
+      if (
+        input.expectedUpdatedAt !== undefined &&
+        existing.updatedAt !== input.expectedUpdatedAt
+      ) {
+        return null;
+      }
+
       const updated: StoredSchedule = {
         ...existing,
         ...(input.title !== undefined ? { title: input.title } : {}),
@@ -1685,14 +1692,6 @@ function createInMemoryRepositoriesState() {
 
       const fire: StoredScheduleFire = { ...input };
       scheduleFiresById.set(fire.id, fire);
-
-      if (fire.status === "triggered") {
-        schedulesById.set(schedule.id, {
-          ...schedule,
-          lastFiredAt: fire.firedAt ?? fire.scheduledFor,
-          updatedAt: fire.firedAt ?? fire.scheduledFor
-        });
-      }
 
       return { ...fire };
     },
