@@ -398,4 +398,90 @@ describe("MessagingRepository", () => {
       "Messaging connection connection_slack_1 cannot switch external workspace from T123456 to T999999 while bindings still reference it."
     );
   });
+
+  it("rejects a bind when the connection reconfigures after the pre-read but before the bind commit", async () => {
+    const { db, state } = createRepositoryTestDatabase();
+    const repository = new MessagingRepository(db as never);
+
+    state.outcomes.push({
+      id: "outcome_123",
+      workspaceId: "ws_default",
+      userId: "user_123",
+      prompt: "Draft a launch brief",
+      source: "slack",
+      status: "draft",
+      createdAt: new Date("2026-03-17T12:00:00.000Z"),
+      updatedAt: new Date("2026-03-17T12:00:00.000Z")
+    });
+
+    await repository.upsertConnection({
+      id: "connection_slack_1",
+      workspaceId: "ws_default",
+      channel: "slack",
+      transport: "socket_mode",
+      status: "connected",
+      enabled: true,
+      accountLabel: "Ops workspace",
+      externalWorkspaceId: "T123456",
+      externalWorkspaceLabel: "Mycelium Ops",
+      connectedAt: "2026-03-17T12:00:00.000Z",
+      lastInboundAt: null,
+      lastOutboundAt: null,
+      lastError: null,
+      updatedAt: "2026-03-17T12:00:00.000Z"
+    });
+
+    const originalUpdate = db.update.bind(db);
+    let injected = false;
+
+    db.update = (table) => {
+      const updateBuilder = originalUpdate(table);
+
+      if (table === messagingConnections) {
+        return {
+          set(values) {
+            const setBuilder = updateBuilder.set(values);
+            return {
+              where(expression) {
+                if (!injected) {
+                  injected = true;
+                  const connection = state.messagingConnections.find(
+                    (row) => row.id === "connection_slack_1"
+                  );
+
+                  if (connection) {
+                    connection.externalWorkspaceId = "T999999";
+                    connection.externalWorkspaceLabel = "Other Ops";
+                  }
+                }
+
+                return setBuilder.where(expression);
+              }
+            };
+          }
+        };
+      }
+
+      return updateBuilder;
+    };
+
+    await expect(
+      repository.bindConversation({
+        id: "binding_race",
+        workspaceId: "ws_default",
+        outcomeId: "outcome_123",
+        channel: "slack",
+        connectionId: "connection_slack_1",
+        externalWorkspaceId: "T123456",
+        conversationId: "C123456",
+        threadId: "1710763200.000100",
+        lastInboundMessageId: "1710763200.000100",
+        lastOutboundDeliveryId: null,
+        createdAt: "2026-03-17T12:10:00.000Z",
+        updatedAt: "2026-03-17T12:10:00.000Z"
+      })
+    ).rejects.toThrow(
+      "Messaging connection connection_slack_1 is authenticated to external workspace T999999, not T123456."
+    );
+  });
 });

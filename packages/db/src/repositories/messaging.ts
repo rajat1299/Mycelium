@@ -296,6 +296,45 @@ export class MessagingRepository {
         );
       }
 
+      const [lockedConnection] = await transaction
+        .update(messagingConnections)
+        .set({
+          updatedAt: connection.updatedAt
+        })
+        .where(
+          and(
+            eq(messagingConnections.id, input.connectionId),
+            and(
+              eq(messagingConnections.workspaceId, input.workspaceId),
+              and(
+                eq(messagingConnections.channel, input.channel),
+                eq(
+                  messagingConnections.externalWorkspaceId,
+                  input.externalWorkspaceId
+                )
+              )
+            )
+          )
+        )
+        .returning();
+
+      if (!lockedConnection) {
+        const refreshedConnections = await transaction
+          .select()
+          .from(messagingConnections);
+        const current = refreshedConnections.find(
+          (row) => row.id === input.connectionId
+        );
+
+        if (!current) {
+          throw new Error(`Messaging connection ${input.connectionId} does not exist.`);
+        }
+
+        throw new Error(
+          `Messaging connection ${input.connectionId} is authenticated to external workspace ${current.externalWorkspaceId}, not ${input.externalWorkspaceId}.`
+        );
+      }
+
       if (existing) {
         const [updated] = await transaction
           .update(messagingConversationBindings)
