@@ -135,6 +135,13 @@ describe("ScheduleRepository", () => {
         occurrenceKey: "schedule_1:2026-03-18T14:00:00.000Z"
       })
     );
+    expect(await repository.getById("schedule_1")).toEqual(
+      expect.objectContaining({
+        id: "schedule_1",
+        lastFiredAt: null,
+        updatedAt: "2026-03-17T12:00:00.000Z"
+      })
+    );
 
     await expect(repository.listFiresBySchedule("schedule_1")).resolves.toEqual([
       expect.objectContaining({

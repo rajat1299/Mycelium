@@ -261,21 +261,6 @@ export class ScheduleRepository {
         })
         .returning();
 
-      if (input.status === "triggered") {
-        await transaction
-          .update(schedules)
-          .set({
-            lastFiredAt: input.firedAt
-              ? new Date(input.firedAt)
-              : new Date(input.scheduledFor),
-            updatedAt: input.firedAt
-              ? new Date(input.firedAt)
-              : new Date(input.scheduledFor)
-          })
-          .where(eq(schedules.id, input.scheduleId))
-          .returning();
-      }
-
       return mapScheduleFireRow(created);
     });
   }
