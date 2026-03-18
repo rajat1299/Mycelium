@@ -369,7 +369,8 @@ export function createMessagingService(
 
       if (
         existingBinding &&
-        existingBinding.lastInboundMessageId === message.externalMessageId
+        existingBinding.lastInboundMessageId === message.externalMessageId &&
+        existingBinding.lastOutboundDeliveryId
       ) {
         return {
           accepted: true,
@@ -402,7 +403,11 @@ export function createMessagingService(
         outcome.id
       );
 
-      if (!appendedMessage.appended) {
+      if (
+        !appendedMessage.appended &&
+        existingBinding &&
+        existingBinding.lastInboundMessageId !== message.externalMessageId
+      ) {
         return {
           accepted: true,
           outcomeId: outcome.id,
