@@ -12,7 +12,12 @@ export const OutcomeStatusSchema = z.enum([
   "cancelled"
 ]);
 
-export const OutcomeSourceSchema = z.enum(["web", "slack", "telegram"]);
+export const OutcomeSourceSchema = z.enum([
+  "web",
+  "schedule",
+  "slack",
+  "telegram"
+]);
 
 export const OutcomeSchema = z.object({
   id: z.string(),

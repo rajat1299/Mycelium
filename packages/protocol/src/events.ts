@@ -6,12 +6,17 @@ import {
   ResumeRunResponseSchema,
   RunInterruptedDataSchema
 } from "./checkpoint";
+import {
+  MessagingConnectionSchema,
+  MessagingDeliverySchema
+} from "./messaging";
 import { OutcomeSchema } from "./outcome";
 import { PlanSchema, RunSchema, RunStepSchema } from "./plan";
 import {
   RemoteStepLifecycleEventDataSchema,
   RemoteWorkerSchema
 } from "./remote-worker";
+import { ScheduleFireSummarySchema, ScheduleSchema } from "./schedule";
 
 export const EventTypeSchema = z.enum([
   "outcome.updated",
@@ -30,8 +35,11 @@ export const EventTypeSchema = z.enum([
   "remote.step.updated",
   "run.interrupted",
   "run.resumed",
+  "schedule.updated",
   "schedule.fired",
-  "message.created"
+  "message.created",
+  "messaging.connection.updated",
+  "messaging.delivery.updated"
 ]);
 
 export const MessageCreatedDataSchema = z.object({
@@ -156,6 +164,30 @@ export const RunResumedEventSchema = z.object({
   data: ResumeRunResponseSchema
 });
 
+export const ScheduleUpdatedEventSchema = z.object({
+  outcomeId: z.string(),
+  type: z.literal("schedule.updated"),
+  data: ScheduleSchema
+});
+
+export const ScheduleFiredEventSchema = z.object({
+  outcomeId: z.string(),
+  type: z.literal("schedule.fired"),
+  data: ScheduleFireSummarySchema
+});
+
+export const MessagingConnectionUpdatedEventSchema = z.object({
+  outcomeId: z.string(),
+  type: z.literal("messaging.connection.updated"),
+  data: MessagingConnectionSchema
+});
+
+export const MessagingDeliveryUpdatedEventSchema = z.object({
+  outcomeId: z.string(),
+  type: z.literal("messaging.delivery.updated"),
+  data: MessagingDeliverySchema
+});
+
 export const OutcomeStreamEventSchema = z.discriminatedUnion("type", [
   OutcomeUpdatedEventSchema,
   MessageCreatedEventSchema,
@@ -172,7 +204,11 @@ export const OutcomeStreamEventSchema = z.discriminatedUnion("type", [
   WorkerDisconnectedEventSchema,
   RemoteStepUpdatedEventSchema,
   RunInterruptedEventSchema,
-  RunResumedEventSchema
+  RunResumedEventSchema,
+  ScheduleUpdatedEventSchema,
+  ScheduleFiredEventSchema,
+  MessagingConnectionUpdatedEventSchema,
+  MessagingDeliveryUpdatedEventSchema
 ]);
 
 export type EventType = z.infer<typeof EventTypeSchema>;
@@ -198,4 +234,12 @@ export type WorkerDisconnectedEvent = z.infer<
 export type RemoteStepUpdatedEvent = z.infer<typeof RemoteStepUpdatedEventSchema>;
 export type RunInterruptedEvent = z.infer<typeof RunInterruptedEventSchema>;
 export type RunResumedEvent = z.infer<typeof RunResumedEventSchema>;
+export type ScheduleUpdatedEvent = z.infer<typeof ScheduleUpdatedEventSchema>;
+export type ScheduleFiredEvent = z.infer<typeof ScheduleFiredEventSchema>;
+export type MessagingConnectionUpdatedEvent = z.infer<
+  typeof MessagingConnectionUpdatedEventSchema
+>;
+export type MessagingDeliveryUpdatedEvent = z.infer<
+  typeof MessagingDeliveryUpdatedEventSchema
+>;
 export type OutcomeStreamEvent = z.infer<typeof OutcomeStreamEventSchema>;
