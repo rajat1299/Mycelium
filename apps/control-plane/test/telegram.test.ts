@@ -294,4 +294,91 @@ describe("telegram routes and runtime", () => {
     expect(binding.lastInboundMessageId).toBe("112");
     expect(sentDeliveries).toHaveLength(2);
   });
+
+  it("isolates deterministic Telegram inbound ids per Mycelium workspace", async () => {
+    const services = createInMemoryServiceContainer({
+      now: () => new Date("2026-03-18T15:08:00.000Z"),
+      telegramTransport: {
+        async deliver() {
+          return {
+            externalDeliveryId: "telegram_delivery_cross_workspace"
+          };
+        }
+      }
+    });
+    const app = buildApp({ services });
+    appsToClose.add(app);
+
+    for (const workspaceId of ["ws_alpha", "ws_beta"]) {
+      const configure = await app.inject({
+        method: "PUT",
+        url: `/api/workspaces/${workspaceId}/telegram/connection`,
+        payload: {
+          enabled: true,
+          accountLabel: `${workspaceId} Ops bot`,
+          externalWorkspaceId: "bot:telegram_ops",
+          externalWorkspaceLabel: "Mycelium Telegram Bot"
+        }
+      });
+
+      expect(configure.statusCode).toBe(200);
+    }
+
+    const first = await app.inject({
+      method: "POST",
+      url: "/api/telegram/updates",
+      payload: {
+        workspaceId: "ws_alpha",
+        botId: "bot:telegram_ops",
+        botUsername: "mycelium_ops_bot",
+        chatId: "99887766",
+        messageId: "111",
+        replyToMessageId: null,
+        userId: "tg_user_123",
+        userDisplayName: "Rajat",
+        text: "Summarize the release train"
+      }
+    });
+
+    const second = await app.inject({
+      method: "POST",
+      url: "/api/telegram/updates",
+      payload: {
+        workspaceId: "ws_beta",
+        botId: "bot:telegram_ops",
+        botUsername: "mycelium_ops_bot",
+        chatId: "99887766",
+        messageId: "111",
+        replyToMessageId: null,
+        userId: "tg_user_123",
+        userDisplayName: "Rajat",
+        text: "Summarize the release train"
+      }
+    });
+
+    expect(first.statusCode).toBe(202);
+    expect(second.statusCode).toBe(202);
+    expect(first.json()).toEqual(
+      expect.objectContaining({
+        accepted: true,
+        created: true,
+        duplicate: false
+      })
+    );
+    expect(second.json()).toEqual(
+      expect.objectContaining({
+        accepted: true,
+        created: true,
+        duplicate: false
+      })
+    );
+    expect(second.json().outcomeId).not.toBe(first.json().outcomeId);
+
+    await expect(services.repositories.outcomes.listByWorkspace("ws_alpha")).resolves.toHaveLength(
+      1
+    );
+    await expect(services.repositories.outcomes.listByWorkspace("ws_beta")).resolves.toHaveLength(
+      1
+    );
+  });
 });

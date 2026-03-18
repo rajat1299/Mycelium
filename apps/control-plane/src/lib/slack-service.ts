@@ -79,7 +79,7 @@ export function createSlackService(options: SlackServiceOptions): SlackService {
         senderDisplayName: input.userDisplayName ?? null,
         text: input.text,
         receivedAt: now().toISOString(),
-        dedupeKey: `slack:${input.teamId}:${input.channelId}:${threadId}:${input.eventTs}`
+        dedupeKey: `slack:${input.workspaceId}:${input.teamId}:${input.channelId}:${threadId}:${input.eventTs}`
       };
 
       return options.messagingService.handleInboundMessage(normalized);

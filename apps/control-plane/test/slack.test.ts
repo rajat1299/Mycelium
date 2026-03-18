@@ -300,4 +300,91 @@ describe("slack routes and runtime", () => {
     expect(binding.lastInboundMessageId).toBe("112");
     expect(sentDeliveries).toHaveLength(2);
   });
+
+  it("isolates deterministic Slack inbound ids per Mycelium workspace", async () => {
+    const services = createInMemoryServiceContainer({
+      now: () => new Date("2026-03-18T15:03:00.000Z"),
+      slackTransport: {
+        async deliver() {
+          return {
+            externalDeliveryId: "slack_delivery_cross_workspace"
+          };
+        }
+      }
+    });
+    const app = buildApp({ services });
+    appsToClose.add(app);
+
+    for (const workspaceId of ["ws_alpha", "ws_beta"]) {
+      const configure = await app.inject({
+        method: "PUT",
+        url: `/api/workspaces/${workspaceId}/slack/connection`,
+        payload: {
+          enabled: true,
+          accountLabel: `${workspaceId} Ops workspace`,
+          externalWorkspaceId: "T123456",
+          externalWorkspaceLabel: "Mycelium Ops"
+        }
+      });
+
+      expect(configure.statusCode).toBe(200);
+    }
+
+    const first = await app.inject({
+      method: "POST",
+      url: "/api/slack/socket-mode/messages",
+      payload: {
+        workspaceId: "ws_alpha",
+        teamId: "T123456",
+        teamName: "Mycelium Ops",
+        channelId: "C123456",
+        threadTs: "1710763200.000100",
+        eventTs: "1710763200.000100",
+        userId: "U123456",
+        userDisplayName: "Rajat",
+        text: "Draft the launch brief"
+      }
+    });
+
+    const second = await app.inject({
+      method: "POST",
+      url: "/api/slack/socket-mode/messages",
+      payload: {
+        workspaceId: "ws_beta",
+        teamId: "T123456",
+        teamName: "Mycelium Ops",
+        channelId: "C123456",
+        threadTs: "1710763200.000100",
+        eventTs: "1710763200.000100",
+        userId: "U123456",
+        userDisplayName: "Rajat",
+        text: "Draft the launch brief"
+      }
+    });
+
+    expect(first.statusCode).toBe(202);
+    expect(second.statusCode).toBe(202);
+    expect(first.json()).toEqual(
+      expect.objectContaining({
+        accepted: true,
+        created: true,
+        duplicate: false
+      })
+    );
+    expect(second.json()).toEqual(
+      expect.objectContaining({
+        accepted: true,
+        created: true,
+        duplicate: false
+      })
+    );
+    expect(second.json().outcomeId).not.toBe(first.json().outcomeId);
+
+    await expect(services.repositories.outcomes.listByWorkspace("ws_alpha")).resolves.toHaveLength(
+      1
+    );
+    await expect(services.repositories.outcomes.listByWorkspace("ws_beta")).resolves.toHaveLength(
+      1
+    );
+  });
 });

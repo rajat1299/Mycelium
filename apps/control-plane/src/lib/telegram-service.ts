@@ -80,7 +80,7 @@ export function createTelegramService(
         senderDisplayName: input.userDisplayName ?? null,
         text: input.text,
         receivedAt: now().toISOString(),
-        dedupeKey: `telegram:${input.botId}:${input.chatId}:${input.messageId}`
+        dedupeKey: `telegram:${input.workspaceId}:${input.botId}:${input.chatId}:${input.messageId}`
       };
 
       return options.messagingService.handleInboundMessage(normalized);
