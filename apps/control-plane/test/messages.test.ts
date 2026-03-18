@@ -147,4 +147,92 @@ describe("message history and outbound delivery routes", () => {
       }
     ]);
   });
+
+  it("rejects outbound delivery when the bound connection has been disabled", async () => {
+    const sentDeliveries: Array<{ body: string; conversationId: string; threadId: string | null }> = [];
+    const services = createInMemoryServiceContainer({
+      now: () => new Date("2026-03-18T15:11:00.000Z"),
+      slackTransport: {
+        async deliver(delivery) {
+          sentDeliveries.push({
+            body: delivery.body,
+            conversationId: delivery.conversationId,
+            threadId: delivery.threadId
+          });
+
+          return {
+            externalDeliveryId: `slack_delivery_${sentDeliveries.length}`
+          };
+        }
+      }
+    });
+    const app = buildApp({ services });
+    appsToClose.add(app);
+
+    await app.inject({
+      method: "PUT",
+      url: "/api/workspaces/ws_123/slack/connection",
+      payload: {
+        enabled: true,
+        accountLabel: "Ops workspace",
+        externalWorkspaceId: "T123456",
+        externalWorkspaceLabel: "Mycelium Ops"
+      }
+    });
+
+    const inbound = await app.inject({
+      method: "POST",
+      url: "/api/slack/socket-mode/messages",
+      payload: {
+        workspaceId: "ws_123",
+        teamId: "T123456",
+        teamName: "Mycelium Ops",
+        channelId: "C123456",
+        threadTs: "1710763200.000100",
+        eventTs: "1710763200.000100",
+        userId: "U123456",
+        userDisplayName: "Rajat",
+        text: "Draft the launch brief"
+      }
+    });
+    const outcomeId = inbound.json().outcomeId;
+
+    const disabled = await app.inject({
+      method: "PUT",
+      url: "/api/workspaces/ws_123/slack/connection",
+      payload: {
+        enabled: false,
+        accountLabel: "Ops workspace",
+        externalWorkspaceId: "T123456",
+        externalWorkspaceLabel: "Mycelium Ops"
+      }
+    });
+
+    expect(disabled.statusCode).toBe(200);
+
+    const deliver = await app.inject({
+      method: "POST",
+      url: "/api/messages/deliveries",
+      payload: {
+        outcomeId,
+        kind: "result_summary",
+        body: "The launch brief is ready.",
+        runId: null
+      }
+    });
+
+    expect(deliver.statusCode).toBe(404);
+    expect(deliver.json()).toEqual(
+      expect.objectContaining({
+        error: expect.stringContaining("is disabled.")
+      })
+    );
+    expect(sentDeliveries).toEqual([
+      {
+        body: expect.stringContaining("Outcome"),
+        conversationId: "C123456",
+        threadId: "1710763200.000100"
+      }
+    ]);
+  });
 });

@@ -327,6 +327,12 @@ export function createMessagingService(
         throw new Error(`Messaging connection ${message.connectionId} is disabled.`);
       }
 
+      if (connection.externalWorkspaceId !== message.externalWorkspaceId) {
+        throw new Error(
+          `Messaging connection ${message.connectionId} is authenticated to external workspace ${connection.externalWorkspaceId}, not ${message.externalWorkspaceId}.`
+        );
+      }
+
       const existingBinding =
         await options.repositories.messaging.getBindingByExternalConversation({
           workspaceId: message.workspaceId,
@@ -446,6 +452,10 @@ export function createMessagingService(
         throw new Error(
           `Messaging connection ${binding.connectionId} does not exist for outcome ${input.outcomeId}.`
         );
+      }
+
+      if (!connection.enabled || connection.status === "disabled") {
+        throw new Error(`Messaging connection ${binding.connectionId} is disabled.`);
       }
 
       return recordDelivery(binding, connection, input);

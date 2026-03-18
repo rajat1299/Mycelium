@@ -148,4 +148,51 @@ describe("slack routes and runtime", () => {
       }
     ]);
   });
+
+  it("rejects wrong-team Socket Mode messages before creating outcome state", async () => {
+    const services = createInMemoryServiceContainer({
+      now: () => new Date("2026-03-18T15:01:00.000Z")
+    });
+    const app = buildApp({ services });
+    appsToClose.add(app);
+
+    await app.inject({
+      method: "PUT",
+      url: "/api/workspaces/ws_123/slack/connection",
+      payload: {
+        enabled: true,
+        accountLabel: "Ops workspace",
+        externalWorkspaceId: "T123456",
+        externalWorkspaceLabel: "Mycelium Ops"
+      }
+    });
+
+    const inbound = await app.inject({
+      method: "POST",
+      url: "/api/slack/socket-mode/messages",
+      payload: {
+        workspaceId: "ws_123",
+        teamId: "T999999",
+        teamName: "Wrong Team",
+        channelId: "C123456",
+        threadTs: "1710763200.000100",
+        eventTs: "1710763200.000100",
+        userId: "U123456",
+        userDisplayName: "Rajat",
+        text: "Draft the launch brief"
+      }
+    });
+
+    expect(inbound.statusCode).toBe(404);
+    expect(inbound.json()).toEqual(
+      expect.objectContaining({
+        error: expect.stringContaining(
+          "is authenticated to external workspace T123456, not T999999."
+        )
+      })
+    );
+    await expect(
+      services.repositories.outcomes.listByWorkspace("ws_123")
+    ).resolves.toEqual([]);
+  });
 });

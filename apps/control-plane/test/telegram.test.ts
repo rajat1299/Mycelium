@@ -142,4 +142,51 @@ describe("telegram routes and runtime", () => {
     expect(sentDeliveries[0]?.conversationId).toBe("99887766");
     expect(sentDeliveries[1]?.body).toEqual(expect.stringContaining("Outcome"));
   });
+
+  it("rejects wrong-bot Telegram updates before creating outcome state", async () => {
+    const services = createInMemoryServiceContainer({
+      now: () => new Date("2026-03-18T15:06:00.000Z")
+    });
+    const app = buildApp({ services });
+    appsToClose.add(app);
+
+    await app.inject({
+      method: "PUT",
+      url: "/api/workspaces/ws_456/telegram/connection",
+      payload: {
+        enabled: true,
+        accountLabel: "Ops bot",
+        externalWorkspaceId: "bot:telegram_ops",
+        externalWorkspaceLabel: "Mycelium Telegram Bot"
+      }
+    });
+
+    const inbound = await app.inject({
+      method: "POST",
+      url: "/api/telegram/updates",
+      payload: {
+        workspaceId: "ws_456",
+        botId: "bot:telegram_other",
+        botUsername: "other_bot",
+        chatId: "99887766",
+        messageId: "111",
+        replyToMessageId: null,
+        userId: "tg_user_123",
+        userDisplayName: "Rajat",
+        text: "Summarize the release train"
+      }
+    });
+
+    expect(inbound.statusCode).toBe(404);
+    expect(inbound.json()).toEqual(
+      expect.objectContaining({
+        error: expect.stringContaining(
+          "is authenticated to external workspace bot:telegram_ops, not bot:telegram_other."
+        )
+      })
+    );
+    await expect(
+      services.repositories.outcomes.listByWorkspace("ws_456")
+    ).resolves.toEqual([]);
+  });
 });
