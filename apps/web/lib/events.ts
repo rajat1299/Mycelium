@@ -2,6 +2,8 @@ import {
   ApprovalSchema,
   ArtifactSchema,
   CheckpointSummarySchema,
+  MessagingConnectionSchema,
+  MessagingDeliverySchema,
   MessageCreatedDataSchema,
   OutcomeSchema,
   PlanSchema,
@@ -11,6 +13,8 @@ import {
   RunInterruptedDataSchema,
   RunLogDataSchema,
   RunSchema,
+  ScheduleFireSummarySchema,
+  ScheduleSchema,
   RunStepSchema,
   type OutcomeStreamEvent
 } from "@computer-oss/protocol";
@@ -89,6 +93,18 @@ export function subscribeToOutcomeEvents(
     );
     registerListener("run.resumed", (payload) =>
       ResumeRunResponseSchema.parse(payload)
+    );
+    registerListener("schedule.updated", (payload) =>
+      ScheduleSchema.parse(payload)
+    );
+    registerListener("schedule.fired", (payload) =>
+      ScheduleFireSummarySchema.parse(payload)
+    );
+    registerListener("messaging.connection.updated", (payload) =>
+      MessagingConnectionSchema.parse(payload)
+    );
+    registerListener("messaging.delivery.updated", (payload) =>
+      MessagingDeliverySchema.parse(payload)
     );
 
     sharedSource = {

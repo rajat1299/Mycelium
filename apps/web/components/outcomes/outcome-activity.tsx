@@ -173,6 +173,49 @@ function createEntryFromEvent(event: OutcomeStreamEvent): ActivityEntry {
         timestamp: event.data.run.updatedAt,
         tone: "success"
       };
+    case "schedule.updated":
+      return {
+        id: `${event.data.id}:updated:${event.data.updatedAt}`,
+        title: "Schedule updated",
+        body: `${event.data.title} is ${event.data.status} and will fire ${event.data.nextFireAt ? `at ${event.data.nextFireAt}` : "when it becomes due again"}.`,
+        timestamp: event.data.updatedAt,
+        tone: event.data.status === "error" ? "warning" : "accent"
+      };
+    case "schedule.fired":
+      return {
+        id: `${event.data.scheduleId}:fired:${event.data.occurrenceKey}`,
+        title: "Schedule fired",
+        body:
+          event.data.status === "failed"
+            ? `Schedule ${event.data.scheduleId} failed for ${event.data.scheduledFor}.${event.data.errorMessage ? ` ${event.data.errorMessage}` : ""}`
+            : `Schedule ${event.data.scheduleId} ${event.data.status} for ${event.data.scheduledFor}.`,
+        timestamp: event.data.firedAt ?? event.data.scheduledFor,
+        tone: event.data.status === "failed" ? "warning" : "success"
+      };
+    case "messaging.connection.updated":
+      return {
+        id: `${event.data.id}:connection:${event.data.updatedAt}`,
+        title: `${event.data.channel} connection ${event.data.status}`,
+        body: `${event.data.accountLabel} is using ${event.data.transport}.${event.data.lastError ? ` ${event.data.lastError}` : ""}`,
+        timestamp: event.data.updatedAt,
+        tone:
+          event.data.status === "connected"
+            ? "success"
+            : event.data.status === "error" || event.data.status === "degraded"
+              ? "warning"
+              : "accent"
+      };
+    case "messaging.delivery.updated":
+      return {
+        id: `${event.data.id}:delivery:${event.data.lastAttemptAt}`,
+        title: `${event.data.channel} delivery ${event.data.status}`,
+        body:
+          event.data.status === "failed"
+            ? event.data.errorMessage ?? event.data.body
+            : event.data.body,
+        timestamp: event.data.sentAt ?? event.data.lastAttemptAt,
+        tone: event.data.status === "failed" ? "warning" : "success"
+      };
   }
 
   const exhaustive: never = event;

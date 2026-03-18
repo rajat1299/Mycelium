@@ -308,4 +308,131 @@ describe("OutcomeActivity", () => {
       screen.getByText("Primary remote worker went offline.")
     ).toBeInTheDocument();
   });
+
+  it("renders schedule and messaging lifecycle events in the live activity feed", () => {
+    render(
+      <OutcomeActivity
+        outcome={{
+          id: "outcome_123",
+          workspaceId: "ws_default",
+          userId: "user_123",
+          prompt: "Draft a launch brief",
+          source: "schedule",
+          status: "scheduled",
+          createdAt: "2026-03-17T11:55:00.000Z",
+          updatedAt: "2026-03-17T11:55:00.000Z"
+        }}
+      />
+    );
+
+    act(() => {
+      for (const handler of eventStream.handlers) {
+        handler({
+          outcomeId: "outcome_123",
+          type: "schedule.updated",
+          data: {
+            id: "schedule_1",
+            workspaceId: "ws_default",
+            title: "Morning workspace brief",
+            prompt: "Create the daily workspace briefing.",
+            status: "active",
+            trigger: {
+              kind: "cron",
+              expression: "0 9 * * 1-5",
+              timezone: "America/Chicago"
+            },
+            outcomeMode: "create_outcome",
+            dispatchMode: "create_run",
+            nextFireAt: "2026-03-18T14:00:00.000Z",
+            lastFiredAt: null,
+            validationDiagnostics: [],
+            createdAt: "2026-03-17T12:00:00.000Z",
+            updatedAt: "2026-03-17T12:00:00.000Z"
+          }
+        });
+      }
+
+      for (const handler of eventStream.handlers) {
+        handler({
+          outcomeId: "outcome_123",
+          type: "schedule.fired",
+          data: {
+            id: "schedule_fire_1",
+            scheduleId: "schedule_1",
+            occurrenceKey: "schedule_1:2026-03-18T14:00:00.000Z",
+            scheduledFor: "2026-03-18T14:00:00.000Z",
+            firedAt: "2026-03-18T14:00:02.000Z",
+            status: "triggered",
+            outcomeId: "outcome_123",
+            runId: "run_123",
+            errorMessage: null
+          }
+        });
+      }
+
+      for (const handler of eventStream.handlers) {
+        handler({
+          outcomeId: "outcome_123",
+          type: "messaging.connection.updated",
+          data: {
+            id: "connection_slack_1",
+            workspaceId: "ws_default",
+            channel: "slack",
+            transport: "socket_mode",
+            status: "connected",
+            enabled: true,
+            accountLabel: "Ops workspace",
+            externalWorkspaceId: "T123456",
+            externalWorkspaceLabel: "Mycelium Ops",
+            connectedAt: "2026-03-17T12:00:00.000Z",
+            lastInboundAt: "2026-03-17T12:10:00.000Z",
+            lastOutboundAt: "2026-03-17T12:11:00.000Z",
+            lastError: null,
+            updatedAt: "2026-03-17T12:11:00.000Z"
+          }
+        });
+      }
+
+      for (const handler of eventStream.handlers) {
+        handler({
+          outcomeId: "outcome_123",
+          type: "messaging.delivery.updated",
+          data: {
+            id: "delivery_1",
+            workspaceId: "ws_default",
+            connectionId: "connection_slack_1",
+            channel: "slack",
+            externalWorkspaceId: "T123456",
+            conversationId: "C123456",
+            threadId: "1710763200.000100",
+            kind: "result_summary",
+            status: "sent",
+            body: "Daily brief finished. Review is available in the web desk.",
+            outcomeId: "outcome_123",
+            runId: "run_123",
+            sentAt: "2026-03-17T12:11:00.000Z",
+            lastAttemptAt: "2026-03-17T12:11:00.000Z",
+            errorMessage: null
+          }
+        });
+      }
+    });
+
+    expect(screen.getByText("Schedule updated")).toBeInTheDocument();
+    expect(
+      screen.getByText("Morning workspace brief is active and will fire at 2026-03-18T14:00:00.000Z.")
+    ).toBeInTheDocument();
+    expect(screen.getByText("Schedule fired")).toBeInTheDocument();
+    expect(
+      screen.getByText("Schedule schedule_1 triggered for 2026-03-18T14:00:00.000Z.")
+    ).toBeInTheDocument();
+    expect(screen.getByText("slack connection connected")).toBeInTheDocument();
+    expect(
+      screen.getByText("Ops workspace is using socket_mode.")
+    ).toBeInTheDocument();
+    expect(screen.getByText("slack delivery sent")).toBeInTheDocument();
+    expect(
+      screen.getByText("Daily brief finished. Review is available in the web desk.")
+    ).toBeInTheDocument();
+  });
 });

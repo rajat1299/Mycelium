@@ -310,4 +310,109 @@ describe("subscribeToOutcomeEvents", () => {
 
     unsubscribe();
   });
+
+  it("forwards schedule and messaging SSE events to subscribers", () => {
+    vi.stubGlobal("EventSource", FakeEventSource as unknown as typeof EventSource);
+
+    const handler = vi.fn();
+    const unsubscribe = subscribeToOutcomeEvents("outcome_m8", handler);
+
+    FakeEventSource.instances[0]?.emit("schedule.updated", {
+      id: "schedule_1",
+      workspaceId: "ws_default",
+      title: "Morning workspace brief",
+      prompt: "Create the daily workspace briefing.",
+      status: "active",
+      trigger: {
+        kind: "cron",
+        expression: "0 9 * * 1-5",
+        timezone: "America/Chicago"
+      },
+      outcomeMode: "create_outcome",
+      dispatchMode: "create_run",
+      nextFireAt: "2026-03-18T14:00:00.000Z",
+      lastFiredAt: null,
+      validationDiagnostics: [],
+      createdAt: "2026-03-17T12:00:00.000Z",
+      updatedAt: "2026-03-17T12:00:00.000Z"
+    });
+
+    FakeEventSource.instances[0]?.emit("schedule.fired", {
+      id: "schedule_fire_1",
+      scheduleId: "schedule_1",
+      occurrenceKey: "schedule_1:2026-03-18T14:00:00.000Z",
+      scheduledFor: "2026-03-18T14:00:00.000Z",
+      firedAt: "2026-03-18T14:00:02.000Z",
+      status: "triggered",
+      outcomeId: "outcome_123",
+      runId: "run_123",
+      errorMessage: null
+    });
+
+    FakeEventSource.instances[0]?.emit("messaging.connection.updated", {
+      id: "connection_slack_1",
+      workspaceId: "ws_default",
+      channel: "slack",
+      transport: "socket_mode",
+      status: "connected",
+      enabled: true,
+      accountLabel: "Ops workspace",
+      externalWorkspaceId: "T123456",
+      externalWorkspaceLabel: "Mycelium Ops",
+      connectedAt: "2026-03-17T12:00:00.000Z",
+      lastInboundAt: "2026-03-17T12:10:00.000Z",
+      lastOutboundAt: "2026-03-17T12:11:00.000Z",
+      lastError: null,
+      updatedAt: "2026-03-17T12:11:00.000Z"
+    });
+
+    FakeEventSource.instances[0]?.emit("messaging.delivery.updated", {
+      id: "delivery_1",
+      workspaceId: "ws_default",
+      connectionId: "connection_slack_1",
+      channel: "slack",
+      externalWorkspaceId: "T123456",
+      conversationId: "C123456",
+      threadId: "1710763200.000100",
+      kind: "result_summary",
+      status: "sent",
+      body: "Daily brief finished. Review is available in the web desk.",
+      outcomeId: "outcome_123",
+      runId: "run_123",
+      sentAt: "2026-03-17T12:11:00.000Z",
+      lastAttemptAt: "2026-03-17T12:11:00.000Z",
+      errorMessage: null
+    });
+
+    expect(handler).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        outcomeId: "outcome_m8",
+        type: "schedule.updated"
+      })
+    );
+    expect(handler).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        outcomeId: "outcome_m8",
+        type: "schedule.fired"
+      })
+    );
+    expect(handler).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        outcomeId: "outcome_m8",
+        type: "messaging.connection.updated"
+      })
+    );
+    expect(handler).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({
+        outcomeId: "outcome_m8",
+        type: "messaging.delivery.updated"
+      })
+    );
+
+    unsubscribe();
+  });
 });
