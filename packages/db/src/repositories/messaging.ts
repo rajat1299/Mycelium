@@ -388,4 +388,23 @@ export class MessagingRepository {
 
     return found ? mapBindingRow(found) : null;
   }
+
+  async listBindingsByOutcome(
+    outcomeId: string
+  ): Promise<StoredExternalConversationBinding[]> {
+    const rows = await this.db.select().from(messagingConversationBindings);
+    return rows
+      .filter((row) => row.outcomeId === outcomeId)
+      .map(mapBindingRow)
+      .sort((left, right) => {
+        const updatedDelta =
+          new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime();
+
+        if (updatedDelta !== 0) {
+          return updatedDelta;
+        }
+
+        return left.id.localeCompare(right.id);
+      });
+  }
 }

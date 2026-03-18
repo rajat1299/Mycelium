@@ -1,11 +1,14 @@
 import Fastify from "fastify";
 import type { EventBus } from "./lib/event-bus";
 import type { ExecutionService } from "./lib/execution-service";
+import { createMessagingService } from "./lib/messaging-service";
 import type { Repositories } from "./lib/repositories";
 import {
   createInMemoryServiceContainer,
   type ServiceContainer
 } from "./lib/service-container";
+import { createSlackService } from "./lib/slack-service";
+import { createTelegramService } from "./lib/telegram-service";
 import { registerApprovalRoutes } from "./routes/approvals";
 import { registerAuthProfileRoutes } from "./routes/auth-profiles";
 import { registerArtifactRoutes } from "./routes/artifacts";
@@ -16,8 +19,11 @@ import { registerOutcomeRoutes } from "./routes/outcomes";
 import { registerPlanRoutes } from "./routes/plans";
 import { registerProviderRoutes } from "./routes/providers";
 import { registerRouterRoutes } from "./routes/router";
+import { registerSlackRoutes } from "./routes/slack";
 import { registerScheduleRoutes } from "./routes/schedules";
+import { registerTelegramRoutes } from "./routes/telegram";
 import { registerWorkspaceCredentialRoutes } from "./routes/workspace-credentials";
+import { registerMessageRoutes } from "./routes/messages";
 import { registerRunRoutes } from "./routes/runs";
 import { registerWorkerDaemonRoutes } from "./routes/worker-daemon";
 import { registerWorkerRoutes } from "./routes/workers";
@@ -47,6 +53,30 @@ export function buildApp(options: BuildAppOptions = {}) {
   const encryption = services.encryption;
   const routerService = services.routerService;
   const scheduleService = services.scheduleService;
+  const messagingService =
+    services.messagingService ??
+    createMessagingService({
+      repositories,
+      eventBus,
+      adapters: {
+        slack: {
+          transport: "socket_mode",
+          async deliver() {
+            return undefined;
+          }
+        },
+        telegram: {
+          transport: "long_polling",
+          async deliver() {
+            return undefined;
+          }
+        }
+      }
+    });
+  const slackService =
+    services.slackService ?? createSlackService({ messagingService });
+  const telegramService =
+    services.telegramService ?? createTelegramService({ messagingService });
   const workerRegistry = services.workerRegistry;
   const daemonGateway = services.daemonGateway;
   const daemonAuthToken = services.daemonAuthToken;
@@ -65,6 +95,9 @@ export function buildApp(options: BuildAppOptions = {}) {
   registerAuthProfileRoutes(app, { repositories, encryption });
   registerRouterRoutes(app, { routerService });
   registerScheduleRoutes(app, { scheduleService });
+  registerSlackRoutes(app, { slackService });
+  registerTelegramRoutes(app, { telegramService });
+  registerMessageRoutes(app, { messagingService });
   registerOutcomeRoutes(app, { repositories, eventBus });
   registerPlanRoutes(app, { repositories, eventBus });
   registerCheckpointRoutes(app, { repositories, checkpointService });
@@ -83,6 +116,9 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   app.addHook("onClose", async () => {
     services.scheduleService.close();
+    messagingService.close();
+    slackService.close();
+    telegramService.close();
     services.workerRegistry.close();
   });
 

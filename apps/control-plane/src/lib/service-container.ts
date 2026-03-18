@@ -37,6 +37,11 @@ import {
   type ExecutionService
 } from "./execution-service";
 import {
+  createMessagingService,
+  type ChannelTransportAdapter,
+  type MessagingService
+} from "./messaging-service";
+import {
   createRouterService,
   type RouterService
 } from "./router-service";
@@ -44,6 +49,14 @@ import {
   createScheduleService,
   type ScheduleService
 } from "./schedule-service";
+import {
+  createSlackService,
+  type SlackService
+} from "./slack-service";
+import {
+  createTelegramService,
+  type TelegramService
+} from "./telegram-service";
 import {
   createWorkerRegistry,
   type WorkerRegistry
@@ -63,6 +76,9 @@ export type ServiceContainer = {
   encryption: EncryptionService;
   routerService: RouterService;
   scheduleService: ScheduleService;
+  messagingService: MessagingService;
+  slackService: SlackService;
+  telegramService: TelegramService;
   workerRegistry: WorkerRegistry;
   daemonGateway: DaemonGateway;
   daemonAuthToken: string;
@@ -78,6 +94,8 @@ type InMemoryServiceContainerOptions = {
   daemonAuthToken?: string;
   workerStaleTimeoutMs?: number;
   workerSweepIntervalMs?: number;
+  slackTransport?: Pick<ChannelTransportAdapter, "deliver">;
+  telegramTransport?: Pick<ChannelTransportAdapter, "deliver">;
   now?: () => Date;
 };
 
@@ -246,6 +264,33 @@ export function createInMemoryServiceContainer(
     routerService,
     ...(options.now ? { now: options.now } : {})
   });
+  const messagingService = createMessagingService({
+    repositories,
+    eventBus,
+    adapters: {
+      slack: {
+        transport: "socket_mode",
+        async deliver(delivery) {
+          return options.slackTransport?.deliver(delivery);
+        }
+      },
+      telegram: {
+        transport: "long_polling",
+        async deliver(delivery) {
+          return options.telegramTransport?.deliver(delivery);
+        }
+      }
+    },
+    ...(options.now ? { now: options.now } : {})
+  });
+  const slackService = createSlackService({
+    messagingService,
+    ...(options.now ? { now: options.now } : {})
+  });
+  const telegramService = createTelegramService({
+    messagingService,
+    ...(options.now ? { now: options.now } : {})
+  });
   const daemonAuthToken = options.daemonAuthToken ?? "test-daemon-token";
 
   return {
@@ -257,6 +302,9 @@ export function createInMemoryServiceContainer(
     encryption,
     routerService,
     scheduleService,
+    messagingService,
+    slackService,
+    telegramService,
     workerRegistry,
     daemonGateway,
     daemonAuthToken,
@@ -406,6 +454,26 @@ export async function createServiceContainer(env: AppEnv): Promise<ServiceContai
     executionService,
     routerService
   });
+  const messagingService = createMessagingService({
+    repositories,
+    eventBus,
+    adapters: {
+      slack: {
+        transport: "socket_mode",
+        async deliver() {
+          return { externalDeliveryId: `slack_delivery_${randomUUID()}` };
+        }
+      },
+      telegram: {
+        transport: "long_polling",
+        async deliver() {
+          return { externalDeliveryId: `telegram_delivery_${randomUUID()}` };
+        }
+      }
+    }
+  });
+  const slackService = createSlackService({ messagingService });
+  const telegramService = createTelegramService({ messagingService });
 
   await executionService.recoverInterruptedRuns();
 
@@ -418,6 +486,9 @@ export async function createServiceContainer(env: AppEnv): Promise<ServiceContai
     encryption,
     routerService,
     scheduleService,
+    messagingService,
+    slackService,
+    telegramService,
     workerRegistry,
     daemonGateway,
     daemonAuthToken: env.MYCELIUM_DAEMON_TOKEN,

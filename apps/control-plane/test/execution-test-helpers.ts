@@ -8,8 +8,11 @@ import { createDaemonGateway } from "../src/lib/daemon-gateway";
 import { createEncryptionService } from "../src/lib/encryption";
 import { createEventBus } from "../src/lib/event-bus";
 import { createExecutionService } from "../src/lib/execution-service";
+import { createMessagingService } from "../src/lib/messaging-service";
 import { createRouterService } from "../src/lib/router-service";
 import { createScheduleService } from "../src/lib/schedule-service";
+import { createSlackService } from "../src/lib/slack-service";
+import { createTelegramService } from "../src/lib/telegram-service";
 import { createWorkerRegistry } from "../src/lib/worker-registry";
 import { LocalFilesystemCheckpointStore } from "@computer-oss/checkpoints";
 import { RemoteProvider } from "@computer-oss/sandbox";
@@ -166,6 +169,26 @@ export async function createExecutionHarness(
     executionService,
     routerService
   });
+  const messagingService = createMessagingService({
+    repositories,
+    eventBus,
+    adapters: {
+      slack: {
+        transport: "socket_mode",
+        async deliver() {
+          return undefined;
+        }
+      },
+      telegram: {
+        transport: "long_polling",
+        async deliver() {
+          return undefined;
+        }
+      }
+    }
+  });
+  const slackService = createSlackService({ messagingService });
+  const telegramService = createTelegramService({ messagingService });
   const daemonGateway = createDaemonGateway({
     repositories,
     eventBus,
@@ -177,6 +200,9 @@ export async function createExecutionHarness(
     encryption: createEncryptionService(TEST_ENCRYPTION_KEY),
     routerService,
     scheduleService,
+    messagingService,
+    slackService,
+    telegramService,
     checkpointService,
     executionService,
     approvalService,

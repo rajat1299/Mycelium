@@ -216,6 +216,9 @@ export type MessagingStore = {
   bindConversation(
     input: BindConversationInput
   ): Promise<StoredExternalConversationBinding>;
+  listBindingsByOutcome(
+    outcomeId: string
+  ): Promise<StoredExternalConversationBinding[]>;
   getBindingByExternalConversation(
     input: GetBindingByExternalConversationInput
   ): Promise<StoredExternalConversationBinding | null>;
@@ -589,6 +592,10 @@ function createInMemoryRepositoriesState() {
 
   const outcomesStore: OutcomeStore = {
     async create(input) {
+      if (outcomes.has(input.id)) {
+        throw new Error('duplicate key value violates unique constraint "outcomes_pkey"');
+      }
+
       const now = new Date().toISOString();
       const outcome: Outcome = {
         ...input,
@@ -1848,6 +1855,21 @@ function createInMemoryRepositoriesState() {
       );
 
       return found ? { ...found } : null;
+    },
+    async listBindingsByOutcome(outcomeId) {
+      return Array.from(conversationBindingsById.values())
+        .filter((binding) => binding.outcomeId === outcomeId)
+        .sort((left, right) => {
+          const updatedDelta =
+            new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime();
+
+          if (updatedDelta !== 0) {
+            return updatedDelta;
+          }
+
+          return left.id.localeCompare(right.id);
+        })
+        .map((binding) => ({ ...binding }));
     }
   };
 
