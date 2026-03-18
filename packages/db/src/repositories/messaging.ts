@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type {
   ExternalConversationBinding,
   MessagingConnection
@@ -163,6 +163,20 @@ export class MessagingRepository {
         );
       }
 
+      const whereClause =
+        existing.externalWorkspaceId === input.externalWorkspaceId
+          ? eq(messagingConnections.id, existing.id)
+          : and(
+              eq(messagingConnections.id, existing.id),
+              and(
+                eq(
+                  messagingConnections.externalWorkspaceId,
+                  existing.externalWorkspaceId
+                ),
+                sql`not exists (select 1 from ${messagingConversationBindings} where ${messagingConversationBindings.connectionId} = ${existing.id})`
+              )
+            );
+
       const [updated] = await transaction
         .update(messagingConnections)
         .set({
@@ -178,8 +192,31 @@ export class MessagingRepository {
           lastError: input.lastError,
           updatedAt: new Date(input.updatedAt)
         })
-        .where(eq(messagingConnections.id, existing.id))
+        .where(whereClause)
         .returning();
+
+      if (!updated && existing.externalWorkspaceId !== input.externalWorkspaceId) {
+        const [refreshedConnections, refreshedBindings] = await Promise.all([
+          transaction.select().from(messagingConnections),
+          transaction.select().from(messagingConversationBindings)
+        ]);
+        const current = refreshedConnections.find((row) => row.id === existing.id);
+
+        if (!current) {
+          throw new Error(`Messaging connection ${existing.id} does not exist.`);
+        }
+
+        if (
+          refreshedBindings.some((row) => row.connectionId === current.id) &&
+          current.externalWorkspaceId !== input.externalWorkspaceId
+        ) {
+          throw new Error(
+            `Messaging connection ${current.id} cannot switch external workspace from ${current.externalWorkspaceId} to ${input.externalWorkspaceId} while bindings still reference it.`
+          );
+        }
+
+        return mapConnectionRow(current);
+      }
 
       return mapConnectionRow(updated);
     });

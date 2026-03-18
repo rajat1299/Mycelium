@@ -117,6 +117,10 @@ type ParsedPredicate =
       type: "existsRemoteWorkerSession";
       workerId: unknown;
       workerSessionId: unknown;
+    }
+  | {
+      type: "notExistsMessagingBindingForConnection";
+      connectionId: unknown;
     };
 
 export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) {
@@ -337,6 +341,23 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
       ];
     }
 
+    if (
+      chunks.length === 7 &&
+      isStringChunkValue(chunks[0]?.value, "not exists (select 1 from ") &&
+      chunks[1] === messagingConversationBindings &&
+      isStringChunkValue(chunks[2]?.value, " where ") &&
+      chunks[3]?.name === "connection_id" &&
+      isStringChunkValue(chunks[4]?.value, " = ") &&
+      isStringChunkValue(chunks[6]?.value, ")")
+    ) {
+      return [
+        {
+          type: "notExistsMessagingBindingForConnection",
+          connectionId: chunks[5]
+        }
+      ];
+    }
+
     const column = chunks[1]?.name;
 
     if (typeof column !== "string") {
@@ -378,6 +399,13 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
         (worker) =>
           readColumnValue(worker, "id") === predicate.workerId &&
           readColumnValue(worker, "session_id") === predicate.workerSessionId
+      );
+    }
+
+    if (predicate.type === "notExistsMessagingBindingForConnection") {
+      return !state.messagingConversationBindings.some(
+        (binding) =>
+          readColumnValue(binding, "connection_id") === predicate.connectionId
       );
     }
 
