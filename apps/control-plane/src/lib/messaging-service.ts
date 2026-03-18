@@ -416,11 +416,13 @@ export function createMessagingService(
         };
       }
 
-      options.eventBus.publish({
-        outcomeId: outcome.id,
-        type: "message.created",
-        data: appendedMessage.message
-      });
+      if (appendedMessage.appended) {
+        options.eventBus.publish({
+          outcomeId: outcome.id,
+          type: "message.created",
+          data: appendedMessage.message
+        });
+      }
 
       const binding = await options.repositories.messaging.bindConversation({
         id:

@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
+import type { OutcomeStreamEvent } from "@computer-oss/protocol";
 import {
   ExternalConversationBindingSchema,
   MessagingConnectionSchema,
   MessagingDeliverySchema
 } from "@computer-oss/protocol";
 import { buildApp } from "../src/app";
+import { createEventBus } from "../src/lib/event-bus";
 import { createInMemoryServiceContainer } from "../src/lib/service-container";
 
 const appsToClose = new Set<ReturnType<typeof buildApp>>();
@@ -467,5 +469,88 @@ describe("message history and outbound delivery routes", () => {
         threadId: "1710763200.000100"
       }
     ]);
+  });
+
+  it("does not republish message.created while repairing a partial inbound retry", async () => {
+    const services = createInMemoryServiceContainer({
+      eventBus: createEventBus(),
+      now: () => new Date("2026-03-18T15:14:00.000Z"),
+      slackTransport: {
+        async deliver(delivery) {
+          return {
+            externalDeliveryId: `slack_delivery_${delivery.conversationId}`
+          };
+        }
+      }
+    });
+    const originalBindConversation = services.repositories.messaging.bindConversation;
+    let failBindOnce = true;
+    services.repositories.messaging.bindConversation = async (input) => {
+      if (failBindOnce) {
+        failBindOnce = false;
+        throw new Error("transient bind failure");
+      }
+
+      return originalBindConversation(input);
+    };
+
+    const publishedEvents: OutcomeStreamEvent[] = [];
+    const unsubscribe = services.eventBus.subscribeAll((event) => {
+      publishedEvents.push(event);
+    });
+
+    const app = buildApp({ services });
+    appsToClose.add(app);
+
+    await app.inject({
+      method: "PUT",
+      url: "/api/workspaces/ws_123/slack/connection",
+      payload: {
+        enabled: true,
+        accountLabel: "Ops workspace",
+        externalWorkspaceId: "T123456",
+        externalWorkspaceLabel: "Mycelium Ops"
+      }
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/slack/socket-mode/messages",
+      payload: {
+        workspaceId: "ws_123",
+        teamId: "T123456",
+        teamName: "Mycelium Ops",
+        channelId: "C123456",
+        threadTs: "1710763200.000100",
+        eventTs: "1710763200.000100",
+        userId: "U123456",
+        userDisplayName: "Rajat",
+        text: "Draft the launch brief"
+      }
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/slack/socket-mode/messages",
+      payload: {
+        workspaceId: "ws_123",
+        teamId: "T123456",
+        teamName: "Mycelium Ops",
+        channelId: "C123456",
+        threadTs: "1710763200.000100",
+        eventTs: "1710763200.000100",
+        userId: "U123456",
+        userDisplayName: "Rajat",
+        text: "Draft the launch brief"
+      }
+    });
+
+    unsubscribe();
+
+    const messageCreatedEvents = publishedEvents.filter(
+      (event) => event.type === "message.created"
+    );
+
+    expect(messageCreatedEvents).toHaveLength(1);
   });
 });
