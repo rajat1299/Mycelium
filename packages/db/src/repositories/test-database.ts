@@ -1,4 +1,6 @@
 import {
+  messagingConnections,
+  messagingConversationBindings,
   approvals,
   artifactLineageEdges,
   authProfiles,
@@ -9,6 +11,8 @@ import {
   planEdges,
   planNodes,
   remoteWorkers,
+  scheduleFires,
+  schedules,
   runAuditEvents,
   runCheckpoints,
   runEvents,
@@ -27,6 +31,10 @@ type SupportedTable =
   | typeof planNodes
   | typeof planEdges
   | typeof remoteWorkers
+  | typeof schedules
+  | typeof scheduleFires
+  | typeof messagingConnections
+  | typeof messagingConversationBindings
   | typeof outcomeRuns
   | typeof runSteps
   | typeof runEvents
@@ -47,6 +55,10 @@ export type RepositoryTestState = {
   planNodes: TableRecord[];
   planEdges: TableRecord[];
   remoteWorkers: TableRecord[];
+  schedules: TableRecord[];
+  scheduleFires: TableRecord[];
+  messagingConnections: TableRecord[];
+  messagingConversationBindings: TableRecord[];
   outcomeRuns: TableRecord[];
   runSteps: TableRecord[];
   runEvents: TableRecord[];
@@ -118,6 +130,10 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
     planNodes: [],
     planEdges: [],
     remoteWorkers: [],
+    schedules: [],
+    scheduleFires: [],
+    messagingConnections: [],
+    messagingConversationBindings: [],
     outcomeRuns: [],
     runSteps: [],
     runEvents: [],
@@ -152,6 +168,22 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
 
     if (table === remoteWorkers) {
       return "remote_workers";
+    }
+
+    if (table === schedules) {
+      return "schedules";
+    }
+
+    if (table === scheduleFires) {
+      return "schedule_fires";
+    }
+
+    if (table === messagingConnections) {
+      return "messaging_connections";
+    }
+
+    if (table === messagingConversationBindings) {
+      return "messaging_conversation_bindings";
     }
 
     if (table === outcomeRuns) {
@@ -217,6 +249,14 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
         return state.planEdges;
       case "remote_workers":
         return state.remoteWorkers;
+      case "schedules":
+        return state.schedules;
+      case "schedule_fires":
+        return state.scheduleFires;
+      case "messaging_connections":
+        return state.messagingConnections;
+      case "messaging_conversation_bindings":
+        return state.messagingConversationBindings;
       case "outcome_runs":
         return state.outcomeRuns;
       case "run_steps":
@@ -359,6 +399,18 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
       return row.workspaceId;
     }
 
+    if (tableName === "schedule_fires") {
+      return row.id;
+    }
+
+    if (tableName === "messaging_connections") {
+      return row.id;
+    }
+
+    if (tableName === "messaging_conversation_bindings") {
+      return row.id;
+    }
+
     return row.id;
   }
 
@@ -455,6 +507,31 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
     return (
       pendingRows.some((row) => row.id === checkpointId) ||
       state.runCheckpoints.some((row) => row.id === checkpointId)
+    );
+  }
+
+  function hasSchedule(scheduleId: unknown, pendingRows: TableRecord[] = []) {
+    if (typeof scheduleId !== "string" || scheduleId.length === 0) {
+      return false;
+    }
+
+    return (
+      pendingRows.some((row) => row.id === scheduleId) ||
+      state.schedules.some((row) => row.id === scheduleId)
+    );
+  }
+
+  function hasMessagingConnection(
+    connectionId: unknown,
+    pendingRows: TableRecord[] = []
+  ) {
+    if (typeof connectionId !== "string" || connectionId.length === 0) {
+      return false;
+    }
+
+    return (
+      pendingRows.some((row) => row.id === connectionId) ||
+      state.messagingConnections.some((row) => row.id === connectionId)
     );
   }
 
@@ -600,6 +677,53 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
         throw insertOrUpdateForeignKeyError(
           "artifact_lineage_edges",
           "artifact_lineage_edges_child_step_id_fkey"
+        );
+      }
+    }
+
+    if (tableName === "schedule_fires") {
+      if (!hasSchedule(row.scheduleId, pendingRows)) {
+        throw insertOrUpdateForeignKeyError(
+          "schedule_fires",
+          "schedule_fires_schedule_id_fkey"
+        );
+      }
+
+      if (
+        row.outcomeId !== null &&
+        row.outcomeId !== undefined &&
+        !hasOutcome(row.outcomeId, pendingRows)
+      ) {
+        throw insertOrUpdateForeignKeyError(
+          "schedule_fires",
+          "schedule_fires_outcome_id_fkey"
+        );
+      }
+
+      if (
+        row.runId !== null &&
+        row.runId !== undefined &&
+        !hasRun(row.runId, pendingRows)
+      ) {
+        throw insertOrUpdateForeignKeyError(
+          "schedule_fires",
+          "schedule_fires_run_id_fkey"
+        );
+      }
+    }
+
+    if (tableName === "messaging_conversation_bindings") {
+      if (!hasOutcome(row.outcomeId, pendingRows)) {
+        throw insertOrUpdateForeignKeyError(
+          "messaging_conversation_bindings",
+          "messaging_conversation_bindings_outcome_id_fkey"
+        );
+      }
+
+      if (!hasMessagingConnection(row.connectionId, pendingRows)) {
+        throw insertOrUpdateForeignKeyError(
+          "messaging_conversation_bindings",
+          "messaging_conversation_bindings_connection_id_fkey"
         );
       }
     }
@@ -756,6 +880,28 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
             "approvals"
           );
         }
+
+        if (
+          state.scheduleFires.some((scheduleFire) => scheduleFire.outcomeId === row.id)
+        ) {
+          throw deleteForeignKeyError(
+            "outcomes",
+            "schedule_fires_outcome_id_fkey",
+            "schedule_fires"
+          );
+        }
+
+        if (
+          state.messagingConversationBindings.some(
+            (binding) => binding.outcomeId === row.id
+          )
+        ) {
+          throw deleteForeignKeyError(
+            "outcomes",
+            "messaging_conversation_bindings_outcome_id_fkey",
+            "messaging_conversation_bindings"
+          );
+        }
       }
     }
 
@@ -766,6 +912,34 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
             "run_checkpoints",
             "run_audit_events_checkpoint_id_fkey",
             "run_audit_events"
+          );
+        }
+      }
+    }
+
+    if (tableName === "schedules") {
+      for (const row of rows) {
+        if (state.scheduleFires.some((scheduleFire) => scheduleFire.scheduleId === row.id)) {
+          throw deleteForeignKeyError(
+            "schedules",
+            "schedule_fires_schedule_id_fkey",
+            "schedule_fires"
+          );
+        }
+      }
+    }
+
+    if (tableName === "messaging_connections") {
+      for (const row of rows) {
+        if (
+          state.messagingConversationBindings.some(
+            (binding) => binding.connectionId === row.id
+          )
+        ) {
+          throw deleteForeignKeyError(
+            "messaging_connections",
+            "messaging_conversation_bindings_connection_id_fkey",
+            "messaging_conversation_bindings"
           );
         }
       }
@@ -831,6 +1005,48 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
             ) {
               throw new Error(
                 'duplicate key value violates unique constraint "run_audit_events_run_id_sequence_key"'
+              );
+            }
+
+            if (
+              tableName === "schedule_fires" &&
+              tableRows.some(
+                (existing) =>
+                  existing.scheduleId === row.scheduleId &&
+                  existing.occurrenceKey === row.occurrenceKey
+              )
+            ) {
+              throw new Error(
+                'duplicate key value violates unique constraint "schedule_fires_schedule_id_occurrence_key_key"'
+              );
+            }
+
+            if (
+              tableName === "messaging_connections" &&
+              tableRows.some(
+                (existing) =>
+                  existing.workspaceId === row.workspaceId &&
+                  existing.channel === row.channel
+              )
+            ) {
+              throw new Error(
+                'duplicate key value violates unique constraint "messaging_connections_workspace_id_channel_key"'
+              );
+            }
+
+            if (
+              tableName === "messaging_conversation_bindings" &&
+              tableRows.some(
+                (existing) =>
+                  existing.workspaceId === row.workspaceId &&
+                  existing.channel === row.channel &&
+                  existing.externalWorkspaceId === row.externalWorkspaceId &&
+                  existing.conversationId === row.conversationId &&
+                  existing.threadKey === row.threadKey
+              )
+            ) {
+              throw new Error(
+                'duplicate key value violates unique constraint "messaging_conversation_bindings_workspace_id_channel_external_key"'
               );
             }
           }
@@ -953,6 +1169,10 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
         state.artifacts = snapshot.state.artifacts;
         state.approvals = snapshot.state.approvals;
         state.artifactLineageEdges = snapshot.state.artifactLineageEdges;
+        state.schedules = snapshot.state.schedules;
+        state.scheduleFires = snapshot.state.scheduleFires;
+        state.messagingConnections = snapshot.state.messagingConnections;
+        state.messagingConversationBindings = snapshot.state.messagingConversationBindings;
         state.workspaceCredentials = snapshot.state.workspaceCredentials;
         state.authProfiles = snapshot.state.authProfiles;
         state.routerPolicies = snapshot.state.routerPolicies;

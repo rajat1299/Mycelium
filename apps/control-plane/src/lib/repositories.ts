@@ -3,6 +3,7 @@ import type {
   CreateArtifactLineageEdgeInput,
   AcquireWorkspaceLeaseInput,
   AppendRunEventInput,
+  BindConversationInput,
   CleanupStaleRemoteWorkersInput,
   CreatePendingApprovalInput,
   CreateAuthProfileInput,
@@ -10,11 +11,18 @@ import type {
   CreateCheckpointInput,
   CreatePlanInput,
   CreateRunFromPlanInput,
+  CreateScheduleInput,
+  GetBindingByExternalConversationInput,
+  RecordScheduleFireInput,
   RecordRemoteWorkerHeartbeatInput,
+  StoredExternalConversationBinding,
+  StoredMessagingConnection,
   UpdateRemoteWorkerSessionStateInput,
   ListApprovalsInput,
   RestoreFromCheckpointInput,
   StoredRemoteWorker,
+  StoredSchedule,
+  StoredScheduleFire,
   CreateWorkspaceCredentialInput,
   ReleaseReadyDependentsInput,
   ReleaseWorkspaceLeaseInput,
@@ -34,6 +42,7 @@ import type {
   StoredWorkspaceLease,
   AssignStepToWorkerInput,
   ReleaseStepWorkerAssignmentInput,
+  UpdateScheduleInput,
   UpdateAuthProfileInput,
   UpdateRunLifecycleStatusInput,
   UpdateRunStatusInput,
@@ -45,10 +54,14 @@ import type {
   AuthProfile,
   CreateOutcomeMessageRequest,
   CreateOutcomeRequest,
+  ExternalConversationBinding,
+  MessagingConnection,
   Outcome,
   OutcomeStatus,
   RemoteWorker,
   RouterPolicy,
+  Schedule,
+  ScheduleFireSummary,
   WorkspaceCredentialMetadata
 } from "@computer-oss/protocol";
 
@@ -181,6 +194,31 @@ export type RemoteWorkerStore = {
   delete(id: string): Promise<boolean>;
 };
 
+export type ScheduleStore = {
+  create(input: CreateScheduleInput): Promise<StoredSchedule>;
+  getById(id: string): Promise<StoredSchedule | null>;
+  listByWorkspace(workspaceId: string): Promise<StoredSchedule[]>;
+  update(input: UpdateScheduleInput): Promise<StoredSchedule | null>;
+  recordFire(input: RecordScheduleFireInput): Promise<StoredScheduleFire>;
+  listFiresBySchedule(scheduleId: string): Promise<StoredScheduleFire[]>;
+};
+
+export type MessagingStore = {
+  upsertConnection(
+    input: StoredMessagingConnection
+  ): Promise<StoredMessagingConnection>;
+  getConnectionById(id: string): Promise<StoredMessagingConnection | null>;
+  listConnectionsByWorkspace(
+    workspaceId: string
+  ): Promise<StoredMessagingConnection[]>;
+  bindConversation(
+    input: BindConversationInput
+  ): Promise<StoredExternalConversationBinding>;
+  getBindingByExternalConversation(
+    input: GetBindingByExternalConversationInput
+  ): Promise<StoredExternalConversationBinding | null>;
+};
+
 export type WorkspaceCredentialStore = {
   create(input: CreateWorkspaceCredentialInput): Promise<WorkspaceCredentialMetadata>;
   getById(id: string): Promise<WorkspaceCredentialMetadata | null>;
@@ -216,6 +254,8 @@ export type Repositories = {
   artifactLineage: ArtifactLineageStore;
   workspaceLeases: WorkspaceLeaseStore;
   remoteWorkers: RemoteWorkerStore;
+  schedules: ScheduleStore;
+  messaging: MessagingStore;
   workspaceCredentials: WorkspaceCredentialStore;
   authProfiles: AuthProfileStore;
   routerPolicy: RouterPolicyStore;
@@ -229,6 +269,10 @@ type InMemoryDataState = {
   approvalsById: Map<string, StoredApproval>;
   artifactLineageEdgesById: Map<string, StoredArtifactLineageEdge>;
   remoteWorkersById: Map<string, StoredRemoteWorker>;
+  schedulesById: Map<string, StoredSchedule>;
+  scheduleFiresById: Map<string, StoredScheduleFire>;
+  messagingConnectionsById: Map<string, StoredMessagingConnection>;
+  conversationBindingsById: Map<string, StoredExternalConversationBinding>;
   workspaceCredentialsById: Map<string, CreateWorkspaceCredentialInput>;
   authProfilesById: Map<string, AuthProfile>;
   routerPoliciesByWorkspaceId: Map<string, RouterPolicy>;
@@ -333,6 +377,46 @@ function compareRemoteWorkers(left: RemoteWorker, right: RemoteWorker) {
   return left.id.localeCompare(right.id);
 }
 
+function compareSchedules(left: Schedule, right: Schedule) {
+  const createdDelta =
+    new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+
+  if (createdDelta !== 0) {
+    return createdDelta;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
+function compareScheduleFires(left: ScheduleFireSummary, right: ScheduleFireSummary) {
+  const scheduledDelta =
+    new Date(left.scheduledFor).getTime() - new Date(right.scheduledFor).getTime();
+
+  if (scheduledDelta !== 0) {
+    return scheduledDelta;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
+function compareMessagingConnections(
+  left: MessagingConnection,
+  right: MessagingConnection
+) {
+  if (left.channel !== right.channel) {
+    return left.channel.localeCompare(right.channel);
+  }
+
+  const updatedDelta =
+    new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime();
+
+  if (updatedDelta !== 0) {
+    return updatedDelta;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
 function compareWorkspaceCredentials(
   left: WorkspaceCredentialMetadata,
   right: WorkspaceCredentialMetadata
@@ -427,6 +511,15 @@ function foreignKeyDeleteError(
   );
 }
 
+function messagingConversationKey(input: {
+  channel: string;
+  externalWorkspaceId: string;
+  conversationId: string;
+  threadId: string | null;
+}) {
+  return `${input.channel}:${input.externalWorkspaceId}:${input.conversationId}:${input.threadId ?? ""}`;
+}
+
 function getStoredRunStep(
   state: InMemoryDataState,
   stepId: string
@@ -455,6 +548,13 @@ function createInMemoryRepositoriesState() {
   const approvalsById = new Map<string, StoredApproval>();
   const artifactLineageEdgesById = new Map<string, StoredArtifactLineageEdge>();
   const remoteWorkersById = new Map<string, StoredRemoteWorker>();
+  const schedulesById = new Map<string, StoredSchedule>();
+  const scheduleFiresById = new Map<string, StoredScheduleFire>();
+  const messagingConnectionsById = new Map<string, StoredMessagingConnection>();
+  const conversationBindingsById = new Map<
+    string,
+    StoredExternalConversationBinding
+  >();
   const workspaceLeasesByRunId = new Map<string, StoredWorkspaceLease>();
   const workspaceCredentialsById = new Map<string, CreateWorkspaceCredentialInput>();
   const authProfilesById = new Map<string, AuthProfile>();
@@ -474,6 +574,10 @@ function createInMemoryRepositoriesState() {
     approvalsById,
     artifactLineageEdgesById,
     remoteWorkersById,
+    schedulesById,
+    scheduleFiresById,
+    messagingConnectionsById,
+    conversationBindingsById,
     workspaceLeasesByRunId,
     workspaceCredentialsById,
     authProfilesById,
@@ -1477,6 +1581,207 @@ function createInMemoryRepositoriesState() {
     }
   };
 
+  const schedulesStore: ScheduleStore = {
+    async create(input) {
+      if (schedulesById.has(input.id)) {
+        throw new Error('duplicate key value violates unique constraint "schedules_pkey"');
+      }
+
+      schedulesById.set(input.id, { ...input });
+      return { ...input };
+    },
+    async getById(id) {
+      const schedule = schedulesById.get(id);
+      return schedule ? { ...schedule } : null;
+    },
+    async listByWorkspace(workspaceId) {
+      return Array.from(schedulesById.values())
+        .filter((schedule) => schedule.workspaceId === workspaceId)
+        .sort(compareSchedules)
+        .map((schedule) => ({ ...schedule }));
+    },
+    async update(input) {
+      const existing = schedulesById.get(input.id);
+
+      if (!existing) {
+        return null;
+      }
+
+      const updated: StoredSchedule = {
+        ...existing,
+        ...(input.title !== undefined ? { title: input.title } : {}),
+        ...(input.prompt !== undefined ? { prompt: input.prompt } : {}),
+        ...(input.status !== undefined ? { status: input.status } : {}),
+        ...(input.trigger !== undefined ? { trigger: input.trigger } : {}),
+        ...(input.outcomeMode !== undefined
+          ? { outcomeMode: input.outcomeMode }
+          : {}),
+        ...(input.dispatchMode !== undefined
+          ? { dispatchMode: input.dispatchMode }
+          : {}),
+        ...(input.nextFireAt !== undefined ? { nextFireAt: input.nextFireAt } : {}),
+        ...(input.lastFiredAt !== undefined ? { lastFiredAt: input.lastFiredAt } : {}),
+        ...(input.validationDiagnostics !== undefined
+          ? { validationDiagnostics: input.validationDiagnostics }
+          : {}),
+        updatedAt: input.updatedAt
+      };
+
+      schedulesById.set(updated.id, updated);
+      return { ...updated };
+    },
+    async recordFire(input) {
+      const existing = Array.from(scheduleFiresById.values()).find(
+        (fire) =>
+          fire.scheduleId === input.scheduleId &&
+          fire.occurrenceKey === input.occurrenceKey
+      );
+
+      if (existing) {
+        return { ...existing };
+      }
+
+      const schedule = schedulesById.get(input.scheduleId);
+
+      if (!schedule) {
+        throw new Error(`Schedule ${input.scheduleId} does not exist.`);
+      }
+
+      const fire: StoredScheduleFire = { ...input };
+      scheduleFiresById.set(fire.id, fire);
+
+      if (fire.status === "triggered") {
+        schedulesById.set(schedule.id, {
+          ...schedule,
+          lastFiredAt: fire.firedAt ?? fire.scheduledFor,
+          updatedAt: fire.firedAt ?? fire.scheduledFor
+        });
+      }
+
+      return { ...fire };
+    },
+    async listFiresBySchedule(scheduleId) {
+      return Array.from(scheduleFiresById.values())
+        .filter((fire) => fire.scheduleId === scheduleId)
+        .sort(compareScheduleFires)
+        .map((fire) => ({ ...fire }));
+    }
+  };
+
+  const messagingStore: MessagingStore = {
+    async upsertConnection(input) {
+      const existing = Array.from(messagingConnectionsById.values()).find(
+        (connection) =>
+          connection.workspaceId === input.workspaceId &&
+          connection.channel === input.channel
+      );
+
+      if (!existing) {
+        messagingConnectionsById.set(input.id, { ...input });
+        return { ...input };
+      }
+
+      const updated: StoredMessagingConnection = {
+        ...existing,
+        transport: input.transport,
+        status: input.status,
+        enabled: input.enabled,
+        accountLabel: input.accountLabel,
+        externalWorkspaceId: input.externalWorkspaceId,
+        externalWorkspaceLabel: input.externalWorkspaceLabel,
+        connectedAt: input.connectedAt,
+        lastInboundAt: input.lastInboundAt,
+        lastOutboundAt: input.lastOutboundAt,
+        lastError: input.lastError,
+        updatedAt: input.updatedAt
+      };
+
+      messagingConnectionsById.set(existing.id, updated);
+      return { ...updated };
+    },
+    async getConnectionById(id) {
+      const connection = messagingConnectionsById.get(id);
+      return connection ? { ...connection } : null;
+    },
+    async listConnectionsByWorkspace(workspaceId) {
+      return Array.from(messagingConnectionsById.values())
+        .filter((connection) => connection.workspaceId === workspaceId)
+        .sort(compareMessagingConnections)
+        .map((connection) => ({ ...connection }));
+    },
+    async bindConversation(input) {
+      const connection = messagingConnectionsById.get(input.connectionId);
+
+      if (!connection) {
+        throw new Error(`Messaging connection ${input.connectionId} does not exist.`);
+      }
+
+      if (
+        connection.workspaceId !== input.workspaceId ||
+        connection.channel !== input.channel
+      ) {
+        throw new Error(
+          `Messaging connection ${input.connectionId} does not belong to ${input.workspaceId}/${input.channel}.`
+        );
+      }
+
+      const outcome = outcomes.get(input.outcomeId);
+
+      if (!outcome) {
+        throw new Error(`Outcome ${input.outcomeId} does not exist.`);
+      }
+
+      if (outcome.workspaceId !== input.workspaceId) {
+        throw new Error(
+          `Outcome ${input.outcomeId} belongs to ${outcome.workspaceId}, not ${input.workspaceId}.`
+        );
+      }
+
+      const existing = Array.from(conversationBindingsById.values()).find(
+        (binding) =>
+          binding.workspaceId === input.workspaceId &&
+          binding.channel === input.channel &&
+          binding.externalWorkspaceId === input.externalWorkspaceId &&
+          binding.conversationId === input.conversationId &&
+          (binding.threadId ?? null) === input.threadId
+      );
+
+      if (existing && existing.outcomeId !== input.outcomeId) {
+        throw new Error(
+          `Conversation ${messagingConversationKey(input)} is already bound to outcome ${existing.outcomeId}.`
+        );
+      }
+
+      if (existing) {
+        const updated: StoredExternalConversationBinding = {
+          ...existing,
+          connectionId: input.connectionId,
+          lastInboundMessageId: input.lastInboundMessageId,
+          lastOutboundDeliveryId: input.lastOutboundDeliveryId,
+          updatedAt: input.updatedAt
+        };
+
+        conversationBindingsById.set(updated.id, updated);
+        return { ...updated };
+      }
+
+      conversationBindingsById.set(input.id, { ...input });
+      return { ...input };
+    },
+    async getBindingByExternalConversation(input) {
+      const found = Array.from(conversationBindingsById.values()).find(
+        (binding) =>
+          binding.workspaceId === input.workspaceId &&
+          binding.channel === input.channel &&
+          binding.externalWorkspaceId === input.externalWorkspaceId &&
+          binding.conversationId === input.conversationId &&
+          (binding.threadId ?? null) === input.threadId
+      );
+
+      return found ? { ...found } : null;
+    }
+  };
+
   const approvalsStore: ApprovalStore = {
     async createPending(input) {
       if (approvalsById.has(input.id)) {
@@ -1964,6 +2269,8 @@ function createInMemoryRepositoriesState() {
     artifactLineageStore,
     workspaceLeasesStore,
     remoteWorkersStore,
+    schedulesStore,
+    messagingStore,
     workspaceCredentialsStore,
     authProfilesStore,
     routerPolicyStore
@@ -1984,6 +2291,8 @@ export function createInMemoryRepositories(): Repositories {
     artifactLineage: state.artifactLineageStore,
     workspaceLeases: state.workspaceLeasesStore,
     remoteWorkers: state.remoteWorkersStore,
+    schedules: state.schedulesStore,
+    messaging: state.messagingStore,
     workspaceCredentials: state.workspaceCredentialsStore,
     authProfiles: state.authProfilesStore,
     routerPolicy: state.routerPolicyStore
@@ -2005,6 +2314,8 @@ export async function createDatabaseRepositories(
     RouterPolicyRepository,
     RemoteWorkerRepository,
     RunRepository,
+    MessagingRepository,
+    ScheduleRepository,
     WorkspaceCredentialRepository,
     WorkspaceLeaseRepository,
     createDatabaseClient
@@ -2022,6 +2333,8 @@ export async function createDatabaseRepositories(
     artifactLineage: new ArtifactLineageRepository(db),
     workspaceLeases: new WorkspaceLeaseRepository(db),
     remoteWorkers: new RemoteWorkerRepository(db),
+    schedules: new ScheduleRepository(db),
+    messaging: new MessagingRepository(db),
     workspaceCredentials: new WorkspaceCredentialRepository(db),
     authProfiles: new AuthProfileRepository(db),
     routerPolicy: new RouterPolicyRepository(db)

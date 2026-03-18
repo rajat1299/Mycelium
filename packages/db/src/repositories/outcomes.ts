@@ -3,7 +3,7 @@ import type { DatabaseClient } from "../client";
 import { outcomeMessages, outcomes, users, workspaces } from "../schema";
 
 type OutcomeRow = typeof outcomes.$inferSelect;
-type OutcomeSource = "web" | "slack" | "telegram";
+type OutcomeSource = "web" | "schedule" | "slack" | "telegram";
 type OutcomeStatus = OutcomeRow["status"];
 
 export type StoredOutcome = {

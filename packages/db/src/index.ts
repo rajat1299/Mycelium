@@ -13,3 +13,5 @@ export * from "./repositories/workspace-credentials";
 export * from "./repositories/auth-profiles";
 export * from "./repositories/router-policy";
 export * from "./repositories/remote-workers";
+export * from "./repositories/schedules";
+export * from "./repositories/messaging";

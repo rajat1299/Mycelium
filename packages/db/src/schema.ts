@@ -103,6 +103,49 @@ export const remoteWorkerHealthStatusValues = [
   "degraded",
   "offline"
 ] as const;
+export const scheduleStatusValues = [
+  "active",
+  "paused",
+  "disabled",
+  "error"
+] as const;
+export const scheduleOutcomeModeValues = [
+  "create_outcome",
+  "continue_outcome"
+] as const;
+export const scheduleDispatchModeValues = [
+  "outcome_only",
+  "draft_plan",
+  "create_run"
+] as const;
+export const scheduleFireStatusValues = [
+  "triggered",
+  "deduped",
+  "failed"
+] as const;
+export const messagingChannelValues = ["slack", "telegram"] as const;
+export const messagingTransportValues = [
+  "socket_mode",
+  "long_polling"
+] as const;
+export const messagingConnectionStatusValues = [
+  "connecting",
+  "connected",
+  "degraded",
+  "disconnected",
+  "error",
+  "disabled"
+] as const;
+export const messagingDeliveryStatusValues = [
+  "pending",
+  "sent",
+  "failed"
+] as const;
+export const messagingDeliveryKindValues = [
+  "status_update",
+  "result_summary",
+  "approval_notification"
+] as const;
 
 export const artifactLineageRelationValues = ["derived_from"] as const;
 export const checkpointKindValues = [
@@ -152,6 +195,39 @@ export const remoteWorkerAvailabilityEnum = pgEnum(
 export const remoteWorkerHealthStatusEnum = pgEnum(
   "remote_worker_health_status",
   remoteWorkerHealthStatusValues
+);
+export const scheduleStatusEnum = pgEnum("schedule_status", scheduleStatusValues);
+export const scheduleOutcomeModeEnum = pgEnum(
+  "schedule_outcome_mode",
+  scheduleOutcomeModeValues
+);
+export const scheduleDispatchModeEnum = pgEnum(
+  "schedule_dispatch_mode",
+  scheduleDispatchModeValues
+);
+export const scheduleFireStatusEnum = pgEnum(
+  "schedule_fire_status",
+  scheduleFireStatusValues
+);
+export const messagingChannelEnum = pgEnum(
+  "messaging_channel",
+  messagingChannelValues
+);
+export const messagingTransportEnum = pgEnum(
+  "messaging_transport",
+  messagingTransportValues
+);
+export const messagingConnectionStatusEnum = pgEnum(
+  "messaging_connection_status",
+  messagingConnectionStatusValues
+);
+export const messagingDeliveryStatusEnum = pgEnum(
+  "messaging_delivery_status",
+  messagingDeliveryStatusValues
+);
+export const messagingDeliveryKindEnum = pgEnum(
+  "messaging_delivery_kind",
+  messagingDeliveryKindValues
 );
 export const artifactLineageRelationEnum = pgEnum(
   "artifact_lineage_relation",
@@ -526,3 +602,112 @@ export const workspaceLeases = pgTable("workspace_leases", {
   acquiredAt: timestamp("acquired_at", { withTimezone: true }).notNull().defaultNow(),
   releasedAt: timestamp("released_at", { withTimezone: true })
 });
+
+export const schedules = pgTable("schedules", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id")
+    .notNull()
+    .references(() => workspaces.id),
+  title: text("title").notNull(),
+  prompt: text("prompt").notNull(),
+  status: scheduleStatusEnum("status").notNull().default("active"),
+  trigger: jsonb("trigger").notNull().default({}),
+  outcomeMode: scheduleOutcomeModeEnum("outcome_mode")
+    .notNull()
+    .default("create_outcome"),
+  dispatchMode: scheduleDispatchModeEnum("dispatch_mode")
+    .notNull()
+    .default("outcome_only"),
+  nextFireAt: timestamp("next_fire_at", { withTimezone: true }),
+  lastFiredAt: timestamp("last_fired_at", { withTimezone: true }),
+  validationDiagnostics: jsonb("validation_diagnostics").notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+});
+
+export const scheduleFires = pgTable(
+  "schedule_fires",
+  {
+    id: text("id").primaryKey(),
+    scheduleId: text("schedule_id")
+      .notNull()
+      .references(() => schedules.id),
+    occurrenceKey: text("occurrence_key").notNull(),
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull(),
+    firedAt: timestamp("fired_at", { withTimezone: true }),
+    status: scheduleFireStatusEnum("status").notNull(),
+    outcomeId: text("outcome_id").references(() => outcomes.id),
+    runId: text("run_id").references(() => outcomeRuns.id),
+    errorMessage: text("error_message")
+  },
+  (table) => [
+    uniqueIndex("schedule_fires_schedule_id_occurrence_key_key").on(
+      table.scheduleId,
+      table.occurrenceKey
+    )
+  ]
+);
+
+export const messagingConnections = pgTable(
+  "messaging_connections",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id),
+    channel: messagingChannelEnum("channel").notNull(),
+    transport: messagingTransportEnum("transport").notNull(),
+    status: messagingConnectionStatusEnum("status").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    accountLabel: text("account_label").notNull(),
+    externalWorkspaceId: text("external_workspace_id").notNull(),
+    externalWorkspaceLabel: text("external_workspace_label"),
+    connectedAt: timestamp("connected_at", { withTimezone: true }),
+    lastInboundAt: timestamp("last_inbound_at", { withTimezone: true }),
+    lastOutboundAt: timestamp("last_outbound_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    uniqueIndex("messaging_connections_workspace_id_channel_key").on(
+      table.workspaceId,
+      table.channel
+    )
+  ]
+);
+
+export const messagingConversationBindings = pgTable(
+  "messaging_conversation_bindings",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id),
+    outcomeId: text("outcome_id")
+      .notNull()
+      .references(() => outcomes.id),
+    channel: messagingChannelEnum("channel").notNull(),
+    connectionId: text("connection_id")
+      .notNull()
+      .references(() => messagingConnections.id),
+    externalWorkspaceId: text("external_workspace_id").notNull(),
+    conversationId: text("conversation_id").notNull(),
+    threadId: text("thread_id"),
+    threadKey: text("thread_key").notNull().default(""),
+    lastInboundMessageId: text("last_inbound_message_id"),
+    lastOutboundDeliveryId: text("last_outbound_delivery_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    uniqueIndex(
+      "messaging_conversation_bindings_workspace_id_channel_external_key"
+    ).on(
+      table.workspaceId,
+      table.channel,
+      table.externalWorkspaceId,
+      table.conversationId,
+      table.threadKey
+    )
+  ]
+);
