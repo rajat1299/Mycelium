@@ -117,8 +117,11 @@ export class MessagingRepository {
     return this.db.transaction(async (transaction) => {
       await ensureWorkspace(transaction, input.workspaceId);
 
-      const rows = await transaction.select().from(messagingConnections);
-      const existing = rows.find(
+      const [connectionRows, bindingRows] = await Promise.all([
+        transaction.select().from(messagingConnections),
+        transaction.select().from(messagingConversationBindings)
+      ]);
+      const existing = connectionRows.find(
         (row) =>
           row.workspaceId === input.workspaceId && row.channel === input.channel
       );
@@ -145,6 +148,19 @@ export class MessagingRepository {
           .returning();
 
         return mapConnectionRow(created);
+      }
+
+      const hasBindings = bindingRows.some(
+        (row) => row.connectionId === existing.id
+      );
+
+      if (
+        existing.externalWorkspaceId !== input.externalWorkspaceId &&
+        hasBindings
+      ) {
+        throw new Error(
+          `Messaging connection ${existing.id} cannot switch external workspace from ${existing.externalWorkspaceId} to ${input.externalWorkspaceId} while bindings still reference it.`
+        );
       }
 
       const [updated] = await transaction

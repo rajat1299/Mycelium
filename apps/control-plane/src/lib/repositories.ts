@@ -1710,6 +1710,19 @@ function createInMemoryRepositoriesState() {
         return { ...input };
       }
 
+      const hasBindings = Array.from(conversationBindingsById.values()).some(
+        (binding) => binding.connectionId === existing.id
+      );
+
+      if (
+        existing.externalWorkspaceId !== input.externalWorkspaceId &&
+        hasBindings
+      ) {
+        throw new Error(
+          `Messaging connection ${existing.id} cannot switch external workspace from ${existing.externalWorkspaceId} to ${input.externalWorkspaceId} while bindings still reference it.`
+        );
+      }
+
       const updated: StoredMessagingConnection = {
         ...existing,
         transport: input.transport,
