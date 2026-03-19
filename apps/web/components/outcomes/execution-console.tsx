@@ -6,6 +6,9 @@ import type {
   Artifact,
   ArtifactLineageEdge,
   AuditEvent,
+  ExternalConversationBinding,
+  MessagingConnection,
+  MessagingDelivery,
   RemoteStepLifecycleEventData,
   RemoteWorker,
   CheckpointDetail,
@@ -32,6 +35,7 @@ import { RunTimeline } from "./run-timeline";
 
 type ExecutionConsoleProps = {
   outcomeId: string;
+  outcomeSource: "web" | "schedule" | "slack" | "telegram";
   initialRun: RunDetail | null;
   initialArtifacts: Artifact[];
   initialLogs: RunLogData[];
@@ -42,6 +46,11 @@ type ExecutionConsoleProps = {
   initialCheckpoints?: CheckpointSummary[];
   initialSelectedCheckpoint?: CheckpointDetail | null;
   initialAuditEvents?: AuditEvent[];
+  initialMessageHistory?: {
+    connection: MessagingConnection | null;
+    bindings: ExternalConversationBinding[];
+    deliveries: MessagingDelivery[];
+  } | null;
 };
 
 type ExecutionConsoleState = {
@@ -51,6 +60,11 @@ type ExecutionConsoleState = {
   logs: RunLogData[];
   pendingApprovals: Approval[];
   workers: RemoteWorker[];
+  messageHistory: {
+    connection: MessagingConnection | null;
+    bindings: ExternalConversationBinding[];
+    deliveries: MessagingDelivery[];
+  } | null;
   remoteStepStates: Record<string, RemoteStepLifecycleEventData>;
   checkpoints: CheckpointSummary[];
   selectedCheckpointId: string | null;
@@ -69,6 +83,7 @@ const EMPTY_AUTH_PROFILES: AuthProfile[] = [];
 const EMPTY_WORKERS: RemoteWorker[] = [];
 const EMPTY_CHECKPOINTS: CheckpointSummary[] = [];
 const EMPTY_AUDIT_EVENTS: AuditEvent[] = [];
+const EMPTY_MESSAGE_HISTORY = null;
 
 function sortArtifacts(artifacts: Artifact[]) {
   return [...artifacts].sort((left, right) =>
@@ -226,7 +241,12 @@ function buildInitialState(
   initialWorkers: RemoteWorker[],
   initialCheckpoints: CheckpointSummary[],
   initialSelectedCheckpoint: CheckpointDetail | null,
-  initialAuditEvents: AuditEvent[]
+  initialAuditEvents: AuditEvent[],
+  initialMessageHistory: {
+    connection: MessagingConnection | null;
+    bindings: ExternalConversationBinding[];
+    deliveries: MessagingDelivery[];
+  } | null
 ): ExecutionConsoleState {
   const orderedCheckpoints = sortCheckpoints(initialCheckpoints);
   const selectedCheckpointId =
@@ -242,6 +262,7 @@ function buildInitialState(
     logs: sortLogs(initialLogs),
     pendingApprovals: initialPendingApprovals,
     workers: sortWorkers(initialWorkers),
+    messageHistory: initialMessageHistory,
     remoteStepStates: {},
     checkpoints: orderedCheckpoints,
     selectedCheckpointId,
@@ -271,6 +292,7 @@ function readErrorMessage(payload: unknown, fallback: string) {
 
 export function ExecutionConsole({
   outcomeId,
+  outcomeSource,
   initialRun,
   initialArtifacts,
   initialLogs,
@@ -280,7 +302,8 @@ export function ExecutionConsole({
   initialWorkers = EMPTY_WORKERS,
   initialCheckpoints = EMPTY_CHECKPOINTS,
   initialSelectedCheckpoint = null,
-  initialAuditEvents = EMPTY_AUDIT_EVENTS
+  initialAuditEvents = EMPTY_AUDIT_EVENTS,
+  initialMessageHistory = EMPTY_MESSAGE_HISTORY
 }: ExecutionConsoleProps) {
   const [state, setState] = useState<ExecutionConsoleState>(() =>
     buildInitialState(
@@ -291,7 +314,8 @@ export function ExecutionConsole({
       initialWorkers,
       initialCheckpoints,
       initialSelectedCheckpoint,
-      initialAuditEvents
+      initialAuditEvents,
+      initialMessageHistory
     )
   );
   const currentPendingApproval =
@@ -489,7 +513,8 @@ export function ExecutionConsole({
         initialWorkers,
         initialCheckpoints,
         initialSelectedCheckpoint,
-        initialAuditEvents
+        initialAuditEvents,
+        initialMessageHistory
       )
     );
   }, [
@@ -500,7 +525,8 @@ export function ExecutionConsole({
     initialWorkers,
     initialCheckpoints,
     initialSelectedCheckpoint,
-    initialAuditEvents
+    initialAuditEvents,
+    initialMessageHistory
   ]);
 
   useEffect(() => {
@@ -752,14 +778,117 @@ export function ExecutionConsole({
             };
           }
 
+          if (event.type === "messaging.connection.updated") {
+            return {
+              ...current,
+              messageHistory: current.messageHistory
+                ? {
+                    ...current.messageHistory,
+                    connection: event.data
+                  }
+                : {
+                    connection: event.data,
+                    bindings: [],
+                    deliveries: []
+                  }
+            };
+          }
+
+          if (event.type === "messaging.delivery.updated") {
+            const deliveries = current.messageHistory?.deliveries ?? [];
+            const nextDeliveries = deliveries.some(
+              (delivery) => delivery.id === event.data.id
+            )
+              ? deliveries.map((delivery) =>
+                  delivery.id === event.data.id ? event.data : delivery
+                )
+              : [event.data, ...deliveries];
+
+            return {
+              ...current,
+              messageHistory: {
+                connection: current.messageHistory?.connection ?? null,
+                bindings: current.messageHistory?.bindings ?? [],
+                deliveries: nextDeliveries
+              }
+            };
+          }
+
           return current;
         });
       });
     });
   }, [outcomeId]);
 
+  const primaryBinding = state.messageHistory?.bindings[0] ?? null;
+  const sentDeliveryCount =
+    state.messageHistory?.deliveries.filter((delivery) => delivery.status === "sent")
+      .length ?? 0;
+
   return (
     <>
+      {outcomeSource !== "web" ? (
+        <section className="rounded-[2rem] border border-panel-line bg-panel p-6 shadow-panel">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
+                Ingress
+              </p>
+              <h2 className="font-serif text-3xl tracking-tight text-ink">
+                {outcomeSource === "schedule"
+                  ? "Scheduled trigger"
+                  : `Inbound from ${outcomeSource}`}
+              </h2>
+              <p className="text-sm leading-6 text-muted">
+                {outcomeSource === "schedule"
+                  ? "This outcome entered Mycelium from a durable schedule and then reused the normal execution path."
+                  : "This outcome entered Mycelium from a bound messaging conversation and keeps its channel state visible here."}
+              </p>
+            </div>
+            <Badge variant="sky">{outcomeSource}</Badge>
+          </div>
+
+          {state.messageHistory ? (
+            <div className="mt-6 grid gap-4 md:grid-cols-3">
+              <div className="rounded-[1.5rem] border border-panel-line bg-white/75 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
+                  Connection
+                </p>
+                <p className="mt-2 text-sm font-semibold text-ink">
+                  {state.messageHistory.connection?.accountLabel ?? "Unknown connection"}
+                </p>
+                <p className="mt-1 text-sm text-muted">
+                  {state.messageHistory.connection?.status ?? "untracked"}
+                </p>
+              </div>
+              <div className="rounded-[1.5rem] border border-panel-line bg-white/75 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
+                  Conversation
+                </p>
+                <p className="mt-2 text-sm font-semibold text-ink">
+                  {primaryBinding?.conversationId ?? "No conversation binding"}
+                </p>
+                <p className="mt-1 text-sm text-muted">
+                  {primaryBinding?.threadId
+                    ? `Thread ${primaryBinding.threadId}`
+                    : "No thread id"}
+                </p>
+              </div>
+              <div className="rounded-[1.5rem] border border-panel-line bg-white/75 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
+                  Deliveries
+                </p>
+                <p className="mt-2 text-sm font-semibold text-ink">
+                  {sentDeliveryCount} sent delivery{sentDeliveryCount === 1 ? "" : "ies"}
+                </p>
+                <p className="mt-1 text-sm text-muted">
+                  {state.messageHistory.deliveries.length} total delivery records
+                </p>
+              </div>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
       <RunTimeline
         outcomeId={outcomeId}
         initialRun={state.currentRun}

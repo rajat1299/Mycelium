@@ -1,5 +1,10 @@
 import "@testing-library/jest-dom/vitest";
 import React from "react";
+import type {
+  ExternalConversationBinding,
+  MessagingConnection,
+  MessagingDelivery
+} from "@computer-oss/protocol";
 import {
   act,
   cleanup,
@@ -56,6 +61,7 @@ describe("ExecutionConsole", () => {
     render(
       <ExecutionConsole
         outcomeId="outcome_123"
+        outcomeSource="web"
         initialRun={null}
         initialArtifacts={[]}
         initialLogs={[]}
@@ -127,6 +133,7 @@ describe("ExecutionConsole", () => {
     render(
       <ExecutionConsole
         outcomeId="outcome_123"
+        outcomeSource="web"
         initialRun={{
           id: "run_123",
           outcomeId: "outcome_123",
@@ -246,10 +253,84 @@ describe("ExecutionConsole", () => {
     expect(screen.queryByText("Blocked on review")).not.toBeInTheDocument();
   });
 
+  it("renders ingress metadata for messaging-triggered outcomes", () => {
+    const connection: MessagingConnection = {
+      id: "connection_slack_1",
+      workspaceId: "ws_default",
+      channel: "slack",
+      transport: "socket_mode",
+      status: "connected",
+      enabled: true,
+      accountLabel: "Operations Slack",
+      externalWorkspaceId: "T123456",
+      externalWorkspaceLabel: "Mycelium Ops",
+      connectedAt: "2026-03-18T12:00:00.000Z",
+      lastInboundAt: "2026-03-18T14:00:00.000Z",
+      lastOutboundAt: "2026-03-18T14:05:00.000Z",
+      lastError: null,
+      updatedAt: "2026-03-18T14:05:00.000Z"
+    };
+    const binding: ExternalConversationBinding = {
+      id: "binding_slack_1",
+      workspaceId: "ws_default",
+      outcomeId: "outcome_123",
+      channel: "slack",
+      connectionId: "connection_slack_1",
+      externalWorkspaceId: "T123456",
+      conversationId: "C123456",
+      threadId: "1710763200.000100",
+      lastInboundMessageId: "1710763200.000100",
+      lastOutboundDeliveryId: "delivery_1",
+      createdAt: "2026-03-18T14:00:00.000Z",
+      updatedAt: "2026-03-18T14:05:00.000Z"
+    };
+    const delivery: MessagingDelivery = {
+      id: "delivery_1",
+      workspaceId: "ws_default",
+      connectionId: "connection_slack_1",
+      channel: "slack",
+      externalWorkspaceId: "T123456",
+      conversationId: "C123456",
+      threadId: "1710763200.000100",
+      kind: "status_update",
+      status: "sent",
+      body: "Outcome outcome_123 created from slack message.",
+      outcomeId: "outcome_123",
+      runId: null,
+      sentAt: "2026-03-18T14:05:00.000Z",
+      lastAttemptAt: "2026-03-18T14:05:00.000Z",
+      errorMessage: null
+    };
+
+    render(
+      <ExecutionConsole
+        outcomeId="outcome_123"
+        outcomeSource="slack"
+        initialRun={null}
+        initialArtifacts={[]}
+        initialLogs={[]}
+        initialPendingApprovals={[]}
+        initialLineageEdges={[]}
+        initialMessageHistory={{
+          connection,
+          bindings: [binding],
+          deliveries: [delivery]
+        }}
+      />
+    );
+
+    expect(screen.getByText("Ingress")).toBeInTheDocument();
+    expect(screen.getByText("slack")).toBeInTheDocument();
+    expect(screen.getByText("Operations Slack")).toBeInTheDocument();
+    expect(screen.getByText("C123456")).toBeInTheDocument();
+    expect(screen.getByText("1 sent delivery")).toBeInTheDocument();
+  });
+
   it("shows remote worker state and updates it when worker lifecycle events arrive", () => {
     render(
       <ExecutionConsole
         outcomeId="outcome_123"
+        outcomeSource="web"
         initialRun={{
           id: "run_123",
           outcomeId: "outcome_123",
@@ -349,6 +430,7 @@ describe("ExecutionConsole", () => {
     render(
       <ExecutionConsole
         outcomeId="outcome_123"
+        outcomeSource="web"
         initialRun={{
           id: "run_123",
           outcomeId: "outcome_123",
@@ -527,6 +609,7 @@ describe("ExecutionConsole", () => {
     render(
       <ExecutionConsole
         outcomeId="outcome_123"
+        outcomeSource="web"
         initialRun={{
           id: "run_123",
           outcomeId: "outcome_123",
@@ -726,6 +809,7 @@ describe("ExecutionConsole", () => {
     render(
       <ExecutionConsole
         outcomeId="outcome_123"
+        outcomeSource="web"
         initialRun={{
           id: "run_123",
           outcomeId: "outcome_123",
@@ -948,6 +1032,7 @@ describe("ExecutionConsole", () => {
     render(
       <ExecutionConsole
         outcomeId="outcome_123"
+        outcomeSource="web"
         initialRun={{
           id: "run_123",
           outcomeId: "outcome_123",

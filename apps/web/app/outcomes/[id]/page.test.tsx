@@ -7,6 +7,9 @@ import type {
   AuditEvent,
   CheckpointDetail,
   CheckpointSummary,
+  ExternalConversationBinding,
+  MessagingConnection,
+  MessagingDelivery,
   RunDetail
 } from "@computer-oss/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -23,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   getRunAudit: vi.fn(),
   getRunLogs: vi.fn(),
   getRunArtifactLineage: vi.fn(),
+  getOutcomeMessageHistory: vi.fn(),
   listApprovals: vi.fn(),
   listWorkers: vi.fn(),
   listAuthProfiles: vi.fn(),
@@ -46,6 +50,14 @@ let observedCheckpoints: CheckpointSummary[] = [];
 let observedSelectedCheckpoint: CheckpointDetail | null = null;
 let observedAuditEvents: AuditEvent[] = [];
 let observedWorkers: Array<{ id: string; label: string; availability: string }> = [];
+let observedOutcomeSource: string | null = null;
+let observedMessageHistory:
+  | {
+      connection: MessagingConnection | null;
+      bindings: ExternalConversationBinding[];
+      deliveries: MessagingDelivery[];
+    }
+  | null = null;
 
 vi.mock("next/cache", () => ({
   revalidatePath: mocks.revalidatePath
@@ -80,6 +92,7 @@ vi.mock("../../../components/outcomes/plan-graph", () => ({
 
 vi.mock("../../../components/outcomes/execution-console", () => ({
   ExecutionConsole: ({
+    outcomeSource,
     initialRun,
     initialArtifacts,
     initialLogs,
@@ -89,8 +102,10 @@ vi.mock("../../../components/outcomes/execution-console", () => ({
     initialWorkers = [],
     initialCheckpoints = [],
     initialSelectedCheckpoint = null,
-    initialAuditEvents = []
+    initialAuditEvents = [],
+    initialMessageHistory = null
   }: {
+    outcomeSource: string;
     initialRun: RunDetail | null;
     initialArtifacts: Array<{ id: string; relativePath: string }>;
     initialLogs: Array<{ message: string; level: string }>;
@@ -101,7 +116,13 @@ vi.mock("../../../components/outcomes/execution-console", () => ({
     initialCheckpoints?: CheckpointSummary[];
     initialSelectedCheckpoint?: CheckpointDetail | null;
     initialAuditEvents?: AuditEvent[];
+    initialMessageHistory?: {
+      connection: MessagingConnection | null;
+      bindings: ExternalConversationBinding[];
+      deliveries: MessagingDelivery[];
+    } | null;
   }) => {
+    observedOutcomeSource = outcomeSource;
     observedRun = initialRun;
     observedSelectedRunId = initialRun?.id ?? null;
     observedArtifacts = initialArtifacts;
@@ -113,9 +134,12 @@ vi.mock("../../../components/outcomes/execution-console", () => ({
     observedCheckpoints = initialCheckpoints;
     observedSelectedCheckpoint = initialSelectedCheckpoint;
     observedAuditEvents = initialAuditEvents;
+    observedMessageHistory = initialMessageHistory;
     return (
       <div data-testid="execution-console">
-        {(initialRun?.id ?? "none") +
+        {outcomeSource +
+          ":" +
+          (initialRun?.id ?? "none") +
           ":" +
           initialArtifacts.length +
           ":" +
@@ -157,6 +181,7 @@ vi.mock("../../../lib/api", () => ({
   getRunAudit: mocks.getRunAudit,
   getRunLogs: mocks.getRunLogs,
   getRunArtifactLineage: mocks.getRunArtifactLineage,
+  getOutcomeMessageHistory: mocks.getOutcomeMessageHistory,
   listApprovals: mocks.listApprovals,
   listWorkers: mocks.listWorkers,
   listAuthProfiles: mocks.listAuthProfiles
@@ -179,6 +204,8 @@ describe("OutcomeDetailPage", () => {
     observedSelectedCheckpoint = null;
     observedAuditEvents = [];
     observedWorkers = [];
+    observedOutcomeSource = null;
+    observedMessageHistory = null;
     vi.clearAllMocks();
 
     mocks.getOutcome.mockResolvedValue({
@@ -305,6 +332,7 @@ describe("OutcomeDetailPage", () => {
         createdAt: "2026-03-11T00:09:32.000Z"
       }
     ]);
+    mocks.getOutcomeMessageHistory.mockResolvedValue(null);
     mocks.listApprovals.mockResolvedValue([
       {
         id: "approval_123",
@@ -373,6 +401,7 @@ describe("OutcomeDetailPage", () => {
     );
 
     expect(mocks.getLatestRun).toHaveBeenCalledWith("outcome_123");
+    expect(mocks.getOutcomeMessageHistory).not.toHaveBeenCalled();
     expect(mocks.getRun).not.toHaveBeenCalled();
     expect(mocks.listAuthProfiles).toHaveBeenCalledWith("ws_default");
     expect(mocks.listWorkers).toHaveBeenCalledWith("ws_default");
@@ -384,8 +413,10 @@ describe("OutcomeDetailPage", () => {
     expect(mocks.getRunAudit).toHaveBeenCalledWith("run_latest");
     expect(mocks.getRunLogs).toHaveBeenCalledWith("run_latest");
     expect(screen.getByTestId("execution-console")).toHaveTextContent(
-      "run_latest:1:1:1:1:1:1"
+      "web:run_latest:1:1:1:1:1:1"
     );
+    expect(observedOutcomeSource).toBe("web");
+    expect(observedMessageHistory).toBeNull();
     expect(observedRun?.id).toBe("run_latest");
     expect(observedSelectedRunId).toBe("run_latest");
     expect(observedArtifacts).toEqual([
@@ -473,9 +504,108 @@ describe("OutcomeDetailPage", () => {
     expect(mocks.getRunAudit).toHaveBeenCalledWith("run_latest");
     expect(mocks.getRunLogs).toHaveBeenCalledWith("run_latest");
     expect(screen.getByTestId("execution-console")).toHaveTextContent(
-      "run_latest:1:1:1:1:1:1"
+      "web:run_latest:1:1:1:1:1:1"
     );
     expect(observedRun?.id).toBe("run_latest");
     expect(observedSelectedRunId).toBe("run_latest");
+  });
+
+  it("loads message history for messaging-triggered outcomes and passes it to the console", async () => {
+    mocks.getOutcome.mockResolvedValue({
+      id: "outcome_123",
+      workspaceId: "ws_default",
+      userId: "user_default",
+      prompt: "Summarize the incident thread.",
+      source: "slack",
+      status: "running",
+      createdAt: "2026-03-18T14:00:00.000Z",
+      updatedAt: "2026-03-18T14:10:00.000Z"
+    });
+    mocks.getOutcomeMessageHistory.mockResolvedValue({
+      connection: {
+        id: "connection_slack_1",
+        workspaceId: "ws_default",
+        channel: "slack",
+        transport: "socket_mode",
+        status: "connected",
+        enabled: true,
+        accountLabel: "Operations Slack",
+        externalWorkspaceId: "T123456",
+        externalWorkspaceLabel: "Mycelium Ops",
+        connectedAt: "2026-03-18T12:00:00.000Z",
+        lastInboundAt: "2026-03-18T14:00:00.000Z",
+        lastOutboundAt: "2026-03-18T14:05:00.000Z",
+        lastError: null,
+        updatedAt: "2026-03-18T14:05:00.000Z"
+      },
+      bindings: [
+        {
+          id: "binding_slack_1",
+          workspaceId: "ws_default",
+          outcomeId: "outcome_123",
+          channel: "slack",
+          connectionId: "connection_slack_1",
+          externalWorkspaceId: "T123456",
+          conversationId: "C123456",
+          threadId: "1710763200.000100",
+          lastInboundMessageId: "1710763200.000100",
+          lastOutboundDeliveryId: "delivery_1",
+          createdAt: "2026-03-18T14:00:00.000Z",
+          updatedAt: "2026-03-18T14:05:00.000Z"
+        }
+      ],
+      deliveries: [
+        {
+          id: "delivery_1",
+          workspaceId: "ws_default",
+          connectionId: "connection_slack_1",
+          channel: "slack",
+          externalWorkspaceId: "T123456",
+          conversationId: "C123456",
+          threadId: "1710763200.000100",
+          kind: "status_update",
+          status: "sent",
+          body: "Outcome outcome_123 created from slack message.",
+          outcomeId: "outcome_123",
+          runId: null,
+          sentAt: "2026-03-18T14:05:00.000Z",
+          lastAttemptAt: "2026-03-18T14:05:00.000Z",
+          errorMessage: null
+        }
+      ]
+    });
+
+    render(
+      await OutcomeDetailPage({
+        params: Promise.resolve({ id: "outcome_123" }),
+        searchParams: Promise.resolve({})
+      })
+    );
+
+    expect(mocks.getOutcomeMessageHistory).toHaveBeenCalledWith("outcome_123");
+    expect(observedOutcomeSource).toBe("slack");
+    expect(observedMessageHistory).toEqual(
+      expect.objectContaining({
+        connection: expect.objectContaining({
+          id: "connection_slack_1",
+          accountLabel: "Operations Slack"
+        }),
+        bindings: [
+          expect.objectContaining({
+            id: "binding_slack_1",
+            conversationId: "C123456"
+          })
+        ],
+        deliveries: [
+          expect.objectContaining({
+            id: "delivery_1",
+            status: "sent"
+          })
+        ]
+      })
+    );
+    expect(screen.getByTestId("execution-console")).toHaveTextContent(
+      "slack:run_latest:1:1:1:1:1:1"
+    );
   });
 });

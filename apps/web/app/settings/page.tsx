@@ -4,7 +4,10 @@ import {
   getDefaultWorkspaceId,
   getProviderCatalog,
   getRouterPolicy,
+  getSlackConnection,
+  getTelegramConnection,
   listAuthProfiles,
+  listSchedules,
   listWorkspaceCredentials
 } from "../../lib/api";
 
@@ -12,11 +15,14 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const workspaceId = getDefaultWorkspaceId();
-  const [catalog, credentials, authProfiles, policy] = await Promise.all([
+  const [catalog, credentials, authProfiles, policy, schedules, slackConnection, telegramConnection] = await Promise.all([
     getProviderCatalog(),
     listWorkspaceCredentials(workspaceId),
     listAuthProfiles(workspaceId),
-    getRouterPolicy(workspaceId)
+    getRouterPolicy(workspaceId),
+    listSchedules(workspaceId),
+    getSlackConnection(workspaceId),
+    getTelegramConnection(workspaceId)
   ]);
 
   return (
@@ -27,11 +33,11 @@ export default async function SettingsPage() {
             Settings
           </p>
           <h1 className="max-w-3xl font-serif text-4xl tracking-tight text-ink sm:text-5xl">
-            Provider routing and BYO keys
+            Routing, schedules, and messaging
           </h1>
           <p className="max-w-2xl text-sm leading-6 text-muted">
-            Review the provider catalog, saved credentials, auth profiles, and the
-            current routing policy for this workspace.
+            Review provider routing, saved credentials, durable schedules, and the
+            Slack or Telegram ingress state for this workspace.
           </p>
         </div>
         <div className="rounded-3xl border border-panel-line bg-panel p-5 shadow-panel">
@@ -54,6 +60,9 @@ export default async function SettingsPage() {
         credentials={credentials}
         authProfiles={authProfiles}
         policy={policy}
+        schedules={schedules}
+        slackConnection={slackConnection}
+        telegramConnection={telegramConnection}
       />
     </main>
   );

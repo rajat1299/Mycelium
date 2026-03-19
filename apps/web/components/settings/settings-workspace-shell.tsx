@@ -3,13 +3,17 @@
 import { useEffect, useState } from "react";
 import type {
   AuthProfile,
+  MessagingConnection,
   ProviderCatalog,
   RouterPolicy,
+  Schedule,
   WorkspaceCredentialMetadata
 } from "@computer-oss/protocol";
 import { AuthProfilesPanel } from "./auth-profiles-panel";
+import { MessagingPanel } from "./messaging-panel";
 import { ProviderCatalog as ProviderCatalogPanel } from "./provider-catalog";
 import { RouterPolicyEditor } from "./router-policy-editor";
+import { SchedulesPanel } from "./schedules-panel";
 import { WorkspaceCredentialsPanel } from "./workspace-credentials-panel";
 
 type SettingsWorkspaceShellProps = {
@@ -18,6 +22,9 @@ type SettingsWorkspaceShellProps = {
   credentials: WorkspaceCredentialMetadata[];
   authProfiles: AuthProfile[];
   policy: RouterPolicy | null;
+  schedules: Schedule[];
+  slackConnection: MessagingConnection | null;
+  telegramConnection: MessagingConnection | null;
 };
 
 function sortCredentials(credentials: WorkspaceCredentialMetadata[]) {
@@ -49,7 +56,10 @@ export function SettingsWorkspaceShell({
   catalog,
   credentials,
   authProfiles,
-  policy
+  policy,
+  schedules,
+  slackConnection,
+  telegramConnection
 }: SettingsWorkspaceShellProps) {
   const [credentialState, setCredentialState] = useState(() =>
     sortCredentials(credentials)
@@ -76,6 +86,7 @@ export function SettingsWorkspaceShell({
           policy={policy}
           authProfiles={authProfileState}
         />
+        <SchedulesPanel workspaceId={workspaceId} schedules={schedules} />
       </div>
       <div className="space-y-8">
         <WorkspaceCredentialsPanel
@@ -104,6 +115,11 @@ export function SettingsWorkspaceShell({
               ])
             )
           }
+        />
+        <MessagingPanel
+          workspaceId={workspaceId}
+          slackConnection={slackConnection}
+          telegramConnection={telegramConnection}
         />
       </div>
     </section>

@@ -9,6 +9,9 @@ import {
   CheckpointListResponseSchema,
   CreateRunRequestSchema,
   CreateOutcomeRequestSchema,
+  ExternalConversationBindingSchema,
+  MessagingConnectionSchema,
+  MessagingDeliverySchema,
   OutcomeListResponseSchema,
   OutcomeSchema,
   PlanSchema,
@@ -18,6 +21,8 @@ import {
   RunDetailSchema,
   RunLogListResponseSchema,
   RouterPolicySchema,
+  ScheduleListResponseSchema,
+  ScheduleSchema,
   WorkspaceCredentialMetadataSchema,
   type CreateOutcomeRequest,
   type CreateRunRequest,
@@ -27,8 +32,13 @@ import {
   type ArtifactLineageEdge,
   type CheckpointDetail,
   type CheckpointSummary,
+  type ExternalConversationBinding,
+  type MessagingConnection,
+  type MessagingDelivery,
   type Outcome,
-  type RemoteWorker
+  type RemoteWorker,
+  type Schedule,
+  type RunLogData
 } from "@computer-oss/protocol";
 import { z } from "zod";
 
@@ -66,6 +76,12 @@ const RouterPolicyResponseEnvelopeSchema = z.object({
 
 const WorkerListEnvelopeSchema = z.object({
   workers: z.array(z.unknown())
+});
+
+const OutcomeMessageHistorySchema = z.object({
+  connection: z.unknown().nullable(),
+  bindings: z.array(z.unknown()),
+  deliveries: z.array(z.unknown())
 });
 
 export async function listOutcomes(workspaceId: string): Promise<Outcome[]> {
@@ -371,6 +387,105 @@ export async function resumeRun(
   }
 
   return parseJson(response, (value) => ResumeRunResponseSchema.parse(value));
+}
+
+export async function listSchedules(workspaceId: string): Promise<Schedule[]> {
+  try {
+    const response = await fetch(
+      `${getControlPlaneBaseUrl()}/api/workspaces/${encodeURIComponent(workspaceId)}/schedules`,
+      {
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const parsed = await parseJson(response, (value) =>
+      ScheduleListResponseSchema.parse(value)
+    );
+
+    return parsed.schedules.map((schedule) => ScheduleSchema.parse(schedule));
+  } catch {
+    return [];
+  }
+}
+
+async function getMessagingConnection(
+  workspaceId: string,
+  channel: "slack" | "telegram"
+): Promise<MessagingConnection | null> {
+  try {
+    const response = await fetch(
+      `${getControlPlaneBaseUrl()}/api/workspaces/${encodeURIComponent(workspaceId)}/${channel}/connection`,
+      {
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const parsed = await parseJson(response, (value) =>
+      z.object({ connection: z.unknown().nullable() }).parse(value)
+    );
+
+    if (parsed.connection === null) {
+      return null;
+    }
+
+    return MessagingConnectionSchema.parse(parsed.connection);
+  } catch {
+    return null;
+  }
+}
+
+export async function getSlackConnection(workspaceId: string) {
+  return getMessagingConnection(workspaceId, "slack");
+}
+
+export async function getTelegramConnection(workspaceId: string) {
+  return getMessagingConnection(workspaceId, "telegram");
+}
+
+export async function getOutcomeMessageHistory(outcomeId: string): Promise<{
+  connection: MessagingConnection | null;
+  bindings: ExternalConversationBinding[];
+  deliveries: MessagingDelivery[];
+} | null> {
+  try {
+    const response = await fetch(
+      `${getControlPlaneBaseUrl()}/api/outcomes/${outcomeId}/messages/history`,
+      {
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const parsed = await parseJson(response, (value) =>
+      OutcomeMessageHistorySchema.parse(value)
+    );
+
+    return {
+      connection:
+        parsed.connection === null
+          ? null
+          : MessagingConnectionSchema.parse(parsed.connection),
+      bindings: parsed.bindings.map((binding) =>
+        ExternalConversationBindingSchema.parse(binding)
+      ),
+      deliveries: parsed.deliveries.map((delivery) =>
+        MessagingDeliverySchema.parse(delivery)
+      )
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function getProviderCatalog() {

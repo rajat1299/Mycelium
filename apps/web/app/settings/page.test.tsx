@@ -9,7 +9,10 @@ const mocks = vi.hoisted(() => ({
   getProviderCatalog: vi.fn(),
   listWorkspaceCredentials: vi.fn(),
   listAuthProfiles: vi.fn(),
-  getRouterPolicy: vi.fn()
+  getRouterPolicy: vi.fn(),
+  listSchedules: vi.fn(),
+  getSlackConnection: vi.fn(),
+  getTelegramConnection: vi.fn()
 }));
 
 vi.mock("next/link", () => ({
@@ -27,7 +30,10 @@ vi.mock("../../lib/api", () => ({
   getProviderCatalog: mocks.getProviderCatalog,
   listWorkspaceCredentials: mocks.listWorkspaceCredentials,
   listAuthProfiles: mocks.listAuthProfiles,
-  getRouterPolicy: mocks.getRouterPolicy
+  getRouterPolicy: mocks.getRouterPolicy,
+  listSchedules: mocks.listSchedules,
+  getSlackConnection: mocks.getSlackConnection,
+  getTelegramConnection: mocks.getTelegramConnection
 }));
 
 afterEach(() => {
@@ -107,18 +113,24 @@ describe("SettingsPage", () => {
         }
       ]
     });
+    mocks.listSchedules.mockResolvedValue([]);
+    mocks.getSlackConnection.mockResolvedValue(null);
+    mocks.getTelegramConnection.mockResolvedValue(null);
   });
 
-  it("loads the provider catalog, credentials, auth profiles, and router policy for the default workspace", async () => {
+  it("loads the provider catalog, credentials, auth profiles, schedules, and messaging state for the default workspace", async () => {
     render(await SettingsPage());
 
     expect(mocks.getDefaultWorkspaceId).toHaveBeenCalled();
     expect(mocks.listWorkspaceCredentials).toHaveBeenCalledWith("ws_default");
     expect(mocks.listAuthProfiles).toHaveBeenCalledWith("ws_default");
     expect(mocks.getRouterPolicy).toHaveBeenCalledWith("ws_default");
+    expect(mocks.listSchedules).toHaveBeenCalledWith("ws_default");
+    expect(mocks.getSlackConnection).toHaveBeenCalledWith("ws_default");
+    expect(mocks.getTelegramConnection).toHaveBeenCalledWith("ws_default");
 
     expect(
-      screen.getByRole("heading", { name: /provider routing and byo keys/i })
+      screen.getByRole("heading", { name: /routing, schedules, and messaging/i })
     ).toBeInTheDocument();
     expect(screen.getByText("ws_default")).toBeInTheDocument();
     expect(screen.getAllByText("Anthropic").length).toBeGreaterThan(0);

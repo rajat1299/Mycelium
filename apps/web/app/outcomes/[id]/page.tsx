@@ -9,6 +9,7 @@ import {
   createPlan,
   createRun,
   getCheckpoint,
+  getOutcomeMessageHistory,
   getRunArtifactLineage,
   getRunAudit,
   getLatestRun,
@@ -60,11 +61,15 @@ export default async function OutcomeDetailPage({
     notFound();
   }
 
+  const messageHistoryPromise =
+    outcome.source === "slack" || outcome.source === "telegram"
+      ? getOutcomeMessageHistory(outcome.id)
+      : Promise.resolve(null);
   const authProfilesPromise = listAuthProfiles(outcome.workspaceId);
   const approvalsPromise = listApprovals(outcome.workspaceId);
   const workersPromise = listWorkers(outcome.workspaceId);
   const checkpointsPromise = run ? getRunCheckpoints(run.id) : Promise.resolve([]);
-  const [artifacts, logs, authProfiles, lineageEdges, approvals, checkpoints, auditEvents, workers] = run
+  const [artifacts, logs, authProfiles, lineageEdges, approvals, checkpoints, auditEvents, workers, messageHistory] = run
     ? await Promise.all([
         getRunArtifacts(run.id),
         getRunLogs(run.id),
@@ -73,7 +78,8 @@ export default async function OutcomeDetailPage({
         approvalsPromise,
         checkpointsPromise,
         getRunAudit(run.id),
-        workersPromise
+        workersPromise,
+        messageHistoryPromise
       ])
     : [
         [],
@@ -83,7 +89,8 @@ export default async function OutcomeDetailPage({
         await approvalsPromise,
         [],
         [],
-        await workersPromise
+        await workersPromise,
+        await messageHistoryPromise
       ];
   const pendingApprovalsForRun = run
     ? approvals.filter((approval) => approval.runId === run.id)
@@ -165,6 +172,7 @@ export default async function OutcomeDetailPage({
         <div className="space-y-8">
           <ExecutionConsole
             outcomeId={outcome.id}
+            outcomeSource={outcome.source}
             initialRun={run}
             initialArtifacts={artifacts}
             initialLogs={logs}
@@ -175,6 +183,7 @@ export default async function OutcomeDetailPage({
             initialCheckpoints={checkpoints}
             initialSelectedCheckpoint={selectedCheckpoint}
             initialAuditEvents={auditEvents}
+            initialMessageHistory={messageHistory}
           />
           <OutcomeActivity outcome={outcome} />
         </div>
