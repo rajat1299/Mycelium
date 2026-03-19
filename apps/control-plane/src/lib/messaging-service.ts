@@ -114,19 +114,17 @@ async function createOrReuseOutcome(
       source: message.channel
     });
 
-    return { outcome: created, created: true };
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("duplicate")) {
+      return { outcome: created, created: true };
+    } catch (error) {
       const existing = await repositories.outcomes.getById(outcomeId);
 
       if (existing) {
         return { outcome: existing, created: false };
       }
-    }
 
-    throw error;
+      throw error;
+    }
   }
-}
 
 async function appendInboundMessage(
   repositories: Repositories,
@@ -145,8 +143,10 @@ async function appendInboundMessage(
     await repositories.outcomes.appendMessage(appendedMessage);
     return { appended: true, message: appendedMessage };
   } catch (error) {
-    if (error instanceof Error && error.message.includes("duplicate")) {
-      return { appended: false, message: appendedMessage };
+    const existing = await repositories.outcomes.getMessageById(appendedMessage.id);
+
+    if (existing) {
+      return { appended: false, message: existing };
     }
 
     throw error;

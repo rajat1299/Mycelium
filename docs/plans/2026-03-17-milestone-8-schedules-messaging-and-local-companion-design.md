@@ -4,7 +4,7 @@
 
 Milestone 8 exists to add the first non-web ingress surfaces to Mycelium without forking the execution model that Milestones 1 through 7 already proved.
 
-Status: `Execution-ready planning complete on 2026-03-17.`
+Status: `Integrated and verified on 2026-03-18.`
 
 Milestones 1 through 7 proved:
 
@@ -126,6 +126,16 @@ By the end of M8, an operator should be able to:
 7. inspect reviewed local companion protocol and bootstrap docs in the repo, with companion runtime delivery explicitly deferred
 
 If that works, Mycelium has its first real deferred and conversational ingress slice.
+
+## Closure note
+
+Verified on `2026-03-18` against the live local stack:
+
+- Slack Socket Mode-style inbound created and continued durable outcome `outcome_e2ea0d3fdb46db49`, produced `2` outbound deliveries, and stayed bound to one conversation
+- Telegram long-polling-style inbound created and continued durable outcome `outcome_9a190c39fd4caa73`, produced `2` outbound deliveries, and stayed bound to one conversation
+- schedule fire `schedule_fire_e0da3fc439b0611a` created run `run_e0da3fc439b0611a`, blocked on web approval `approval_92557c23-1041-4fb0-8d77-c79efd61130c`, then completed with `4` artifacts, `7` checkpoints, `12` persisted logs, and `7` audit entries
+- the continue-outcome schedule path stayed on one durable outcome with `2` recorded fires
+- the local companion remained exactly where this design intended: protocol, scope, trust-boundary, and bootstrap groundwork only, with no packaged binary or user-machine execution shipped in M8
 
 ## Unified ingress model
 

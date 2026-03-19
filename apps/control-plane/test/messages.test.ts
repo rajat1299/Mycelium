@@ -352,6 +352,86 @@ describe("message history and outbound delivery routes", () => {
     expect(sentDeliveries).toHaveLength(1);
   });
 
+  it("continues a bound conversation when duplicate outcome reuse is surfaced as a generic query error", async () => {
+    const services = createInMemoryServiceContainer({
+      now: () => new Date("2026-03-18T15:12:30.000Z"),
+      slackTransport: {
+        async deliver(delivery) {
+          return {
+            externalDeliveryId: `slack_delivery_${delivery.conversationId}`
+          };
+        }
+      }
+    });
+    const app = buildApp({ services });
+    appsToClose.add(app);
+
+    await app.inject({
+      method: "PUT",
+      url: "/api/workspaces/ws_123/slack/connection",
+      payload: {
+        enabled: true,
+        accountLabel: "Ops workspace",
+        externalWorkspaceId: "T123456",
+        externalWorkspaceLabel: "Mycelium Ops"
+      }
+    });
+
+    const firstInbound = await app.inject({
+      method: "POST",
+      url: "/api/slack/socket-mode/messages",
+      payload: {
+        workspaceId: "ws_123",
+        teamId: "T123456",
+        teamName: "Mycelium Ops",
+        channelId: "C123456",
+        threadTs: "1710763200.000100",
+        eventTs: "1710763200.000100",
+        userId: "U123456",
+        userDisplayName: "Rajat",
+        text: "Draft the launch brief"
+      }
+    });
+
+    const outcomeId = firstInbound.json().outcomeId;
+    const originalCreate = services.repositories.outcomes.create;
+    services.repositories.outcomes.create = async (input) => {
+      if (input.id === outcomeId) {
+        throw new Error(
+          'Failed query: insert into "outcomes" (...) values (...) returning "id"'
+        );
+      }
+
+      return originalCreate(input);
+    };
+
+    const secondInbound = await app.inject({
+      method: "POST",
+      url: "/api/slack/socket-mode/messages",
+      payload: {
+        workspaceId: "ws_123",
+        teamId: "T123456",
+        teamName: "Mycelium Ops",
+        channelId: "C123456",
+        threadTs: "1710763200.000100",
+        eventTs: "1710763200.000200",
+        userId: "U123456",
+        userDisplayName: "Rajat",
+        text: "Also include risks"
+      }
+    });
+
+    expect(secondInbound.statusCode).toBe(202);
+    expect(secondInbound.json()).toEqual(
+      expect.objectContaining({
+        accepted: true,
+        outcomeId,
+        created: false,
+        duplicate: false
+      })
+    );
+  });
+
   it("repairs missing status delivery on retry after the first inbound fails post-bind", async () => {
     const sentDeliveries: Array<{ body: string; conversationId: string; threadId: string | null }> = [];
     let failDeliveryOnce = true;
@@ -469,6 +549,111 @@ describe("message history and outbound delivery routes", () => {
         threadId: "1710763200.000100"
       }
     ]);
+  });
+
+  it("repairs a retried inbound when duplicate message append is surfaced as a generic query error", async () => {
+    const sentDeliveries: Array<{ body: string; conversationId: string; threadId: string | null }> = [];
+    const services = createInMemoryServiceContainer({
+      now: () => new Date("2026-03-18T15:13:30.000Z"),
+      slackTransport: {
+        async deliver(delivery) {
+          sentDeliveries.push({
+            body: delivery.body,
+            conversationId: delivery.conversationId,
+            threadId: delivery.threadId
+          });
+
+          return {
+            externalDeliveryId: `slack_delivery_${sentDeliveries.length}`
+          };
+        }
+      }
+    });
+    const originalBindConversation = services.repositories.messaging.bindConversation;
+    const originalAppendMessage = services.repositories.outcomes.appendMessage;
+    let failBindOnce = true;
+    services.repositories.messaging.bindConversation = async (input) => {
+      if (failBindOnce) {
+        failBindOnce = false;
+        throw new Error("transient bind failure");
+      }
+
+      return originalBindConversation(input);
+    };
+    services.repositories.outcomes.appendMessage = async (input) => {
+      try {
+        await originalAppendMessage(input);
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message.includes("duplicate key value violates unique constraint")
+        ) {
+          throw new Error(
+            'Failed query: insert into "outcome_messages" (...) values (...)'
+          );
+        }
+
+        throw error;
+      }
+    };
+
+    const app = buildApp({ services });
+    appsToClose.add(app);
+
+    await app.inject({
+      method: "PUT",
+      url: "/api/workspaces/ws_123/slack/connection",
+      payload: {
+        enabled: true,
+        accountLabel: "Ops workspace",
+        externalWorkspaceId: "T123456",
+        externalWorkspaceLabel: "Mycelium Ops"
+      }
+    });
+
+    const firstAttempt = await app.inject({
+      method: "POST",
+      url: "/api/slack/socket-mode/messages",
+      payload: {
+        workspaceId: "ws_123",
+        teamId: "T123456",
+        teamName: "Mycelium Ops",
+        channelId: "C123456",
+        threadTs: "1710763200.000100",
+        eventTs: "1710763200.000100",
+        userId: "U123456",
+        userDisplayName: "Rajat",
+        text: "Draft the launch brief"
+      }
+    });
+
+    expect(firstAttempt.statusCode).toBe(404);
+
+    const retry = await app.inject({
+      method: "POST",
+      url: "/api/slack/socket-mode/messages",
+      payload: {
+        workspaceId: "ws_123",
+        teamId: "T123456",
+        teamName: "Mycelium Ops",
+        channelId: "C123456",
+        threadTs: "1710763200.000100",
+        eventTs: "1710763200.000100",
+        userId: "U123456",
+        userDisplayName: "Rajat",
+        text: "Draft the launch brief"
+      }
+    });
+
+    expect(retry.statusCode).toBe(202);
+    expect(retry.json()).toEqual(
+      expect.objectContaining({
+        accepted: true,
+        created: false,
+        duplicate: false
+      })
+    );
+    expect(sentDeliveries).toHaveLength(1);
   });
 
   it("does not republish message.created while repairing a partial inbound retry", async () => {

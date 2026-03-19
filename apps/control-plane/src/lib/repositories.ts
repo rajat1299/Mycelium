@@ -73,6 +73,8 @@ export type AppendOutcomeMessageInput = CreateOutcomeMessageRequest & {
   createdAt: string;
 };
 
+export type StoredOutcomeMessage = AppendOutcomeMessageInput;
+
 export type UpdateOutcomeStatusInput = {
   id: string;
   status: OutcomeStatus;
@@ -82,6 +84,7 @@ export type UpdateOutcomeStatusInput = {
 export type OutcomeStore = {
   create(input: CreateStoredOutcomeInput): Promise<Outcome>;
   getById(id: string): Promise<Outcome | null>;
+  getMessageById(id: string): Promise<StoredOutcomeMessage | null>;
   listByWorkspace(workspaceId: string): Promise<Outcome[]>;
   updateStatus(input: UpdateOutcomeStatusInput): Promise<Outcome | null>;
   appendMessage(input: AppendOutcomeMessageInput): Promise<void>;
@@ -560,7 +563,7 @@ function createInMemoryRepositoriesState() {
     string,
     StoredExternalConversationBinding
   >();
-  const outcomeMessageIds = new Set<string>();
+  const outcomeMessagesById = new Map<string, StoredOutcomeMessage>();
   const workspaceLeasesByRunId = new Map<string, StoredWorkspaceLease>();
   const workspaceCredentialsById = new Map<string, CreateWorkspaceCredentialInput>();
   const authProfilesById = new Map<string, AuthProfile>();
@@ -584,7 +587,7 @@ function createInMemoryRepositoriesState() {
     scheduleFiresById,
     messagingConnectionsById,
     conversationBindingsById,
-    outcomeMessageIds,
+    outcomeMessagesById,
     workspaceLeasesByRunId,
     workspaceCredentialsById,
     authProfilesById,
@@ -612,6 +615,9 @@ function createInMemoryRepositoriesState() {
     async getById(id) {
       return outcomes.get(id) ?? null;
     },
+    async getMessageById(id) {
+      return outcomeMessagesById.get(id) ?? null;
+    },
     async listByWorkspace(workspaceId) {
       return Array.from(outcomes.values()).filter(
         (outcome) => outcome.workspaceId === workspaceId
@@ -638,11 +644,11 @@ function createInMemoryRepositoriesState() {
         throw new Error(`Outcome ${input.outcomeId} does not exist.`);
       }
 
-      if (outcomeMessageIds.has(input.id)) {
+      if (outcomeMessagesById.has(input.id)) {
         throw new Error('duplicate key value violates unique constraint "outcome_messages_pkey"');
       }
 
-      outcomeMessageIds.add(input.id);
+      outcomeMessagesById.set(input.id, input);
     }
   };
 

@@ -109,13 +109,13 @@ Workers are independent. If one fails, the others keep running. The foreman retr
 
 ### Local companion
 
-An optional edge agent that runs on your machine for tasks that need local context — your browser sessions, local files, authenticated accounts, or device-specific access that can't exist in a remote sandbox. The local companion only accepts signed, scoped tasks from the control plane and rejects anything outside its approved boundaries.
+An optional edge agent for tasks that need local context — your browser sessions, local files, authenticated accounts, or device-specific access that can't exist in a remote sandbox. In the shipped Milestone 8 slice, the local companion is still groundwork only: reviewed protocol, scope, trust-boundary, and bootstrap design without a packaged binary or end-user machine execution path.
 
 ### Approvals
 
 Review-required work is gated by default. The shipped M5 slice pauses the final synthesis output for approval in the web console, and the same control loop is the substrate for future external writes. Read-only work still runs autonomously for browsing, search, summarization, drafting, sandboxed file generation, and dry-run planning.
 
-You review and approve in the web console or directly in Slack/Telegram.
+You review and approve in the web console. In the shipped Milestone 8 slice, Slack and Telegram can notify and continue work, but the web review desk remains the approval authority.
 
 ---
 
@@ -185,40 +185,49 @@ The local sandbox uses `node:22-bookworm-slim` by default. If you need to pin a 
 `CHECKPOINT_ROOT` is optional. If you leave it unset, the shipped checkpoint backend writes versioned JSON manifests under `apps/control-plane/.mycelium/checkpoints`.
 `MYCELIUM_DAEMON_TOKEN` is optional. If you leave it unset, the control plane accepts local daemon requests with `local-daemon-token`.
 
-Open `http://127.0.0.1:3000`. The current integrated slice is Milestone 7 remote worker execution on top of the Milestone 6 checkpoint, replay, and audit surfaces: you can still save encrypted provider credentials, create auth profiles, define router policy, preview route resolution, review blocked work in `/review`, inspect persisted lineage, interrupt the control plane, recover stranded runs as resumable, and now execute runs through authenticated remote worker sessions while checkpoints, artifacts, logs, approvals, and audit history stay durably anchored in the control plane.
+Open `http://127.0.0.1:3000`. The current integrated slice is Milestone 8 schedules plus Slack and Telegram ingress on top of the Milestone 7 remote-worker runtime and the Milestone 6 checkpoint, replay, and audit surfaces: you can save encrypted provider credentials, create auth profiles, define router policy, review blocked work in `/review`, inspect persisted lineage, execute through authenticated remote worker sessions, create durable schedules, connect Slack and Telegram, continue outcomes from those channels, and keep checkpoints, artifacts, logs, approvals, message history, and audit state durably anchored in the control plane.
 
 ### Manual smoke checklist
 
-Mycelium does not yet ship a packaged daemon binary in this repo. The local M7 smoke uses the authenticated daemon HTTP contract directly: register one or more worker sessions, poll for `dispatch_step` commands, and upload `status`, `log`, `artifact`, `checkpoint`, and `terminal` events back to the control plane.
+Mycelium still does not ship a packaged daemon binary in this repo. The verified local smoke uses the authenticated daemon HTTP contract directly for worker sessions, plus direct Slack and Telegram ingress posts into the control plane:
 
-1. Open `/settings` and confirm the provider catalog, workspace credentials, auth profiles, and routing policy surfaces still load.
+1. Open `/settings` and confirm the provider catalog, workspace credentials, auth profiles, router policy, schedules, Slack, and Telegram surfaces load.
 2. Start the control plane and web app with `pnpm dev`.
 3. Register two worker sessions in the same workspace through `POST /api/worker-daemon/register`.
 4. Confirm `GET /api/workers?workspaceId=<WORKSPACE_ID>` returns both workers as `available`.
-5. Create an outcome and generate the shipped four-node draft plan:
-   `Analyze outcome` -> `Draft brief` + `Draft operator summary` -> `Synthesize result`.
-6. Start the run.
-7. Poll `POST /api/worker-daemon/commands/claim` from both worker sessions and mirror each `dispatch_step` command back through `POST /api/worker-daemon/events`.
-8. Confirm the selected run shows remote worker assignment instead of local-only execution, and confirm the worker panel or worker list reflects live availability changes.
-9. Confirm the two middle draft steps stay on remote workers. The default fork/join plan needs two connected worker sessions to avoid falling back to the local Docker provider on one branch.
-10. Confirm persisted run logs, four artifacts, checkpoint summaries, audit entries, and artifact-lineage edges all appear through the control plane for the completed remote run.
-11. Confirm `Synthesize result` blocks on `Review final result`, then approve it and confirm the run reaches `completed`.
-12. Start a second remote run and stop after the first remote worker uploads a resumable `step_completed` checkpoint but before its terminal event.
-13. Restart only the control plane process.
-14. Confirm the stranded run comes back as `interrupted`, `resumable`, and still points at the uploaded checkpoint.
-15. Resume the run from `POST /api/runs/<RUN_ID>/resume` or the checkpoint panel.
-16. Reconnect worker sessions and continue claiming remote commands.
-17. Confirm `Analyze outcome` does not rerun after resume, the remaining three steps execute, the run blocks on final review, and approval completes it.
-18. Confirm replay, audit, and logs answer different questions:
+5. Configure workspace-scoped Slack and Telegram connections through the settings UI or the connection APIs.
+6. Post a Slack Socket Mode-style inbound message to `POST /api/slack/socket-mode/messages` and confirm it creates a durable outcome plus a bound conversation.
+7. Post a second Slack message in the same thread and confirm it continues the same outcome instead of forking a new one.
+8. Repeat the same create-or-continue flow for Telegram through `POST /api/telegram/updates`.
+9. Create a durable schedule and let it fire into the same outcome, plan, and run pipeline.
+10. Confirm the schedule-triggered run executes on remote workers, persists logs, artifacts, checkpoints, lineage, and audit entries, and reaches `blocked` on the review-required final synthesis step.
+11. Open `/review`, approve the pending work, and confirm the run reaches `completed`.
+12. Confirm outbound status or result delivery posts back to the originating Slack thread and Telegram chat.
+13. Confirm replay, audit, and logs still answer different questions:
     replay is the durable checkpoint payload, audit is the append-only lifecycle ledger, and logs are step stdout or stderr detail.
+14. Confirm the local companion is still documented as groundwork only: protocol, scope, trust boundaries, and bootstrap assumptions without a packaged binary or host execution runtime.
 
-### Messaging (optional)
+The live Task 6 smoke on `2026-03-18` verified this path on `ws_default` with:
 
-Mycelium supports Slack and Telegram out of the box. See the [messaging setup guide](docs/messaging.md) for configuration.
+- Slack outcome `outcome_e2ea0d3fdb46db49`, continued in-place, `2` deliveries, `1` binding
+- Telegram outcome `outcome_9a190c39fd4caa73`, continued in-place, `2` deliveries, `1` binding
+- Schedule fire `schedule_fire_e0da3fc439b0611a` driving run `run_e0da3fc439b0611a`, blocking on approval `approval_92557c23-1041-4fb0-8d77-c79efd61130c`, then completing with `4` artifacts, `7` checkpoints, `12` logs, and `7` audit entries
+- Schedule continuation staying on one durable outcome with `2` recorded fires
+
+### Messaging
+
+Mycelium supports workspace-scoped Slack and Telegram connections out of the box through the settings page or the control-plane APIs:
+
+- `GET` or `PUT /api/workspaces/:workspaceId/slack/connection`
+- `GET` or `PUT /api/workspaces/:workspaceId/telegram/connection`
+- `POST /api/slack/socket-mode/messages`
+- `POST /api/telegram/updates`
+- `GET /api/outcomes/:id/messages/history`
+- `POST /api/messages/deliveries`
 
 ### API
 
-The currently shipped local API surface for the Milestone 7 slice is:
+The currently shipped local API surface for the Milestone 8 slice is:
 
 ```bash
 # Read the static provider/model catalog
@@ -325,9 +334,38 @@ curl -X POST http://127.0.0.1:4000/api/worker-daemon/disconnect \
 
 # Read remote worker inventory for a workspace
 curl "http://127.0.0.1:4000/api/workers?workspaceId=<WORKSPACE_ID>"
+
+# Create and inspect workspace schedules
+curl -X POST http://127.0.0.1:4000/api/workspaces/ws_default/schedules \
+  -H "content-type: application/json" \
+  -d '{"title":"Weekly summary","prompt":"Summarize this week.","status":"active","trigger":{"kind":"cron","expression":"0 9 * * 1","timezone":"America/Chicago"},"outcomeMode":"create_outcome","dispatchMode":"create_run"}'
+curl http://127.0.0.1:4000/api/workspaces/ws_default/schedules
+curl http://127.0.0.1:4000/api/schedules/<SCHEDULE_ID>/fires
+
+# Configure Slack and Telegram for a workspace
+curl -X PUT http://127.0.0.1:4000/api/workspaces/ws_default/slack/connection \
+  -H "content-type: application/json" \
+  -d '{"enabled":true,"accountLabel":"Ops Slack","externalWorkspaceId":"T123456","externalWorkspaceLabel":"Ops"}'
+curl -X PUT http://127.0.0.1:4000/api/workspaces/ws_default/telegram/connection \
+  -H "content-type: application/json" \
+  -d '{"enabled":true,"accountLabel":"Ops Telegram","externalWorkspaceId":"bot:telegram_ops","externalWorkspaceLabel":"telegram_ops"}'
+
+# Post inbound Slack and Telegram messages
+curl -X POST http://127.0.0.1:4000/api/slack/socket-mode/messages \
+  -H "content-type: application/json" \
+  -d '{"workspaceId":"ws_default","teamId":"T123456","teamName":"Ops","channelId":"C123456","threadTs":"1710784800.000100","eventTs":"1710784800.000100","userId":"U123456","userDisplayName":"Operator","text":"Draft today'\''s status."}'
+curl -X POST http://127.0.0.1:4000/api/telegram/updates \
+  -H "content-type: application/json" \
+  -d '{"workspaceId":"ws_default","botId":"bot:telegram_ops","botUsername":"telegram_ops","chatId":"1001","messageId":"2001","replyToMessageId":null,"userId":"42","userDisplayName":"Operator","text":"Continue the launch brief."}'
+
+# Read message-linked history and trigger outbound delivery
+curl http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/messages/history
+curl -X POST http://127.0.0.1:4000/api/messages/deliveries \
+  -H "content-type: application/json" \
+  -d '{"outcomeId":"<OUTCOME_ID>","kind":"status_update","body":"Run completed.","runId":"<RUN_ID>"}'
 ```
 
-The operator console consumes the same control-plane endpoints and the same outcome-scoped SSE stream for timeline, activity, logs, artifacts, approvals, checkpoints, audit history, and remote worker visibility. In Milestone 7, remote workers execute steps but upload logs, artifacts, and checkpoint payloads back through the control plane, so durability still lives in Postgres plus the local checkpoint store rather than on the workers themselves.
+The operator console consumes the same control-plane endpoints and the same outcome-scoped SSE stream for timeline, activity, schedules, message history, logs, artifacts, approvals, checkpoints, audit history, and remote worker visibility. In Milestone 8, schedules and messaging are ingress layers only: remote workers still execute steps, but they upload logs, artifacts, and checkpoint payloads back through the control plane, so durability still lives in Postgres plus the local checkpoint store rather than on the workers or channel adapters themselves.
 
 ---
 
@@ -340,16 +378,16 @@ mycelium/
 ├── apps/
 │   ├── web/                # Next.js command center
 │   ├── control-plane/      # Node.js orchestration service
-│   └── local-companion/    # Optional edge agent
+│   └── ...
 ├── packages/
 │   ├── protocol/           # Typed API and realtime event contracts
 │   ├── orchestrator/       # Foreman logic, plan graph, synthesis, retries
 │   ├── router/             # Capability → provider/model policy engine
 │   ├── checkpoints/        # Backend-agnostic checkpoint store interface plus local filesystem backend
 │   ├── sandbox/            # Local Docker and remote worker execution providers
-│   ├── messaging/          # Slack and Telegram adapters
 │   ├── artifacts/          # Artifact store, previews, safe path resolution
 │   └── db/                 # Schema, migrations, queries, state machines
+├── docs/plans/             # Milestone plans plus companion groundwork docs
 ├── docker-compose.yml
 ├── Dockerfile.sandbox
 └── .env.example
@@ -362,7 +400,8 @@ mycelium/
 - **Blob store:** Local filesystem by default, behind an object-store abstraction for later hosted deployments
 - **Sandboxes:** Docker containers per worker, fully isolated
 - **Web:** Next.js command center with live streaming
-- **Messaging:** Slack and Telegram via gateway adapters
+- **Messaging:** Slack and Telegram via control-plane ingress adapters
+- **Local companion:** protocol and bootstrap groundwork only in M8
 
 
 ## Roadmap
@@ -370,17 +409,17 @@ mycelium/
 ### v1 — Foundation (current)
 
 - [ ] Foreman with persistent compacting memory
-- [ ] Dependency-aware plan graph execution
-- [ ] Independent sandboxed worker runtimes
-- [ ] Policy-driven multi-model routing with deterministic fallback
-- [ ] Approval system for side effects
-- [ ] Web command center with live run monitoring
-- [ ] REST + SSE API
-- [ ] Slack and Telegram adapters
-- [ ] Scheduled and recurring runs
-- [ ] Artifact store with previews and downloads
-- [ ] Local companion for edge tasks
-- [ ] Checkpoint and resume for interrupted runs
+- [x] Dependency-aware plan graph execution
+- [x] Independent sandboxed worker runtimes
+- [x] Policy-driven multi-model routing with deterministic fallback
+- [x] Approval system for side effects
+- [x] Web command center with live run monitoring
+- [x] REST + SSE API
+- [x] Slack and Telegram adapters
+- [x] Scheduled and recurring runs
+- [x] Artifact store with previews and downloads
+- [x] Local companion groundwork (protocol/bootstrap only)
+- [x] Checkpoint and resume for interrupted runs
 
 ### v2 — Multi-user and ecosystem
 

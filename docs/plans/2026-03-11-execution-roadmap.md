@@ -323,7 +323,7 @@ Completion notes:
 
 ### M8 Schedules, Messaging, and Local Companion
 
-Status: `Execution-ready planning complete on 2026-03-17`
+Status: `Complete and verified on 2026-03-18`
 
 Goal:
 
@@ -353,10 +353,14 @@ Primary docs:
 - [Milestone 8 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-17-milestone-8-schedules-messaging-and-local-companion-design.md)
 - [Milestone 8 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-17-milestone-8-schedules-messaging-and-local-companion-implementation.md)
 
-Execution note:
+Completion notes:
 
-- M8 is the next execution-ready milestone in this repo
-- the local companion runtime is explicitly out of scope for M8; only protocol and bootstrap groundwork ship in this planning slice
+- durable schedules now enter the same outcome, plan, run, approval, checkpoint, and audit path as web-triggered work
+- Slack Socket Mode-style inbound and Telegram long-polling-style inbound both create or continue durable outcomes, persist message history, and send outbound delivery back to the originating thread/chat
+- approval resolution remains web-authoritative for M8 even when the run was triggered by schedule or messaging ingress
+- the live M8 smoke was verified on `2026-03-18` on `ws_default`, including Slack outcome `outcome_e2ea0d3fdb46db49`, Telegram outcome `outcome_9a190c39fd4caa73`, and schedule fire `schedule_fire_e0da3fc439b0611a` driving run `run_e0da3fc439b0611a`
+- that verified schedule-triggered run blocked on approval `approval_92557c23-1041-4fb0-8d77-c79efd61130c`, then completed with `4` artifacts, `7` checkpoints, `12` logs, and `7` audit entries while remote workers still processed the execution path
+- the local companion runtime is still explicitly out of scope for M8; only protocol, trust-boundary, and bootstrap groundwork ship in this repo
 
 ## Extraction matrix by subsystem
 

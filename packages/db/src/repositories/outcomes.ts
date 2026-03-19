@@ -39,6 +39,8 @@ export type AppendOutcomeMessageInput = {
   createdAt: string;
 };
 
+export type StoredOutcomeMessage = AppendOutcomeMessageInput;
+
 function mapOutcomeRow(row: OutcomeRow): StoredOutcome {
   return {
     id: row.id,
@@ -98,6 +100,25 @@ export class OutcomeRepository {
   async getById(id: string): Promise<StoredOutcome | null> {
     const [found] = await this.db.select().from(outcomes).where(eq(outcomes.id, id));
     return found ? mapOutcomeRow(found) : null;
+  }
+
+  async getMessageById(id: string): Promise<StoredOutcomeMessage | null> {
+    const [found] = await this.db
+      .select()
+      .from(outcomeMessages)
+      .where(eq(outcomeMessages.id, id));
+
+    if (!found) {
+      return null;
+    }
+
+    return {
+      id: found.id,
+      outcomeId: found.outcomeId,
+      role: found.role as StoredOutcomeMessage["role"],
+      content: found.content,
+      createdAt: found.createdAt.toISOString()
+    };
   }
 
   async listByWorkspace(workspaceId: string): Promise<StoredOutcome[]> {

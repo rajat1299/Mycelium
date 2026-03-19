@@ -1,6 +1,6 @@
 # Local Development
 
-This repository is currently shipping the Milestone 7 remote-worker slice on top of the Milestone 6 checkpoints-replay-and-audit layer, the Milestone 5 review queue, the Milestone 4 routing layer, and the Milestone 3 execution substrate:
+This repository is currently shipping the Milestone 8 schedules-and-messaging slice on top of the Milestone 7 remote-worker runtime, the Milestone 6 checkpoints-replay-and-audit layer, the Milestone 5 review queue, the Milestone 4 routing layer, and the Milestone 3 execution substrate:
 
 - Postgres-backed outcome storage
 - Fastify control plane with outcome, draft-plan, run, log, and artifact APIs
@@ -14,8 +14,11 @@ This repository is currently shipping the Milestone 7 remote-worker slice on top
 - Local filesystem checkpoint capture, replay anchors, interruption recovery, and audit history
 - Authenticated remote worker registration, heartbeat, claim, event-ingest, and disconnect routes
 - Remote step execution with upload-back logs, artifacts, and checkpoint payloads
+- Durable schedules plus schedule-fire history and outcome-scoped schedule SSE
+- Workspace-scoped Slack and Telegram connections, inbound normalization, outbound delivery, and message history
 - Next.js operator console for create, list, detail, settings, draft-plan, run timeline, review queue, persisted logs, and run artifact views
-- Remote worker visibility in the outcome console and live worker lifecycle SSE events
+- Remote worker visibility in the outcome console, live worker lifecycle SSE events, and operator settings panels for schedules and messaging
+- Local companion protocol, scope, and bootstrap groundwork docs without a packaged companion runtime
 
 ## Prerequisites
 
@@ -48,6 +51,10 @@ This repository is currently shipping the Milestone 7 remote-worker slice on top
 21. Confirm the run timeline shows persisted route metadata on steps without breaking local Docker execution.
 22. Confirm the artifact panel, lineage panel, checkpoint panel, audit panel, log panel, and live activity panel update without a manual refresh.
 23. Refresh the page and confirm persisted logs, artifacts, route badges, checkpoint history, and audit history are still visible for the selected run.
+24. Configure Slack and Telegram for the same workspace and confirm inbound messages create or continue durable outcomes.
+25. Confirm outbound status delivery posts back into the originating Slack thread and Telegram chat.
+26. Create a durable schedule, let it fire into a run, and confirm the run still blocks for approval in `/review`.
+27. Confirm the schedule-triggered run executes through the same remote-worker, checkpoint, artifact, and audit path as web-triggered work.
 
 ## First-time setup
 
@@ -71,7 +78,7 @@ The local Docker sandbox defaults to `node:22-bookworm-slim`. If you need a diff
 `CHECKPOINT_ROOT` is optional. If you leave it unset, the local M6 checkpoint backend writes versioned JSON manifests under `apps/control-plane/.mycelium/checkpoints`.
 `MYCELIUM_DAEMON_TOKEN` is optional. If unset, local daemon requests use `local-daemon-token`.
 
-The repo does not yet ship a packaged daemon executable. The verified M7 local smoke uses a thin local harness that calls the daemon HTTP contract directly:
+The repo does not yet ship a packaged daemon executable or packaged companion binary. The verified local smoke uses a thin local harness that calls the daemon HTTP contract directly:
 
 - `POST /api/worker-daemon/register`
 - `POST /api/worker-daemon/commands/claim`
@@ -93,7 +100,7 @@ Expected local services:
 ## Manual smoke path
 
 1. Open the web app at [http://127.0.0.1:3000](http://127.0.0.1:3000).
-2. Confirm `/settings` still loads provider catalog, credentials, auth profiles, and router policy.
+2. Confirm `/settings` still loads provider catalog, credentials, auth profiles, router policy, schedules, Slack, and Telegram.
 3. Create a fresh workspace id for the smoke, or reuse `ws_default` if the local DB is clean.
 4. Register two worker sessions in that workspace through `POST /api/worker-daemon/register`.
 5. Confirm `GET /api/workers?workspaceId=<WORKSPACE_ID>` returns both workers as `available`.
@@ -117,8 +124,61 @@ Expected local services:
 22. Confirm `Analyze outcome` does not rerun after resume, the remaining three steps execute remotely, and the resumed run blocks on final review before approval.
 23. Approve the resumed final review step and confirm the run reaches `completed`.
 24. Confirm the audit trail includes interruption and resume entries in stable sequence order, and confirm replay, audit, and persisted logs still answer different questions.
-25. Optional: call `POST /api/worker-daemon/disconnect` for one worker session and confirm the worker list or outcome activity feed reflects the disconnect.
-26. Optional: append a message through the control plane:
+25. Configure Slack for the same workspace:
+
+```bash
+curl -X PUT http://127.0.0.1:4000/api/workspaces/<WORKSPACE_ID>/slack/connection \
+  -H 'content-type: application/json' \
+  -d '{"enabled":true,"accountLabel":"Ops Slack","externalWorkspaceId":"T123456","externalWorkspaceLabel":"Ops"}'
+```
+
+26. Configure Telegram for the same workspace:
+
+```bash
+curl -X PUT http://127.0.0.1:4000/api/workspaces/<WORKSPACE_ID>/telegram/connection \
+  -H 'content-type: application/json' \
+  -d '{"enabled":true,"accountLabel":"Ops Telegram","externalWorkspaceId":"bot:telegram_ops","externalWorkspaceLabel":"telegram_ops"}'
+```
+
+27. Post a Slack Socket Mode-style inbound message:
+
+```bash
+curl -X POST http://127.0.0.1:4000/api/slack/socket-mode/messages \
+  -H 'content-type: application/json' \
+  -d '{"workspaceId":"<WORKSPACE_ID>","teamId":"T123456","teamName":"Ops","channelId":"C123456","threadTs":"1710784800.000100","eventTs":"1710784800.000100","userId":"U123456","userDisplayName":"Operator","text":"Draft today'\''s status."}'
+```
+
+28. Post a second Slack message in the same thread and confirm it continues the same outcome instead of creating a new one.
+29. Post a Telegram long-polling-style update:
+
+```bash
+curl -X POST http://127.0.0.1:4000/api/telegram/updates \
+  -H 'content-type: application/json' \
+  -d '{"workspaceId":"<WORKSPACE_ID>","botId":"bot:telegram_ops","botUsername":"telegram_ops","chatId":"1001","messageId":"2001","replyToMessageId":null,"userId":"42","userDisplayName":"Operator","text":"Continue the launch brief."}'
+```
+
+30. Post a second Telegram message that replies in the same chat and confirm it continues the same outcome.
+31. Create a durable schedule in the same workspace:
+
+```bash
+curl -X POST http://127.0.0.1:4000/api/workspaces/<WORKSPACE_ID>/schedules \
+  -H 'content-type: application/json' \
+  -d '{"title":"Weekly summary smoke","prompt":"Summarize the latest updates and produce the normal result artifacts.","status":"active","trigger":{"kind":"cron","expression":"* * * * *","timezone":"America/Chicago"},"outcomeMode":"create_outcome","dispatchMode":"create_run"}'
+```
+
+32. Wait for the schedule to fire, then confirm the resulting run executes through the same remote-worker path and reaches `blocked` on the final review step.
+33. Approve the pending work in `/review` and confirm the run reaches `completed`.
+34. Confirm the message-history API and outbound-delivery API both work for the messaging-triggered outcomes:
+
+```bash
+curl http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/messages/history
+curl -X POST http://127.0.0.1:4000/api/messages/deliveries \
+  -H 'content-type: application/json' \
+  -d '{"outcomeId":"<OUTCOME_ID>","kind":"status_update","body":"Smoke path completed.","runId":"<RUN_ID>"}'
+```
+
+35. Optional: call `POST /api/worker-daemon/disconnect` for one worker session and confirm the worker list or outcome activity feed reflects the disconnect.
+36. Optional: append a message through the control plane:
 
 ```bash
 curl -X POST http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/messages \
@@ -126,8 +186,8 @@ curl -X POST http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/messages \
   -d '{"role":"assistant","content":"Smoke path event from the control plane."}'
 ```
 
-27. Confirm the detail page adds a new activity entry without a refresh.
-28. Optional API verification for the same workspace and outcome:
+37. Confirm the detail page adds a new activity entry without a refresh.
+38. Optional API verification for the same workspace and outcome:
 
 ```bash
 curl http://127.0.0.1:4000/api/providers/models
@@ -168,6 +228,11 @@ curl -X POST http://127.0.0.1:4000/api/runs/<RUN_ID>/resume \
   -H 'content-type: application/json' \
   -d '{}'
 curl "http://127.0.0.1:4000/api/approvals?workspaceId=ws_default"
+curl http://127.0.0.1:4000/api/workspaces/ws_default/schedules
+curl http://127.0.0.1:4000/api/schedules/<SCHEDULE_ID>/fires
+curl http://127.0.0.1:4000/api/workspaces/ws_default/slack/connection
+curl http://127.0.0.1:4000/api/workspaces/ws_default/telegram/connection
+curl http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/messages/history
 curl -N http://127.0.0.1:4000/api/outcomes/<OUTCOME_ID>/events
 ```
 
@@ -220,3 +285,9 @@ If a run shows unresolved route badges on `Draft brief`, `Draft operator summary
 If a run completes immediately instead of blocking for review, verify the selected run is using the current default draft plan. M5 only pauses on the review-required `Synthesize result` step in that shipped four-node plan.
 
 If a resumed run never shows a resume control, verify the run is actually `interrupted`, the latest selected checkpoint is marked `resumable`, and the control plane restarted after the interruption instead of the run quietly reaching a later state before shutdown.
+
+If Slack or Telegram inbound posts return `404` for a missing connection, create or re-enable the workspace connection first through `/settings` or the connection APIs.
+
+If a retried Slack or Telegram event fails with a duplicate-key-looking write error, rerun `pnpm db:push` to ensure the local schema matches the current repo and retry against a clean workspace. The shipped M8 runtime now repairs duplicate DB-backed inbound retries by checking durable outcome and message existence instead of matching database error strings.
+
+If a schedule row exists but never fires locally, confirm the trigger is active, the control plane process stayed up long enough to poll due work, and the workspace still has at least one valid route candidate for the resulting plan or run path.

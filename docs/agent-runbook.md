@@ -4,7 +4,7 @@ Use this file as the first stop for any Codex agent working on Mycelium.
 
 ## What this repository is
 
-Mycelium is an open-source control plane for outcome-driven AI work. The current integrated slice is `Milestone 7: Remote Workers and Daemon`, running on top of the verified `Milestone 6: Checkpoints, Replay, and Audit`, `Milestone 5: Review Queue and Artifact Lineage`, `Milestone 4: Routing and BYO Keys`, and `Milestone 3: Execution Substrate V1` local execution path:
+Mycelium is an open-source control plane for outcome-driven AI work. The current integrated slice is `Milestone 8: Schedules, Messaging, and Local Companion Groundwork`, running on top of the verified `Milestone 7: Remote Workers and Daemon`, `Milestone 6: Checkpoints, Replay, and Audit`, `Milestone 5: Review Queue and Artifact Lineage`, `Milestone 4: Routing and BYO Keys`, and `Milestone 3: Execution Substrate V1` local execution path:
 
 - `apps/control-plane`: Fastify API and SSE runtime
 - `apps/web`: Next.js operator console
@@ -35,7 +35,7 @@ Read these next:
 16. [Milestone 8 Design](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-17-milestone-8-schedules-messaging-and-local-companion-design.md)
 17. [Milestone 8 Plan](/Users/rajattiwari/swarm/computer-oss/docs/plans/2026-03-17-milestone-8-schedules-messaging-and-local-companion-implementation.md)
 
-The M4, M5, M6, and M7 docs now include milestone-closure verification notes. M7 is integrated on `main` and remains the currently shipped runtime in this repo. M8 is the next execution-ready milestone in the roadmap, locked to schedules plus Slack and Telegram runtime delivery with local companion groundwork only.
+The M4, M5, M6, M7, and M8 docs now include milestone-closure verification notes. M8 is integrated on `main`: schedules, Slack, and Telegram are shipped ingress surfaces, approval resolution remains web-authoritative, and the local companion remains groundwork-only in this repo.
 
 ## Local setup
 
@@ -143,12 +143,33 @@ If the task touches the M7 remote-worker surface, also verify:
 - approval-gated work still blocks and resolves normally after remote execution reaches review
 - a worker disconnect or control-plane restart leaves the run recoverable through the M6 resume path
 
-The repo does not yet ship a packaged daemon executable. For local verification, use a thin harness that exercises the daemon HTTP contract directly:
+If the task touches the M8 schedules or messaging surface, also verify:
+
+- a durable schedule can create or continue work through the same outcome, plan, run, approval, checkpoint, and audit path
+- Slack Socket Mode-style inbound can create and continue work for one workspace without leaking into another
+- Telegram long-polling-style inbound can create and continue work for one workspace without leaking into another
+- outbound status or result delivery reaches the originating Slack thread or Telegram chat only when the bound connection is still enabled
+- review-required work triggered by schedules or messaging still blocks in the web review desk and completes only after web approval
+- message history, schedule-fire history, and outcome activity stay durable across retries and restarts
+- local companion claims stay limited to protocol, trust-boundary, and bootstrap groundwork; do not describe or verify a shipped binary/runtime that does not exist
+
+The repo does not yet ship a packaged daemon executable or packaged companion runtime. For local verification, use a thin harness that exercises the daemon HTTP contract directly:
 
 - `POST /api/worker-daemon/register`
 - `POST /api/worker-daemon/commands/claim`
 - `POST /api/worker-daemon/events`
 - `POST /api/worker-daemon/disconnect`
+
+Use the real control-plane APIs for M8 schedule and messaging verification:
+
+- `POST /api/workspaces/:workspaceId/schedules`
+- `GET /api/schedules/:id/fires`
+- `PUT /api/workspaces/:workspaceId/slack/connection`
+- `PUT /api/workspaces/:workspaceId/telegram/connection`
+- `POST /api/slack/socket-mode/messages`
+- `POST /api/telegram/updates`
+- `GET /api/outcomes/:id/messages/history`
+- `POST /api/messages/deliveries`
 
 ## Stop commands
 

@@ -10,7 +10,7 @@
 
 **Tech stack:** `pnpm`, `turbo`, `TypeScript`, `Vitest`, `Zod`, `Fastify`, `Drizzle ORM`, `Postgres`, `Next.js`, `React`, `Tailwind CSS`, `Docker`
 
-**Status:** `Execution-ready planning complete on 2026-03-17`
+**Status:** `Implemented and verified on 2026-03-18`
 
 ---
 
@@ -608,3 +608,5 @@ git commit -m "docs: close milestone 8 schedules and messaging"
 ## Implementation notes
 
 - `2026-03-17`: M8 is locked to schedules plus Slack and Telegram as runtime deliverables, with the local companion limited to design, protocol, and bootstrap groundwork only.
+- `2026-03-18`: Live M8 smoke passed on `ws_default`. Slack created/continued `outcome_e2ea0d3fdb46db49` with `2` deliveries and `1` binding; Telegram created/continued `outcome_9a190c39fd4caa73` with `2` deliveries and `1` binding; schedule fire `schedule_fire_e0da3fc439b0611a` drove `run_e0da3fc439b0611a`, blocked on approval `approval_92557c23-1041-4fb0-8d77-c79efd61130c`, then completed with `4` artifacts, `7` checkpoints, `12` logs, and `7` audit entries while `workerA` and `workerB` processed `2` steps each.
+- `2026-03-18`: The live smoke exposed one DB-backed messaging retry bug: duplicate outcome/message recovery relied on matching `"duplicate"` in the thrown error text, which was not stable across Drizzle/Postgres failure shapes. The shipped fix now checks durable outcome and message existence directly so Slack/Telegram continuation and retry repair work on the real DB path.
