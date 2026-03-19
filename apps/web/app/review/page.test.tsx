@@ -99,9 +99,7 @@ describe("ReviewPage", () => {
     expect(mocks.getDefaultWorkspaceId).toHaveBeenCalled();
     expect(mocks.listApprovals).toHaveBeenCalledWith("ws_default");
     expect(mocks.getRunArtifacts).toHaveBeenCalledWith("run_1");
-    expect(
-      screen.getByRole("heading", { name: /operator review desk/i })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /approval queue/i })).toBeInTheDocument();
     expect(screen.getByTestId("review-queue")).toHaveTextContent("Review final result");
     expect(observedWorkspaceId).toBe("ws_default");
     expect(observedApprovals).toEqual([

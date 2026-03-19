@@ -130,9 +130,11 @@ describe("SettingsPage", () => {
     expect(mocks.getTelegramConnection).toHaveBeenCalledWith("ws_default");
 
     expect(
-      screen.getByRole("heading", { name: /routing, schedules, and messaging/i })
+      screen.getByRole("heading", { name: /workspace configuration/i })
     ).toBeInTheDocument();
-    expect(screen.getByText("ws_default")).toBeInTheDocument();
+    expect(
+      screen.getByText("Routing, schedules, and messaging for this workspace.")
+    ).toBeInTheDocument();
     expect(screen.getAllByText("Anthropic").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Anthropic Primary").length).toBeGreaterThan(0);
     expect(screen.getAllByText("claude-opus-4.6").length).toBeGreaterThan(0);
