@@ -1,5 +1,4 @@
 import { revalidatePath } from "next/cache";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ExecutionConsole } from "../../../components/outcomes/execution-console";
 import { OutcomeActivity } from "../../../components/outcomes/outcome-activity";
@@ -129,27 +128,19 @@ export default async function OutcomeDetailPage({
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-6 py-10">
-      <div className="flex items-center justify-between gap-4">
-        <div className="space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
-            Outcome
-          </p>
-          <h1 className="max-w-3xl font-serif text-4xl tracking-tight text-ink">
-            {outcome.prompt}
-          </h1>
-          <div className="flex flex-wrap gap-3 text-sm text-muted">
-            <span>Status: {outcome.status}</span>
-            <span>Source: {outcome.source}</span>
-            <span>Updated: {new Date(outcome.updatedAt).toLocaleString()}</span>
-          </div>
+    <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-6 px-6 py-10">
+      <div className="space-y-1">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-accent">
+          Outcome
+        </p>
+        <h1 className="max-w-3xl font-serif text-2xl tracking-tight text-ink">
+          {outcome.prompt}
+        </h1>
+        <div className="flex flex-wrap gap-3 text-xs text-muted">
+          <span>{outcome.status}</span>
+          <span>{outcome.source}</span>
+          <span>{new Date(outcome.updatedAt).toLocaleString()}</span>
         </div>
-        <Link
-          href="/"
-          className="rounded-full border border-panel-line px-4 py-2 text-sm font-medium text-ink transition hover:border-accent hover:text-accent"
-        >
-          Back to outcomes
-        </Link>
       </div>
 
       <section className="grid gap-8 xl:grid-cols-[1.1fr_0.9fr]">

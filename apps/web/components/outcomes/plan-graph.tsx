@@ -48,7 +48,7 @@ export function PlanGraph({ outcomeId, initialPlan }: PlanGraphProps) {
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
             Draft plan
           </p>
-          <h2 className="font-serif text-3xl tracking-tight text-ink">
+          <h2 className="font-serif text-xl tracking-tight text-ink">
             Orchestration graph
           </h2>
           <p className="text-sm leading-6 text-muted">
@@ -65,7 +65,7 @@ export function PlanGraph({ outcomeId, initialPlan }: PlanGraphProps) {
       </div>
 
       {!plan ? (
-        <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-white/55 px-5 py-8 text-sm leading-6 text-muted">
+        <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-shell px-5 py-8 text-sm leading-6 text-muted">
           Generate a draft plan to see the orchestration graph.
         </div>
       ) : (
@@ -78,8 +78,8 @@ export function PlanGraph({ outcomeId, initialPlan }: PlanGraphProps) {
                 key={node.id}
                 className="flex flex-1 flex-col items-stretch gap-3 lg:flex-row lg:items-center"
               >
-                <article className="relative min-h-[12rem] flex-1 overflow-hidden rounded-[1.7rem] border border-panel-line bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(245,239,228,0.86))] p-5">
-                  <div className="absolute inset-x-5 top-0 h-px bg-[linear-gradient(90deg,rgba(13,139,123,0),rgba(13,139,123,0.55),rgba(13,139,123,0))]" />
+                <article className="relative min-h-[12rem] flex-1 overflow-hidden rounded-[1.7rem] border border-panel-line bg-surface-elevated p-5">
+                  <div className="absolute inset-x-5 top-0 h-px bg-[linear-gradient(90deg,transparent,var(--accent),transparent)]" />
                   <div className="flex items-center justify-between gap-3">
                     <Badge variant="slate" size="sm">
                       {node.kind}
@@ -108,7 +108,7 @@ export function PlanGraph({ outcomeId, initialPlan }: PlanGraphProps) {
 
                 {index < nodes.length - 1 ? (
                   <div className="flex items-center justify-center px-2 py-1 lg:w-16 lg:px-0">
-                    <div className="h-8 w-px bg-[linear-gradient(180deg,rgba(13,139,123,0.15),rgba(13,139,123,0.85),rgba(13,139,123,0.15))] lg:h-px lg:w-full" />
+                    <div className="h-8 w-px bg-[linear-gradient(180deg,transparent,var(--accent),transparent)] lg:h-px lg:w-full" />
                   </div>
                 ) : null}
               </div>

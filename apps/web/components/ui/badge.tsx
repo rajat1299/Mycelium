@@ -12,7 +12,7 @@ type BadgeProps = {
 };
 
 const variantClasses: Record<BadgeVariant, string> = {
-  default: "border-panel-line bg-white/75 text-ink",
+  default: "border-panel-line bg-surface-elevated text-ink",
   sky: "border-sky-200/80 bg-sky-100/80 text-sky-900",
   emerald: "border-emerald-200/80 bg-emerald-100/85 text-emerald-900",
   amber: "border-amber-200/80 bg-amber-100/85 text-amber-900",

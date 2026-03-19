@@ -27,7 +27,7 @@ export function ArtifactList({
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
             Artifacts
           </p>
-          <h2 className="font-serif text-3xl tracking-tight text-ink">
+          <h2 className="font-serif text-xl tracking-tight text-ink">
             Execution artifacts
           </h2>
           <p className="text-sm leading-6 text-muted">
@@ -44,11 +44,11 @@ export function ArtifactList({
       </div>
 
       {!selectedRunId ? (
-        <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-white/55 px-5 py-8 text-sm leading-6 text-muted">
+        <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-shell px-5 py-8 text-sm leading-6 text-muted">
           Start or select a run to inspect its persisted artifacts.
         </div>
       ) : orderedArtifacts.length === 0 ? (
-        <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-white/55 px-5 py-8 text-sm leading-6 text-muted">
+        <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-shell px-5 py-8 text-sm leading-6 text-muted">
           No artifacts have been persisted for this run yet.
         </div>
       ) : (
@@ -56,7 +56,7 @@ export function ArtifactList({
           {orderedArtifacts.map((artifact) => (
             <li
               key={artifact.id}
-              className="rounded-[1.5rem] border border-panel-line bg-white/78 px-5 py-4"
+              className="rounded-[1.5rem] border border-panel-line bg-surface-elevated px-5 py-4"
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="space-y-1">

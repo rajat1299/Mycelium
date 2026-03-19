@@ -22,7 +22,7 @@ export function OutcomeList({ outcomes }: OutcomeListProps) {
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
             Active outcomes
           </p>
-          <h2 className="mt-2 font-serif text-3xl tracking-tight text-ink">
+          <h2 className="mt-2 font-serif text-xl tracking-tight text-ink">
             Running queue
           </h2>
         </div>
@@ -32,7 +32,7 @@ export function OutcomeList({ outcomes }: OutcomeListProps) {
       </div>
 
       {outcomes.length === 0 ? (
-        <div className="mt-6 rounded-[1.5rem] border border-dashed border-panel-line bg-white/60 p-6 text-sm leading-6 text-muted">
+        <div className="mt-6 rounded-[1.5rem] border border-dashed border-panel-line bg-shell p-6 text-sm leading-6 text-muted">
           No outcomes yet. Create one from the panel on the left to start the first
           run.
         </div>
@@ -42,7 +42,7 @@ export function OutcomeList({ outcomes }: OutcomeListProps) {
             <li key={outcome.id}>
               <Link
                 href={`/outcomes/${outcome.id}`}
-                className="flex items-start justify-between gap-4 rounded-[1.5rem] border border-panel-line bg-white/75 px-4 py-4 transition hover:border-accent hover:bg-white"
+                className="flex items-start justify-between gap-4 rounded-[1.5rem] border border-panel-line bg-surface-elevated px-4 py-4 transition hover:border-accent hover:bg-panel"
               >
                 <div className="space-y-2">
                   <p className="text-sm font-medium leading-6 text-ink">

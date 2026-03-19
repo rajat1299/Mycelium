@@ -21,7 +21,7 @@ export function ProviderCatalog({ catalog }: ProviderCatalogProps) {
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
             Provider catalog
           </p>
-          <h2 className="mt-2 font-serif text-3xl tracking-tight text-ink">
+          <h2 className="mt-2 font-serif text-xl tracking-tight text-ink">
             Available providers
           </h2>
         </div>
@@ -29,7 +29,7 @@ export function ProviderCatalog({ catalog }: ProviderCatalogProps) {
       </div>
 
       {catalog.providers.length === 0 ? (
-        <div className="mt-6 rounded-[1.5rem] border border-dashed border-panel-line bg-white/60 p-6 text-sm leading-6 text-muted">
+        <div className="mt-6 rounded-[1.5rem] border border-dashed border-panel-line bg-shell p-6 text-sm leading-6 text-muted">
           No provider catalog is available from the control plane.
         </div>
       ) : (
@@ -40,7 +40,7 @@ export function ProviderCatalog({ catalog }: ProviderCatalogProps) {
             return (
               <li
                 key={provider.id}
-                className="rounded-[1.5rem] border border-panel-line bg-white/75 p-4"
+                className="rounded-[1.5rem] border border-panel-line bg-surface-elevated p-4"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>

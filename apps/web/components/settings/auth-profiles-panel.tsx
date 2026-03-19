@@ -140,7 +140,7 @@ export function AuthProfilesPanel({
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
             Auth profiles
           </p>
-          <h2 className="mt-2 font-serif text-3xl tracking-tight text-ink">
+          <h2 className="mt-2 font-serif text-xl tracking-tight text-ink">
             Routing identities
           </h2>
         </div>
@@ -161,7 +161,7 @@ export function AuthProfilesPanel({
             <select
               value={providerId}
               onChange={(event) => setProviderId(event.target.value)}
-              className="w-full rounded-[1rem] border border-panel-line bg-white/85 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
+              className="w-full rounded-[1rem] border border-panel-line bg-panel px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
             >
               {catalog.providers.map((provider) => (
                 <option key={provider.id} value={provider.id}>
@@ -178,7 +178,7 @@ export function AuthProfilesPanel({
             <input
               value={label}
               onChange={(event) => setLabel(event.target.value)}
-              className="w-full rounded-[1rem] border border-panel-line bg-white/85 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
+              className="w-full rounded-[1rem] border border-panel-line bg-panel px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
               placeholder="OpenAI Primary"
               aria-label="Auth profile label"
             />
@@ -193,7 +193,7 @@ export function AuthProfilesPanel({
             <select
               value={credentialId}
               onChange={(event) => setCredentialId(event.target.value)}
-              className="w-full rounded-[1rem] border border-panel-line bg-white/85 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
+              className="w-full rounded-[1rem] border border-panel-line bg-panel px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
             >
               {matchingCredentials.length === 0 ? (
                 <option value="">No credentials for this provider</option>
@@ -216,7 +216,7 @@ export function AuthProfilesPanel({
               step={1}
               value={priority}
               onChange={(event) => setPriority(event.target.value)}
-              className="w-full rounded-[1rem] border border-panel-line bg-white/85 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
+              className="w-full rounded-[1rem] border border-panel-line bg-panel px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
             />
           </label>
         </div>
@@ -248,7 +248,7 @@ export function AuthProfilesPanel({
       ) : null}
 
       {authProfiles.length === 0 ? (
-        <div className="mt-6 rounded-[1.5rem] border border-dashed border-panel-line bg-white/60 p-6 text-sm leading-6 text-muted">
+        <div className="mt-6 rounded-[1.5rem] border border-dashed border-panel-line bg-shell p-6 text-sm leading-6 text-muted">
           No auth profiles are configured for this workspace yet.
         </div>
       ) : (
@@ -256,7 +256,7 @@ export function AuthProfilesPanel({
           {authProfiles.map((profile) => (
             <li
               key={profile.id}
-              className="rounded-[1.5rem] border border-panel-line bg-white/75 p-4"
+              className="rounded-[1.5rem] border border-panel-line bg-surface-elevated p-4"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>

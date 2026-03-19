@@ -28,7 +28,7 @@ export function ArtifactLineagePanel({
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
             Lineage
           </p>
-          <h2 className="font-serif text-3xl tracking-tight text-ink">
+          <h2 className="font-serif text-xl tracking-tight text-ink">
             Artifact lineage
           </h2>
           <p className="text-sm leading-6 text-muted">
@@ -41,11 +41,11 @@ export function ArtifactLineagePanel({
       </div>
 
       {!selectedRunId ? (
-        <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-white/55 px-5 py-8 text-sm leading-6 text-muted">
+        <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-shell px-5 py-8 text-sm leading-6 text-muted">
           Select a run to inspect artifact lineage.
         </div>
       ) : orderedEdges.length === 0 ? (
-        <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-white/55 px-5 py-8 text-sm leading-6 text-muted">
+        <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-shell px-5 py-8 text-sm leading-6 text-muted">
           No derived-from relationships were persisted for this run yet.
         </div>
       ) : (
@@ -57,7 +57,7 @@ export function ArtifactLineagePanel({
             return (
               <li
                 key={edge.id}
-                className="rounded-[1.5rem] border border-panel-line bg-white/78 px-5 py-4"
+                className="rounded-[1.5rem] border border-panel-line bg-surface-elevated px-5 py-4"
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="space-y-2">

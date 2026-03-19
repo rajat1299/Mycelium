@@ -11,7 +11,7 @@ type RichButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const colorClasses: Record<RichButtonColor, string> = {
   accent:
-    "bg-[linear-gradient(135deg,#0d8b7b_0%,#0f6f78_100%)] text-white shadow-[0_16px_32px_rgba(13,139,123,0.24)]",
+    "bg-[linear-gradient(135deg,var(--accent),var(--accent-hover))] text-white shadow-[0_16px_32px_var(--accent-soft)]",
   sand:
     "bg-[linear-gradient(135deg,#f2dfbf_0%,#e9cfa5_100%)] text-ink shadow-[0_16px_32px_rgba(161,122,64,0.16)]",
   slate:

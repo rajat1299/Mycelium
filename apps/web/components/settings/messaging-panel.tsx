@@ -204,7 +204,7 @@ export function MessagingPanel({
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
             Messaging
           </p>
-          <h2 className="mt-2 font-serif text-3xl tracking-tight text-ink">
+          <h2 className="mt-2 font-serif text-xl tracking-tight text-ink">
             Channel connections
           </h2>
         </div>
@@ -332,7 +332,7 @@ export function MessagingPanel({
                         "flex h-[42px] items-center justify-between rounded-[1rem] border px-3 text-sm font-medium transition",
                         draft.enabled
                           ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                          : "border-panel-line bg-white/88 text-muted"
+                          : "border-panel-line bg-panel text-muted"
                       ].join(" ")}
                     >
                       <span>{draft.enabled ? "Enabled" : "Disabled"}</span>

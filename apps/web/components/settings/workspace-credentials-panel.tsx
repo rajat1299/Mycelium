@@ -118,7 +118,7 @@ export function WorkspaceCredentialsPanel({
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
             Workspace credentials
           </p>
-          <h2 className="mt-2 font-serif text-3xl tracking-tight text-ink">
+          <h2 className="mt-2 font-serif text-xl tracking-tight text-ink">
             Saved secrets
           </h2>
         </div>
@@ -139,7 +139,7 @@ export function WorkspaceCredentialsPanel({
             <select
               value={providerId}
               onChange={(event) => setProviderId(event.target.value)}
-              className="w-full rounded-[1rem] border border-panel-line bg-white/85 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
+              className="w-full rounded-[1rem] border border-panel-line bg-panel px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
             >
               {catalog.providers.map((provider) => (
                 <option key={provider.id} value={provider.id}>
@@ -156,7 +156,7 @@ export function WorkspaceCredentialsPanel({
             <input
               value={label}
               onChange={(event) => setLabel(event.target.value)}
-              className="w-full rounded-[1rem] border border-panel-line bg-white/85 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
+              className="w-full rounded-[1rem] border border-panel-line bg-panel px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
               placeholder="OpenAI Primary"
               aria-label="Credential label"
             />
@@ -171,7 +171,7 @@ export function WorkspaceCredentialsPanel({
             type="password"
             value={secret}
             onChange={(event) => setSecret(event.target.value)}
-            className="w-full rounded-[1rem] border border-panel-line bg-white/85 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
+            className="w-full rounded-[1rem] border border-panel-line bg-panel px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
             placeholder="sk-..."
             aria-label="Credential secret"
           />
@@ -204,7 +204,7 @@ export function WorkspaceCredentialsPanel({
       ) : null}
 
       {credentials.length === 0 ? (
-        <div className="mt-6 rounded-[1.5rem] border border-dashed border-panel-line bg-white/60 p-6 text-sm leading-6 text-muted">
+        <div className="mt-6 rounded-[1.5rem] border border-dashed border-panel-line bg-shell p-6 text-sm leading-6 text-muted">
           No credentials are saved for this workspace yet.
         </div>
       ) : (
@@ -212,7 +212,7 @@ export function WorkspaceCredentialsPanel({
           {credentials.map((credential) => (
             <li
               key={credential.id}
-              className="rounded-[1.5rem] border border-panel-line bg-white/75 p-4"
+              className="rounded-[1.5rem] border border-panel-line bg-surface-elevated p-4"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>

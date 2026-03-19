@@ -28,11 +28,11 @@ export function CheckpointDetailCard({
 }: CheckpointDetailCardProps) {
   if (!run) {
     return (
-      <section className="rounded-[2rem] border border-dashed border-panel-line bg-white/60 p-6 shadow-panel">
+      <section className="rounded-[2rem] border border-dashed border-panel-line bg-shell p-6 shadow-panel">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
           Checkpoint detail
         </p>
-        <h2 className="mt-2 font-serif text-3xl tracking-tight text-ink">
+        <h2 className="mt-2 font-serif text-xl tracking-tight text-ink">
           No selected run
         </h2>
         <p className="mt-3 text-sm leading-6 text-muted">
@@ -45,11 +45,11 @@ export function CheckpointDetailCard({
 
   if (!checkpoint) {
     return (
-      <section className="rounded-[2rem] border border-dashed border-panel-line bg-white/60 p-6 shadow-panel">
+      <section className="rounded-[2rem] border border-dashed border-panel-line bg-shell p-6 shadow-panel">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
           Checkpoint detail
         </p>
-        <h2 className="mt-2 font-serif text-3xl tracking-tight text-ink">
+        <h2 className="mt-2 font-serif text-xl tracking-tight text-ink">
           Select a checkpoint
         </h2>
         <p className="mt-3 text-sm leading-6 text-muted">
@@ -70,7 +70,7 @@ export function CheckpointDetailCard({
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
             Checkpoint detail
           </p>
-          <h2 className="font-serif text-3xl tracking-tight text-ink">
+          <h2 className="font-serif text-xl tracking-tight text-ink">
             Checkpoint #{checkpoint.sequence}
           </h2>
           <p className="max-w-2xl text-sm leading-6 text-muted [text-wrap:pretty]">
@@ -92,7 +92,7 @@ export function CheckpointDetailCard({
 
       <div className="mt-6 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-4">
-          <div className="rounded-[1.6rem] bg-white/78 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)]">
+          <div className="rounded-[1.6rem] bg-surface-elevated p-5 shadow-[inset_0_1px_0_var(--panel-line)]">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
                 Run snapshot
@@ -136,7 +136,7 @@ export function CheckpointDetailCard({
             </ul>
           </div>
 
-          <div className="rounded-[1.6rem] bg-white/78 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)]">
+          <div className="rounded-[1.6rem] bg-surface-elevated p-5 shadow-[inset_0_1px_0_var(--panel-line)]">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
                 Step frontier
@@ -149,7 +149,7 @@ export function CheckpointDetailCard({
               {checkpoint.payload.steps.map((step) => (
                 <li
                   key={step.stepId}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-[1.2rem] border border-panel-line bg-white/70 px-4 py-3"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-[1.2rem] border border-panel-line bg-surface-elevated px-4 py-3"
                 >
                   <div className="space-y-1">
                     <p className="text-sm font-semibold text-ink">{step.title}</p>
@@ -198,7 +198,7 @@ export function CheckpointDetailCard({
             ) : null}
           </div>
 
-          <div className="rounded-[1.6rem] bg-white/78 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)]">
+          <div className="rounded-[1.6rem] bg-surface-elevated p-5 shadow-[inset_0_1px_0_var(--panel-line)]">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
                 Artifact ids
@@ -216,7 +216,7 @@ export function CheckpointDetailCard({
                 {checkpoint.payload.artifactIds.map((artifactId) => (
                   <li
                     key={artifactId}
-                    className="rounded-[1.1rem] border border-panel-line bg-white/70 px-3 py-2 font-mono text-[12px] text-muted"
+                    className="rounded-[1.1rem] border border-panel-line bg-surface-elevated px-3 py-2 font-mono text-[12px] text-muted"
                   >
                     {artifactId}
                   </li>

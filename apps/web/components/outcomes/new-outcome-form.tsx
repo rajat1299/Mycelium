@@ -27,7 +27,7 @@ export function NewOutcomeForm({ action }: NewOutcomeFormProps) {
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
           New outcome
         </p>
-        <h2 className="font-serif text-3xl tracking-tight text-ink">
+        <h2 className="font-serif text-xl tracking-tight text-ink">
           Start from the result you want.
         </h2>
         <p className="text-sm leading-6 text-muted">
@@ -44,7 +44,7 @@ export function NewOutcomeForm({ action }: NewOutcomeFormProps) {
             required
             rows={7}
             placeholder="Ship the release notes and draft a launch-ready customer summary."
-            className="w-full rounded-[1.5rem] border border-panel-line bg-white/80 px-4 py-4 text-sm leading-6 text-ink outline-none transition placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent-soft"
+            className="w-full rounded-[1.5rem] border border-panel-line bg-surface-elevated px-4 py-4 text-sm leading-6 text-ink outline-none transition placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent-soft"
           />
         </label>
         <div className="flex items-center justify-between gap-4">

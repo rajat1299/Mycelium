@@ -834,7 +834,7 @@ export function ExecutionConsole({
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
                 Ingress
               </p>
-              <h2 className="font-serif text-3xl tracking-tight text-ink">
+              <h2 className="font-serif text-xl tracking-tight text-ink">
                 {outcomeSource === "schedule"
                   ? "Scheduled trigger"
                   : `Inbound from ${outcomeSource}`}
@@ -850,7 +850,7 @@ export function ExecutionConsole({
 
           {state.messageHistory ? (
             <div className="mt-6 grid gap-4 md:grid-cols-3">
-              <div className="rounded-[1.5rem] border border-panel-line bg-white/75 p-4">
+              <div className="rounded-[1.5rem] border border-panel-line bg-surface-elevated p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
                   Connection
                 </p>
@@ -861,7 +861,7 @@ export function ExecutionConsole({
                   {state.messageHistory.connection?.status ?? "untracked"}
                 </p>
               </div>
-              <div className="rounded-[1.5rem] border border-panel-line bg-white/75 p-4">
+              <div className="rounded-[1.5rem] border border-panel-line bg-surface-elevated p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
                   Conversation
                 </p>
@@ -874,7 +874,7 @@ export function ExecutionConsole({
                     : "No thread id"}
                 </p>
               </div>
-              <div className="rounded-[1.5rem] border border-panel-line bg-white/75 p-4">
+              <div className="rounded-[1.5rem] border border-panel-line bg-surface-elevated p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
                   Deliveries
                 </p>
@@ -909,7 +909,7 @@ export function ExecutionConsole({
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-800">
                 Blocked on review
               </p>
-              <h2 className="font-serif text-3xl tracking-tight text-amber-950">
+              <h2 className="font-serif text-xl tracking-tight text-amber-950">
                 {currentPendingApproval.title}
               </h2>
               <p className="text-sm leading-6 text-amber-900">

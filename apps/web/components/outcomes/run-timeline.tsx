@@ -209,7 +209,7 @@ export function RunTimeline({
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
             Run timeline
           </p>
-          <h2 className="font-serif text-3xl tracking-tight text-ink">
+          <h2 className="font-serif text-xl tracking-tight text-ink">
             Step materialization
           </h2>
           <p className="text-sm leading-6 text-muted">
@@ -226,7 +226,7 @@ export function RunTimeline({
       </div>
 
       {!run ? (
-        <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-white/55 px-5 py-8 text-sm leading-6 text-muted">
+        <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-shell px-5 py-8 text-sm leading-6 text-muted">
           Start a run to watch step state appear here.
         </div>
       ) : (
@@ -234,9 +234,9 @@ export function RunTimeline({
           {sortSteps(run.steps).map((step) => (
             <li
               key={step.id}
-              className="relative overflow-hidden rounded-[1.6rem] border border-panel-line bg-white/78 px-5 py-4"
+              className="relative overflow-hidden rounded-[1.6rem] border border-panel-line bg-surface-elevated px-5 py-4"
             >
-              <div className="absolute left-0 top-0 h-full w-1.5 bg-[linear-gradient(180deg,rgba(13,139,123,0.14),rgba(13,139,123,0.92),rgba(13,139,123,0.22))]" />
+              <div className="absolute left-0 top-0 h-full w-1.5 bg-[linear-gradient(180deg,transparent,var(--accent),transparent)]" />
               <div className="ml-2">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="space-y-1">

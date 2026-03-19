@@ -217,7 +217,7 @@ export function SchedulesPanel({ workspaceId, schedules }: SchedulesPanelProps) 
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
             Schedules
           </p>
-          <h2 className="mt-2 font-serif text-3xl tracking-tight text-ink">
+          <h2 className="mt-2 font-serif text-xl tracking-tight text-ink">
             Durable triggers
           </h2>
         </div>
@@ -230,7 +230,7 @@ export function SchedulesPanel({ workspaceId, schedules }: SchedulesPanelProps) 
       </p>
 
       <Card className="mt-6 overflow-hidden">
-        <CardHeader className="border-b border-panel-line/70 bg-[linear-gradient(135deg,rgba(13,139,123,0.08),rgba(15,111,120,0.03))]">
+        <CardHeader className="border-b border-panel-line/70 bg-accent-soft">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <CardTitle>Compose a new schedule</CardTitle>
@@ -299,7 +299,7 @@ export function SchedulesPanel({ workspaceId, schedules }: SchedulesPanelProps) 
                   onChange={(event) =>
                     setOutcomeMode(event.target.value as Schedule["outcomeMode"])
                   }
-                  className="w-full rounded-[1rem] border border-panel-line bg-white/88 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
+                  className="w-full rounded-[1rem] border border-panel-line bg-panel px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
                 >
                   <option value="create_outcome">Create outcome</option>
                   <option value="continue_outcome">Continue latest outcome</option>
@@ -315,7 +315,7 @@ export function SchedulesPanel({ workspaceId, schedules }: SchedulesPanelProps) 
                   onChange={(event) =>
                     setDispatchMode(event.target.value as Schedule["dispatchMode"])
                   }
-                  className="w-full rounded-[1rem] border border-panel-line bg-white/88 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
+                  className="w-full rounded-[1rem] border border-panel-line bg-panel px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
                 >
                   <option value="create_run">Create run</option>
                   <option value="draft_plan">Draft plan only</option>
@@ -348,7 +348,7 @@ export function SchedulesPanel({ workspaceId, schedules }: SchedulesPanelProps) 
       ) : null}
 
       {scheduleState.length === 0 ? (
-        <div className="mt-6 rounded-[1.5rem] border border-dashed border-panel-line bg-white/60 p-6 text-sm leading-6 text-muted">
+        <div className="mt-6 rounded-[1.5rem] border border-dashed border-panel-line bg-shell p-6 text-sm leading-6 text-muted">
           No schedules are configured for this workspace yet.
         </div>
       ) : (

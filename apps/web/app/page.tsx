@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { NewOutcomeForm } from "../components/outcomes/new-outcome-form";
-import { OutcomeList } from "../components/outcomes/outcome-list";
+import { ChatInput } from "../components/chat/chat-input";
 import {
   createOutcome,
   getDefaultUserId,
@@ -11,6 +10,28 @@ import {
 } from "../lib/api";
 
 export const dynamic = "force-dynamic";
+
+function formatTimestamp(value: string) {
+  return new Date(value).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+
+function statusDot(status: string) {
+  switch (status) {
+    case "completed":
+      return "bg-emerald-400";
+    case "running":
+      return "bg-sky-400";
+    case "failed":
+      return "bg-amber-400";
+    default:
+      return "bg-accent/50";
+  }
+}
 
 export default async function HomePage() {
   const workspaceId = getDefaultWorkspaceId();
@@ -38,53 +59,83 @@ export default async function HomePage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-6 py-10">
-      <header className="grid gap-4 border-b border-panel-line pb-8 lg:grid-cols-[1.3fr_0.9fr] lg:items-end">
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.32em] text-accent">
-              Mycelium
-            </p>
-            <Link
-              href="/settings"
-              className="rounded-full border border-panel-line px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-ink transition hover:border-accent hover:text-accent"
-            >
-              Settings
-            </Link>
-          </div>
-          <h1 className="max-w-3xl font-serif text-4xl tracking-tight text-ink sm:text-5xl">
-            Command center for long-running AI work.
+    <div className="flex min-h-screen flex-col lg:flex-row">
+      {/* Center: chat interface */}
+      <div className="flex flex-1 flex-col items-center justify-center px-6 py-16 sm:px-10">
+        <div className="w-full max-w-[640px]">
+          <h1 className="text-center font-serif text-[2.5rem] leading-[1.12] tracking-tight text-ink sm:text-[2.85rem]">
+            Mycelium works for you.
           </h1>
-          <p className="max-w-2xl text-sm leading-6 text-muted">
-            Start an outcome, inspect progress, and keep the operator view centered
-            on active work instead of chat history.
+          <p className="mx-auto mt-4 max-w-md text-center text-sm leading-relaxed text-muted">
+            Start from the result you want. Mycelium handles plans, runs, and
+            artifacts.
           </p>
-        </div>
-        <div className="rounded-3xl border border-panel-line bg-panel p-5 shadow-panel">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
-            Default scope
-          </p>
-          <dl className="mt-4 grid gap-3 text-sm text-ink">
-            <div>
-              <dt className="text-muted">Workspace</dt>
-              <dd className="font-medium">{workspaceId}</dd>
-            </div>
-            <div>
-              <dt className="text-muted">User</dt>
-              <dd className="font-medium">{userId}</dd>
-            </div>
-            <div>
-              <dt className="text-muted">Active outcomes</dt>
-              <dd className="font-medium">{outcomes.length}</dd>
-            </div>
-          </dl>
-        </div>
-      </header>
 
-      <section className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
-        <NewOutcomeForm action={createOutcomeAction} />
-        <OutcomeList outcomes={outcomes} />
-      </section>
-    </main>
+          <div className="mt-10">
+            <ChatInput action={createOutcomeAction} />
+          </div>
+
+          {/* Quick action suggestions */}
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
+            {[
+              "Research & report",
+              "Draft release notes",
+              "Run code review",
+              "Automate a workflow"
+            ].map((label) => (
+              <span
+                key={label}
+                className="cursor-default rounded-full border border-panel-line px-3.5 py-1.5 text-[12px] font-medium text-muted/70 transition-colors duration-150 hover:border-accent/25 hover:text-muted"
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Right rail: active outcomes */}
+      {outcomes.length > 0 ? (
+        <aside className="w-full shrink-0 border-t border-panel-line bg-sidebar-bg/50 p-5 lg:w-[280px] lg:border-l lg:border-t-0">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+              Active outcomes
+            </p>
+            <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-semibold tabular-nums text-accent">
+              {outcomes.length}
+            </span>
+          </div>
+
+          <ul className="mt-4 space-y-1">
+            {outcomes.map((outcome) => (
+              <li key={outcome.id}>
+                <Link
+                  href={`/outcomes/${outcome.id}`}
+                  className="group block rounded-xl px-3 py-2.5 transition-all duration-150 hover:bg-sidebar-hover"
+                >
+                  <p className="line-clamp-2 text-[13px] font-medium leading-5 text-ink transition-colors duration-150 group-hover:text-accent">
+                    {outcome.prompt}
+                  </p>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <span
+                      className={[
+                        "inline-block h-1.5 w-1.5 rounded-full",
+                        statusDot(outcome.status)
+                      ].join(" ")}
+                    />
+                    <span className="text-[11px] text-muted">
+                      {outcome.status}
+                    </span>
+                    <span className="text-[11px] text-muted/50">
+                      {formatTimestamp(outcome.updatedAt)}
+                    </span>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      ) : null}
+    </div>
   );
 }

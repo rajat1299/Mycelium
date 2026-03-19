@@ -337,7 +337,7 @@ export function RouterPolicyEditor({
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
             Routing policy
           </p>
-          <h2 className="mt-2 font-serif text-3xl tracking-tight text-ink">
+          <h2 className="mt-2 font-serif text-xl tracking-tight text-ink">
             Capability routes
           </h2>
         </div>
@@ -381,7 +381,7 @@ export function RouterPolicyEditor({
           return (
             <section
               key={capability}
-              className="rounded-[1.5rem] border border-panel-line bg-white/75 p-4"
+              className="rounded-[1.5rem] border border-panel-line bg-surface-elevated p-4"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -481,7 +481,7 @@ export function RouterPolicyEditor({
                                 })
                               }
                               aria-label={`Provider for ${capability} candidate ${index + 1}`}
-                              className="w-full rounded-[1rem] border border-panel-line bg-white/85 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
+                              className="w-full rounded-[1rem] border border-panel-line bg-panel px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
                             >
                               {providers.map((provider) => (
                                 <option key={provider.id} value={provider.id}>
@@ -504,7 +504,7 @@ export function RouterPolicyEditor({
                                 }))
                               }
                               aria-label={`Model for ${capability} candidate ${index + 1}`}
-                              className="w-full rounded-[1rem] border border-panel-line bg-white/85 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
+                              className="w-full rounded-[1rem] border border-panel-line bg-panel px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
                             >
                               {models.map((model) => (
                                 <option key={model.modelId} value={model.modelId}>
@@ -527,7 +527,7 @@ export function RouterPolicyEditor({
                                 }))
                               }
                               aria-label={`Auth profile for ${capability} candidate ${index + 1}`}
-                              className="w-full rounded-[1rem] border border-panel-line bg-white/85 px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
+                              className="w-full rounded-[1rem] border border-panel-line bg-panel px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
                             >
                               <option value="">Auto profile</option>
                               {profiles.map((profile) => (

@@ -105,7 +105,7 @@ export function RemoteWorkerPanel({
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
             Remote execution
           </p>
-          <h2 className="font-serif text-3xl tracking-tight text-ink">
+          <h2 className="font-serif text-xl tracking-tight text-ink">
             Worker visibility
           </h2>
           <p className="text-sm leading-6 text-muted">
@@ -124,11 +124,11 @@ export function RemoteWorkerPanel({
       </div>
 
       {!run ? (
-        <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-white/55 px-5 py-8 text-sm leading-6 text-muted">
+        <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-shell px-5 py-8 text-sm leading-6 text-muted">
           Start a run to inspect its remote worker assignment and live worker state.
         </div>
       ) : remoteSteps.length === 0 ? (
-        <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-white/55 px-5 py-8 text-sm leading-6 text-muted">
+        <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-shell px-5 py-8 text-sm leading-6 text-muted">
           The selected run is currently executing without a remote worker assignment.
         </div>
       ) : (
@@ -150,7 +150,7 @@ export function RemoteWorkerPanel({
             {assignedWorkers.map((assignment) => (
               <article
                 key={`${assignment.workerId}:${assignment.workerSessionId}`}
-                className="rounded-[1.6rem] border border-panel-line bg-white/78 px-5 py-4"
+                className="rounded-[1.6rem] border border-panel-line bg-surface-elevated px-5 py-4"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-1">
@@ -205,7 +205,7 @@ export function RemoteWorkerPanel({
               return (
                 <div
                   key={step.id}
-                  className="rounded-[1.6rem] border border-panel-line bg-white/78 px-5 py-4"
+                  className="rounded-[1.6rem] border border-panel-line bg-surface-elevated px-5 py-4"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="space-y-1">

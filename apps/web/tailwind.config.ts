@@ -15,7 +15,12 @@ const config: Config = {
         ink: "var(--ink)",
         muted: "var(--muted)",
         accent: "var(--accent)",
-        "accent-soft": "var(--accent-soft)"
+        "accent-soft": "var(--accent-soft)",
+        "accent-hover": "var(--accent-hover)",
+        "surface-elevated": "var(--surface-elevated)",
+        "sidebar-bg": "var(--sidebar-bg)",
+        "sidebar-hover": "var(--sidebar-hover)",
+        "sidebar-active": "var(--sidebar-active)"
       },
       boxShadow: {
         panel: "var(--shadow-panel)"

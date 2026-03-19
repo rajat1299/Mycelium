@@ -228,7 +228,7 @@ export function ReviewQueue({
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
               Pending reviews
             </p>
-            <h2 className="font-serif text-3xl tracking-tight text-ink">
+            <h2 className="font-serif text-xl tracking-tight text-ink">
               Approval queue
             </h2>
             <p className="text-sm leading-6 text-muted">
@@ -242,7 +242,7 @@ export function ReviewQueue({
         </div>
 
         {approvals.length === 0 ? (
-          <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-white/60 p-5 text-sm leading-6 text-muted">
+          <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-shell p-5 text-sm leading-6 text-muted">
             No pending approvals
           </div>
         ) : (
@@ -259,8 +259,8 @@ export function ReviewQueue({
                     className={[
                       "w-full rounded-[1.6rem] border px-4 py-4 text-left transition",
                       isSelected
-                        ? "border-accent/40 bg-accent-soft/60 shadow-[0_18px_50px_-32px_rgba(13,139,123,0.42)]"
-                        : "border-panel-line bg-white/78 hover:border-accent/30 hover:bg-white"
+                        ? "border-accent/40 bg-accent-soft shadow-[0_18px_40px_var(--accent-soft)]"
+                        : "border-panel-line bg-surface-elevated hover:border-accent/30 hover:bg-panel"
                     ].join(" ")}
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">

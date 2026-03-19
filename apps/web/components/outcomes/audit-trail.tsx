@@ -28,7 +28,7 @@ export function AuditTrail({ selectedRunId, events }: AuditTrailProps) {
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
             Audit
           </p>
-          <h2 className="font-serif text-3xl tracking-tight text-ink">Operator trail</h2>
+          <h2 className="font-serif text-xl tracking-tight text-ink">Operator trail</h2>
           <p className="max-w-2xl text-sm leading-6 text-muted [text-wrap:pretty]">
             Lifecycle, checkpoint, approval, and resume transitions stay in one
             stable sequence so interruption history is readable after the fact.
@@ -40,11 +40,11 @@ export function AuditTrail({ selectedRunId, events }: AuditTrailProps) {
       </div>
 
       {!selectedRunId ? (
-        <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-white/55 px-5 py-8 text-sm leading-6 text-muted">
+        <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-shell px-5 py-8 text-sm leading-6 text-muted">
           Select a run to inspect the durable audit history.
         </div>
       ) : orderedEvents.length === 0 ? (
-        <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-white/55 px-5 py-8 text-sm leading-6 text-muted">
+        <div className="mt-6 rounded-[1.6rem] border border-dashed border-panel-line bg-shell px-5 py-8 text-sm leading-6 text-muted">
           Audit history will appear here as the control plane persists lifecycle and
           checkpoint events for the selected run.
         </div>
@@ -53,7 +53,7 @@ export function AuditTrail({ selectedRunId, events }: AuditTrailProps) {
           {orderedEvents.map((event) => (
             <li
               key={event.id}
-              className="rounded-[1.5rem] border border-panel-line bg-white/78 px-5 py-4"
+              className="rounded-[1.5rem] border border-panel-line bg-surface-elevated px-5 py-4"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="space-y-2">

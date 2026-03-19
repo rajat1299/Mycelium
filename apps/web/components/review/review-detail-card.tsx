@@ -38,11 +38,11 @@ export function ReviewDetailCard({
 
   if (!approval) {
     return (
-      <section className="rounded-[2rem] border border-dashed border-panel-line bg-white/60 p-6 shadow-panel">
+      <section className="rounded-[2rem] border border-dashed border-panel-line bg-shell p-6 shadow-panel">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
           Review detail
         </p>
-        <h2 className="mt-2 font-serif text-3xl tracking-tight text-ink">
+        <h2 className="mt-2 font-serif text-xl tracking-tight text-ink">
           No pending approvals
         </h2>
         <p className="mt-3 text-sm leading-6 text-muted">
@@ -112,7 +112,7 @@ export function ReviewDetailCard({
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
             Review detail
           </p>
-          <h2 className="font-serif text-3xl tracking-tight text-ink">
+          <h2 className="font-serif text-xl tracking-tight text-ink">
             {activeApproval.title}
           </h2>
           <p className="text-sm leading-6 text-muted">
@@ -125,7 +125,7 @@ export function ReviewDetailCard({
         </div>
       </div>
 
-      <div className="mt-5 rounded-[1.5rem] bg-white/70 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+      <div className="mt-5 rounded-[1.5rem] bg-surface-elevated p-5 shadow-[inset_0_1px_0_var(--panel-line)]">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
           Operator instruction
         </p>
@@ -149,7 +149,7 @@ export function ReviewDetailCard({
         </div>
 
         {artifacts.length === 0 ? (
-          <div className="mt-3 rounded-[1.5rem] border border-dashed border-panel-line bg-white/60 p-5 text-sm leading-6 text-muted">
+          <div className="mt-3 rounded-[1.5rem] border border-dashed border-panel-line bg-shell p-5 text-sm leading-6 text-muted">
             No persisted artifacts were loaded for this approval yet.
           </div>
         ) : (
@@ -157,7 +157,7 @@ export function ReviewDetailCard({
             {artifacts.map((artifact) => (
               <li
                 key={artifact.id}
-                className="rounded-[1.5rem] border border-panel-line bg-white/78 px-4 py-4"
+                className="rounded-[1.5rem] border border-panel-line bg-surface-elevated px-4 py-4"
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="space-y-1">

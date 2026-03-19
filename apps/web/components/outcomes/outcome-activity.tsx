@@ -245,7 +245,7 @@ export function OutcomeActivity({ outcome }: OutcomeActivityProps) {
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
           Live activity
         </p>
-        <h2 className="font-serif text-3xl tracking-tight text-ink">
+        <h2 className="font-serif text-xl tracking-tight text-ink">
           Event stream
         </h2>
         <p className="text-sm leading-6 text-muted">
@@ -266,7 +266,7 @@ export function OutcomeActivity({ outcome }: OutcomeActivityProps) {
                   ? "border-emerald-200/80 bg-emerald-50/90"
                   : entry.tone === "warning"
                     ? "border-amber-200/80 bg-amber-50/90"
-                    : "border-panel-line bg-white/75"
+                    : "border-panel-line bg-surface-elevated"
             ].join(" ")}
           >
             <div className="flex items-center justify-between gap-4">
