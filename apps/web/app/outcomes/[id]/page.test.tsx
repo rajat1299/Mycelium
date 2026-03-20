@@ -90,6 +90,10 @@ vi.mock("../../../components/outcomes/plan-graph", () => ({
   PlanGraph: () => <div data-testid="plan-graph" />
 }));
 
+vi.mock("../../../components/outcomes/outcome-conversation", () => ({
+  OutcomeConversation: () => <div data-testid="outcome-conversation" />
+}));
+
 vi.mock("../../../components/outcomes/execution-console", () => ({
   ExecutionConsole: ({
     outcomeSource,

@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import { ExecutionConsole } from "../../../components/outcomes/execution-console";
 import { OutcomeActivity } from "../../../components/outcomes/outcome-activity";
+import { OutcomeConversation } from "../../../components/outcomes/outcome-conversation";
 import { PlanActions } from "../../../components/outcomes/plan-actions";
 import { PlanGraph } from "../../../components/outcomes/plan-graph";
 import {
@@ -160,24 +161,30 @@ export default async function OutcomeDetailPage({
         </section>
       ) : null}
 
-      <section className="grid gap-8 xl:grid-cols-[1.1fr_0.9fr]">
+      <section className="grid gap-8 xl:grid-cols-[1.2fr_0.8fr]">
         <div className="space-y-8">
-          <article className="rounded-3xl border border-panel-line bg-panel p-6 shadow-panel">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
-              Current brief
-            </p>
-            <p className="mt-4 text-base leading-7 text-ink">{outcome.prompt}</p>
-          </article>
-          <PlanActions
-            planId={plan?.id ?? null}
-            hasRun={Boolean(run)}
-            createPlanAction={createPlanAction}
-            startRunAction={startRunAction}
+          <OutcomeConversation
+            outcomeId={outcome.id}
+            outcomePrompt={outcome.prompt}
+            outcomeSource={outcome.source}
+            initialPlan={plan}
+            initialRun={run}
+            initialArtifacts={artifacts}
+            initialLogs={logs}
+            initialPendingApprovals={pendingApprovalsForRun}
           />
-          <PlanGraph outcomeId={outcome.id} initialPlan={plan} />
         </div>
 
         <div className="space-y-8">
+          {!plan || !run ? (
+            <PlanActions
+              planId={plan?.id ?? null}
+              hasRun={Boolean(run)}
+              createPlanAction={createPlanAction}
+              startRunAction={startRunAction}
+            />
+          ) : null}
+          <PlanGraph outcomeId={outcome.id} initialPlan={plan} />
           <ExecutionConsole
             outcomeId={outcome.id}
             outcomeSource={outcome.source}
