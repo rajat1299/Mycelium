@@ -44,12 +44,15 @@ export default async function OutcomeDetailPage({
   searchParams
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ runId?: string | string[] }>;
+  searchParams: Promise<{ runId?: string | string[]; bootstrap?: string | string[] }>;
 }) {
   const [{ id }, resolvedSearchParams] = await Promise.all([params, searchParams]);
   const runIdParam = resolvedSearchParams.runId;
+  const bootstrapParam = resolvedSearchParams.bootstrap;
   const selectedRunId =
     typeof runIdParam === "string" ? runIdParam : runIdParam?.[0];
+  const bootstrapState =
+    typeof bootstrapParam === "string" ? bootstrapParam : bootstrapParam?.[0] ?? null;
   const [outcome, plan, run] = await Promise.all([
     getOutcome(id),
     getPlan(id),
@@ -142,6 +145,20 @@ export default async function OutcomeDetailPage({
           <span>{new Date(outcome.updatedAt).toLocaleString()}</span>
         </div>
       </div>
+
+      {bootstrapState === "plan" ? (
+        <section className="rounded-[1.5rem] border border-amber-200 bg-amber-50/80 p-4 text-sm leading-6 text-amber-950 shadow-panel">
+          Automatic plan generation failed after creating the outcome. You can
+          retry from the orchestration controls below.
+        </section>
+      ) : null}
+
+      {bootstrapState === "run" ? (
+        <section className="rounded-[1.5rem] border border-amber-200 bg-amber-50/80 p-4 text-sm leading-6 text-amber-950 shadow-panel">
+          Automatic run start failed after creating the outcome. You can start
+          the run from the orchestration controls below.
+        </section>
+      ) : null}
 
       <section className="grid gap-8 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-8">

@@ -3,11 +3,11 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ChatInput } from "../components/chat/chat-input";
 import {
-  createOutcome,
   getDefaultUserId,
   getDefaultWorkspaceId,
   listOutcomes
 } from "../lib/api";
+import { bootstrapOutcomeFromHome, buildOutcomeRedirectPath } from "../lib/home-submit";
 
 export const dynamic = "force-dynamic";
 
@@ -47,15 +47,14 @@ export default async function HomePage() {
       return;
     }
 
-    const created = await createOutcome({
+    const result = await bootstrapOutcomeFromHome({
       workspaceId,
       userId,
-      prompt,
-      source: "web"
+      prompt
     });
 
     revalidatePath("/");
-    redirect(`/outcomes/${created.id}`);
+    redirect(buildOutcomeRedirectPath(result));
   }
 
   return (

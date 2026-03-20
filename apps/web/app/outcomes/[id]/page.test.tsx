@@ -608,4 +608,17 @@ describe("OutcomeDetailPage", () => {
       "slack:run_latest:1:1:1:1:1:1"
     );
   });
+
+  it("shows a bootstrap error banner when automatic run start failed on home submit", async () => {
+    render(
+      await OutcomeDetailPage({
+        params: Promise.resolve({ id: "outcome_123" }),
+        searchParams: Promise.resolve({ bootstrap: "run" })
+      })
+    );
+
+    expect(
+      screen.getByText(/automatic run start failed after creating the outcome/i)
+    ).toBeInTheDocument();
+  });
 });
