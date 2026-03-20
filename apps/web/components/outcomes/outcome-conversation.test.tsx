@@ -301,4 +301,40 @@ describe("OutcomeConversation", () => {
     expect(screen.getByText("Review final result")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /open review queue/i })).toBeInTheDocument();
   });
+
+  it("appends follow-up messages when message.created events arrive", () => {
+    render(
+      <OutcomeConversation
+        outcomeId="outcome_123"
+        outcomePrompt="Draft the weekly update."
+        outcomeSource="web"
+        initialPlan={null}
+        initialRun={null}
+        initialArtifacts={[]}
+        initialLogs={[]}
+        initialPendingApprovals={[]}
+      />
+    );
+
+    act(() => {
+      for (const handler of eventStream.handlers) {
+        handler({
+          outcomeId: "outcome_123",
+          type: "message.created",
+          data: {
+            id: "msg_123",
+            outcomeId: "outcome_123",
+            role: "user",
+            content: "Refine the final report for principals.",
+            createdAt: "2026-03-19T00:03:00.000Z"
+          }
+        });
+      }
+    });
+
+    expect(screen.getByText("Follow-up")).toBeInTheDocument();
+    expect(
+      screen.getByText("Refine the final report for principals.")
+    ).toBeInTheDocument();
+  });
 });

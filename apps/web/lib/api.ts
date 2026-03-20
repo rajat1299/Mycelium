@@ -24,7 +24,9 @@ import {
   ScheduleListResponseSchema,
   ScheduleSchema,
   WorkspaceCredentialMetadataSchema,
+  CreateOutcomeMessageRequestSchema,
   type CreateOutcomeRequest,
+  type CreateOutcomeMessageRequest,
   type CreateRunRequest,
   type AuthProfile,
   type Approval,
@@ -139,6 +141,30 @@ export async function createOutcome(input: CreateOutcomeRequest): Promise<Outcom
   }
 
   return parseJson(response, (value) => OutcomeSchema.parse(value));
+}
+
+export async function createOutcomeMessage(
+  outcomeId: string,
+  input: CreateOutcomeMessageRequest
+) {
+  const payload = CreateOutcomeMessageRequestSchema.parse(input);
+  const response = await fetch(
+    `${getControlPlaneBaseUrl()}/api/outcomes/${outcomeId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      cache: "no-store"
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to append outcome message.");
+  }
+
+  return response.json();
 }
 
 export async function getPlan(outcomeId: string) {

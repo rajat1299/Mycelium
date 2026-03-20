@@ -4,6 +4,7 @@ import { startTransition, useEffect, useState } from "react";
 import type {
   Approval,
   Artifact,
+  MessageCreatedData,
   OutcomeSource,
   Plan,
   RunDetail,
@@ -31,6 +32,7 @@ type OutcomeConversationState = {
   artifacts: Artifact[];
   logs: RunLogData[];
   pendingApprovals: Approval[];
+  messages: MessageCreatedData[];
 };
 
 function sortArtifacts(artifacts: Artifact[]) {
@@ -97,8 +99,26 @@ function buildInitialState(
     run: initialRun,
     artifacts: sortArtifacts(initialArtifacts),
     logs: sortLogs(initialLogs),
-    pendingApprovals: initialPendingApprovals
+    pendingApprovals: initialPendingApprovals,
+    messages: []
   };
+}
+
+function sortMessages(messages: MessageCreatedData[]) {
+  return [...messages].sort((left, right) =>
+    left.createdAt.localeCompare(right.createdAt)
+  );
+}
+
+function appendMessage(
+  messages: MessageCreatedData[],
+  incoming: MessageCreatedData
+) {
+  if (messages.some((message) => message.id === incoming.id)) {
+    return sortMessages(messages);
+  }
+
+  return sortMessages([...messages, incoming]);
 }
 
 function runStatusVariant(status: string | undefined) {
@@ -202,6 +222,7 @@ export function OutcomeConversation({
       initialPendingApprovals
     )
   );
+  const [showFullPrompt, setShowFullPrompt] = useState(false);
 
   useEffect(() => {
     setState(
@@ -297,6 +318,11 @@ export function OutcomeConversation({
                   (approval) => approval.id !== event.data.id
                 )
               };
+            case "message.created":
+              return {
+                ...current,
+                messages: appendMessage(current.messages, event.data)
+              };
             default:
               return current;
           }
@@ -314,18 +340,23 @@ export function OutcomeConversation({
   );
   const systemLogs = state.logs.filter((log) => !log.stepId);
   const orderedSteps = sortSteps(state.run?.steps ?? []);
+  const finalArtifact =
+    [...state.artifacts]
+      .reverse()
+      .find((artifact) => artifact.kind === "result") ?? null;
+  const promptPreview =
+    showFullPrompt || outcomePrompt.length <= 220
+      ? outcomePrompt
+      : `${outcomePrompt.slice(0, 220).trimEnd()}...`;
 
   return (
-    <section className="space-y-5 rounded-[2rem] border border-panel-line bg-panel p-6 shadow-panel">
+    <section className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
             Working session
           </p>
-          <h2 className="font-serif text-[1.65rem] leading-tight tracking-tight text-ink">
-            Mycelium is handling the task from a single submit.
-          </h2>
-          <p className="max-w-3xl text-sm leading-6 text-muted">
+          <p className="max-w-3xl font-serif text-[2rem] leading-[1.35] tracking-tight text-ink">
             {runSummary(state.run, currentApproval)}
           </p>
         </div>
@@ -337,11 +368,42 @@ export function OutcomeConversation({
         </div>
       </div>
 
-      <article className="rounded-[1.7rem] border border-panel-line bg-surface-elevated p-5">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
-          Original request
-        </p>
-        <p className="mt-3 text-base leading-7 text-ink">{outcomePrompt}</p>
+      <article className="rounded-[1.8rem] border border-panel-line bg-panel px-6 py-5 shadow-panel">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+              Original request
+            </p>
+            <p className="max-w-4xl text-[1.05rem] leading-8 text-ink">
+              {promptPreview}
+            </p>
+          </div>
+          {outcomePrompt.length > 220 ? (
+            <button
+              type="button"
+              onClick={() => setShowFullPrompt((current) => !current)}
+              className="inline-flex items-center gap-2 rounded-full border border-panel-line px-4 py-2 text-sm font-medium text-muted transition-colors hover:text-ink"
+            >
+              {showFullPrompt ? "Show less" : "Show more"}
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                {showFullPrompt ? (
+                  <path d="m18 15-6-6-6 6" />
+                ) : (
+                  <path d="m6 9 6 6 6-6" />
+                )}
+              </svg>
+            </button>
+          ) : null}
+        </div>
       </article>
 
       {systemLogs.length > 0 ? (
@@ -349,7 +411,7 @@ export function OutcomeConversation({
           {systemLogs.map((log) => (
             <article
               key={logKey(log)}
-              className="rounded-[1.55rem] border border-panel-line bg-[linear-gradient(135deg,rgba(204,125,94,0.10),rgba(255,255,253,0.82))] p-5"
+              className="rounded-[1.55rem] border border-panel-line bg-[linear-gradient(135deg,rgba(204,125,94,0.08),rgba(255,255,253,0.84))] px-6 py-5 shadow-panel"
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-accent">
@@ -365,14 +427,14 @@ export function OutcomeConversation({
         </div>
       ) : null}
 
-      <article className="rounded-[1.7rem] border border-panel-line bg-surface-elevated p-5">
+      <article className="rounded-[1.7rem] border border-panel-line bg-panel px-6 py-5 shadow-panel">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
               Execution plan
             </p>
             <h3 className="mt-2 text-lg tracking-tight text-ink">
-              Parallel task map
+              Starting parallel research across all topics
             </h3>
           </div>
           <Badge variant="slate">
@@ -446,32 +508,58 @@ export function OutcomeConversation({
               <article
                 key={step.id}
                 className={cn(
-                  "overflow-hidden rounded-[1.8rem] border border-panel-line bg-surface-elevated p-5 shadow-[0_10px_26px_rgba(45,40,30,0.04)]",
+                  "overflow-hidden rounded-[1.8rem] border border-panel-line bg-panel px-6 py-5 shadow-panel",
                   step.status === "running" && "border-accent/30"
                 )}
               >
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="space-y-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
-                      Step {step.position + 1}
-                    </p>
-                    <h3 className="text-lg tracking-tight text-ink">{step.title}</h3>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-panel-line bg-surface-elevated text-muted">
+                        <svg
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.7"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <rect x="2" y="3" width="20" height="14" rx="2" />
+                          <path d="M8 21h8m-4-4v4" />
+                        </svg>
+                      </span>
+                      <div className="space-y-1">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+                          Step {step.position + 1}
+                        </p>
+                        <h3 className="text-lg tracking-tight text-ink">{step.title}</h3>
+                      </div>
+                    </div>
                     <div className="flex flex-wrap gap-2">
-                      <Badge variant="slate" size="sm">
-                        {step.capability}
-                      </Badge>
                       {step.routeModelId ? (
                         <Badge variant="sky" size="sm">
                           {step.routeModelId}
                         </Badge>
                       ) : null}
+                      <Badge variant="slate" size="sm">
+                        {step.capability}
+                      </Badge>
                     </div>
                   </div>
-                  <Badge variant={stepStatusVariant(step.status)}>{step.status}</Badge>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={stepStatusVariant(step.status)}>{step.status}</Badge>
+                    {latestLog ? (
+                      <span className="text-xs text-muted">
+                        {new Date(latestLog.createdAt).toLocaleTimeString()}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
 
                 {latestLog ? (
-                  <p className="mt-4 rounded-[1.2rem] border border-panel-line bg-panel px-4 py-3 text-sm leading-6 text-ink">
+                  <p className="mt-4 rounded-[1.35rem] border border-panel-line bg-surface-elevated px-4 py-3 text-sm leading-6 text-ink">
                     {latestLog.message}
                   </p>
                 ) : (
@@ -485,14 +573,26 @@ export function OutcomeConversation({
                 )}
 
                 {stepArtifacts.length > 0 ? (
-                  <div className="mt-4 flex flex-wrap gap-2">
+                  <div className="mt-4 space-y-3">
                     {stepArtifacts.map((artifact) => (
-                      <span
+                      <div
                         key={artifact.id}
-                        className="rounded-full border border-panel-line bg-panel px-3 py-1.5 text-xs text-muted"
+                        className="rounded-[1.35rem] border border-panel-line bg-surface-elevated px-4 py-3"
                       >
-                        {artifact.relativePath}
-                      </span>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <span className="text-sm font-medium text-ink">
+                            {artifact.relativePath}
+                          </span>
+                          <span className="text-xs text-muted">
+                            {describeArtifactMeta(artifact)}
+                          </span>
+                        </div>
+                        {typeof artifact.metadata.summary === "string" ? (
+                          <p className="mt-3 text-sm leading-6 text-muted">
+                            {artifact.metadata.summary}
+                          </p>
+                        ) : null}
+                      </div>
                     ))}
                   </div>
                 ) : null}
@@ -506,6 +606,134 @@ export function OutcomeConversation({
           </article>
         )}
       </div>
+
+      {state.messages.length > 0 ? (
+        <div className="space-y-3">
+          {state.messages.map((message) => (
+            <article
+              key={message.id}
+              className={cn(
+                "max-w-3xl rounded-[1.6rem] px-5 py-4 shadow-panel",
+                message.role === "user"
+                  ? "ml-auto border border-accent/20 bg-accent-soft text-ink"
+                  : "border border-panel-line bg-panel text-ink"
+              )}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+                  {message.role === "user" ? "Follow-up" : message.role}
+                </p>
+                <span className="text-xs text-muted">
+                  {new Date(message.createdAt).toLocaleTimeString()}
+                </span>
+              </div>
+              <p className="mt-3 text-sm leading-7">{message.content}</p>
+            </article>
+          ))}
+        </div>
+      ) : null}
+
+      {finalArtifact ? (
+        <article className="rounded-[1.9rem] border border-panel-line bg-panel px-6 py-6 shadow-panel">
+          <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+            <div className="rounded-[1.7rem] border border-panel-line bg-white p-5 text-slate-900 shadow-[0_18px_48px_rgba(15,23,42,0.08)]">
+              <p className="text-3xl font-semibold tracking-tight">
+                {typeof finalArtifact.metadata.title === "string"
+                  ? finalArtifact.metadata.title
+                  : "Final report"}
+              </p>
+              <p className="mt-3 text-sm text-slate-500">PDF Document</p>
+              {Array.isArray(finalArtifact.metadata.previewStats) ? (
+                <div className="mt-8 grid grid-cols-2 gap-3">
+                  {finalArtifact.metadata.previewStats.map((stat, index) => {
+                    if (
+                      !stat ||
+                      typeof stat !== "object" ||
+                      !("label" in stat) ||
+                      !("value" in stat)
+                    ) {
+                      return null;
+                    }
+
+                    return (
+                      <div
+                        key={`${finalArtifact.id}:${index}`}
+                        className="rounded-2xl bg-slate-100 px-4 py-3"
+                      >
+                        <p className="text-2xl font-semibold text-blue-700">
+                          {String(stat.value)}
+                        </p>
+                        <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-500">
+                          {String(stat.label)}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-ink">
+                    {finalArtifact.relativePath}
+                  </p>
+                  <p className="text-sm text-muted">PDF Document</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="rounded-full border border-panel-line px-4 py-2 text-sm font-medium text-muted transition-colors hover:text-ink"
+                  >
+                    Share
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-full border border-panel-line px-4 py-2 text-sm font-medium text-muted transition-colors hover:text-ink"
+                  >
+                    Download
+                  </button>
+                </div>
+              </div>
+              <p className="font-serif text-[1.75rem] leading-[1.35] tracking-tight text-ink">
+                Here&apos;s your report. The final artifact is ready inline with its
+                summary and delivery details.
+              </p>
+              {typeof finalArtifact.metadata.summary === "string" ? (
+                <p className="text-base leading-8 text-ink">
+                  {finalArtifact.metadata.summary}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </article>
+      ) : null}
     </section>
   );
+}
+
+function describeArtifactMeta(artifact: Artifact) {
+  const lineCount =
+    typeof artifact.metadata.lineCount === "number"
+      ? `${artifact.metadata.lineCount} lines`
+      : null;
+  const byteSize =
+    typeof artifact.metadata.byteSize === "number"
+      ? formatByteSize(artifact.metadata.byteSize)
+      : null;
+
+  return [lineCount, byteSize].filter(Boolean).join(", ") || artifact.kind;
+}
+
+function formatByteSize(value: number) {
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1)}MB`;
+  }
+
+  if (value >= 1_000) {
+    return `${(value / 1_000).toFixed(1)}KB`;
+  }
+
+  return `${value}B`;
 }

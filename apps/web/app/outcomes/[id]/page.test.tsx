@@ -30,6 +30,8 @@ const mocks = vi.hoisted(() => ({
   listApprovals: vi.fn(),
   listWorkers: vi.fn(),
   listAuthProfiles: vi.fn(),
+  listOutcomes: vi.fn(),
+  createOutcomeMessage: vi.fn(),
   createPlan: vi.fn(),
   createRun: vi.fn(),
   notFound: vi.fn(() => {
@@ -51,6 +53,8 @@ let observedSelectedCheckpoint: CheckpointDetail | null = null;
 let observedAuditEvents: AuditEvent[] = [];
 let observedWorkers: Array<{ id: string; label: string; availability: string }> = [];
 let observedOutcomeSource: string | null = null;
+let observedTaskOutcomes: Array<{ id: string; prompt: string; status: string }> = [];
+let observedSelectedOutcomeId: string | null = null;
 let observedMessageHistory:
   | {
       connection: MessagingConnection | null;
@@ -92,6 +96,28 @@ vi.mock("../../../components/outcomes/plan-graph", () => ({
 
 vi.mock("../../../components/outcomes/outcome-conversation", () => ({
   OutcomeConversation: () => <div data-testid="outcome-conversation" />
+}));
+
+vi.mock("../../../components/outcomes/tasks-pane", () => ({
+  TasksPane: ({
+    outcomes,
+    selectedOutcomeId
+  }: {
+    outcomes: Array<{ id: string; prompt: string; status: string }>;
+    selectedOutcomeId: string | null;
+  }) => {
+    observedTaskOutcomes = outcomes;
+    observedSelectedOutcomeId = selectedOutcomeId;
+    return (
+      <div data-testid="tasks-pane">
+        {selectedOutcomeId}:{outcomes.length}
+      </div>
+    );
+  }
+}));
+
+vi.mock("../../../components/outcomes/follow-up-input", () => ({
+  FollowUpInput: () => <div data-testid="follow-up-input" />
 }));
 
 vi.mock("../../../components/outcomes/execution-console", () => ({
@@ -175,6 +201,7 @@ vi.mock("../../../components/outcomes/artifact-list", () => ({
 vi.mock("../../../lib/api", () => ({
   createPlan: mocks.createPlan,
   createRun: mocks.createRun,
+  createOutcomeMessage: mocks.createOutcomeMessage,
   getOutcome: mocks.getOutcome,
   getPlan: mocks.getPlan,
   getRun: mocks.getRun,
@@ -186,6 +213,7 @@ vi.mock("../../../lib/api", () => ({
   getRunLogs: mocks.getRunLogs,
   getRunArtifactLineage: mocks.getRunArtifactLineage,
   getOutcomeMessageHistory: mocks.getOutcomeMessageHistory,
+  listOutcomes: mocks.listOutcomes,
   listApprovals: mocks.listApprovals,
   listWorkers: mocks.listWorkers,
   listAuthProfiles: mocks.listAuthProfiles
@@ -209,6 +237,8 @@ describe("OutcomeDetailPage", () => {
     observedAuditEvents = [];
     observedWorkers = [];
     observedOutcomeSource = null;
+    observedTaskOutcomes = [];
+    observedSelectedOutcomeId = null;
     observedMessageHistory = null;
     vi.clearAllMocks();
 
@@ -394,6 +424,28 @@ describe("OutcomeDetailPage", () => {
         updatedAt: "2026-03-11T00:09:00.000Z"
       }
     ]);
+    mocks.listOutcomes.mockResolvedValue([
+      {
+        id: "outcome_123",
+        workspaceId: "ws_default",
+        userId: "user_default",
+        prompt: "Resume the queued run from storage.",
+        source: "web",
+        status: "queued",
+        createdAt: "2026-03-11T00:00:00.000Z",
+        updatedAt: "2026-03-11T00:10:00.000Z"
+      },
+      {
+        id: "outcome_456",
+        workspaceId: "ws_default",
+        userId: "user_default",
+        prompt: "Summarize the overnight alerts.",
+        source: "web",
+        status: "running",
+        createdAt: "2026-03-10T22:00:00.000Z",
+        updatedAt: "2026-03-10T22:45:00.000Z"
+      }
+    ]);
   });
 
   it("loads the latest persisted run when no runId query param is provided", async () => {
@@ -408,6 +460,7 @@ describe("OutcomeDetailPage", () => {
     expect(mocks.getOutcomeMessageHistory).not.toHaveBeenCalled();
     expect(mocks.getRun).not.toHaveBeenCalled();
     expect(mocks.listAuthProfiles).toHaveBeenCalledWith("ws_default");
+    expect(mocks.listOutcomes).toHaveBeenCalledWith("ws_default");
     expect(mocks.listWorkers).toHaveBeenCalledWith("ws_default");
     expect(mocks.listApprovals).toHaveBeenCalledWith("ws_default");
     expect(mocks.getRunArtifacts).toHaveBeenCalledWith("run_latest");
@@ -420,6 +473,17 @@ describe("OutcomeDetailPage", () => {
       "web:run_latest:1:1:1:1:1:1"
     );
     expect(observedOutcomeSource).toBe("web");
+    expect(observedSelectedOutcomeId).toBe("outcome_123");
+    expect(observedTaskOutcomes).toEqual([
+      expect.objectContaining({
+        id: "outcome_123",
+        prompt: "Resume the queued run from storage."
+      }),
+      expect.objectContaining({
+        id: "outcome_456",
+        prompt: "Summarize the overnight alerts."
+      })
+    ]);
     expect(observedMessageHistory).toBeNull();
     expect(observedRun?.id).toBe("run_latest");
     expect(observedSelectedRunId).toBe("run_latest");
@@ -477,6 +541,8 @@ describe("OutcomeDetailPage", () => {
         runId: "run_latest"
       })
     ]);
+    expect(screen.getByTestId("tasks-pane")).toHaveTextContent("outcome_123:2");
+    expect(screen.getByTestId("follow-up-input")).toBeInTheDocument();
   });
 
   it("ignores a runId that belongs to a different outcome and falls back to the latest local run", async () => {
@@ -622,7 +688,7 @@ describe("OutcomeDetailPage", () => {
     );
 
     expect(
-      screen.getByText(/automatic run start failed after creating the outcome/i)
+      screen.getByText(/automatic run start failed after creating the task/i)
     ).toBeInTheDocument();
   });
 });
