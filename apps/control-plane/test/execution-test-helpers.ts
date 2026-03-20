@@ -11,6 +11,7 @@ import { createExecutionService } from "../src/lib/execution-service";
 import { createMessagingService } from "../src/lib/messaging-service";
 import { createRouterService } from "../src/lib/router-service";
 import { createScheduleService } from "../src/lib/schedule-service";
+import { createSimulatedExecutionService } from "../src/lib/simulated-execution";
 import { createSlackService } from "../src/lib/slack-service";
 import { createTelegramService } from "../src/lib/telegram-service";
 import { createWorkerRegistry } from "../src/lib/worker-registry";
@@ -48,6 +49,8 @@ type FakeSandboxOptions = {
   onExecute?: (request: FakeSandboxRequest) => Promise<FakeSandboxResult> | FakeSandboxResult;
   repositories?: Repositories;
   eventBus?: ReturnType<typeof createEventBus>;
+  simulationMode?: boolean;
+  simulationTimeline?: Parameters<typeof createSimulatedExecutionService>[0]["timeline"];
   workspaceManager?: {
     acquire(runId: string): Promise<{
       runId: string;
@@ -152,6 +155,13 @@ export async function createExecutionHarness(
     sandboxProvider: remoteProvider,
     workspaceManager: workspaceManager as never
   });
+  const simulatedExecutionService = createSimulatedExecutionService({
+    repositories,
+    eventBus,
+    ...(options.simulationTimeline
+      ? { timeline: options.simulationTimeline }
+      : {})
+  });
   const approvalService = createApprovalService({
     repositories,
     eventBus,
@@ -209,7 +219,9 @@ export async function createExecutionHarness(
     workerRegistry,
     daemonGateway,
     daemonAuthToken: "test-daemon-token",
-    remoteProvider
+    remoteProvider,
+    simulatedExecutionService,
+    simulationMode: options.simulationMode ?? false
   };
   const events: Array<{ outcomeId: string; type: string; data: unknown }> = [];
   const unsubscribe = eventBus.subscribeAll((event) => {

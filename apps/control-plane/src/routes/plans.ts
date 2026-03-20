@@ -3,10 +3,15 @@ import { createDeterministicDraftPlan, validatePlanGraph } from "@computer-oss/o
 import { PlanSchema } from "@computer-oss/protocol";
 import type { EventBus } from "../lib/event-bus";
 import type { Repositories } from "../lib/repositories";
+import {
+  createSimulatedDraftPlan,
+  isDevelopmentSimulationEnabled
+} from "../lib/simulated-execution";
 
 type PlanRouteOptions = {
   repositories: Repositories;
   eventBus: EventBus;
+  simulationMode?: boolean;
 };
 
 function badRequest(message: string) {
@@ -55,12 +60,22 @@ export function registerPlanRoutes(
     }
 
     const now = new Date().toISOString();
-    const draftPlan = createDeterministicDraftPlan({
-      outcomeId: outcome.id,
-      prompt: outcome.prompt,
-      createdAt: now,
-      updatedAt: now
-    });
+    const draftPlan = isDevelopmentSimulationEnabled({
+      simulationMode: options.simulationMode ?? false,
+      outcomeSource: outcome.source
+    })
+      ? createSimulatedDraftPlan({
+          outcomeId: outcome.id,
+          prompt: outcome.prompt,
+          createdAt: now,
+          updatedAt: now
+        })
+      : createDeterministicDraftPlan({
+          outcomeId: outcome.id,
+          prompt: outcome.prompt,
+          createdAt: now,
+          updatedAt: now
+        });
     const validation = validatePlanGraph(draftPlan);
 
     if (!validation.ok) {

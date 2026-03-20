@@ -50,6 +50,11 @@ import {
   type ScheduleService
 } from "./schedule-service";
 import {
+  createSimulatedExecutionService,
+  type SimulatedExecutionService,
+  type SimulatedExecutionTimeline
+} from "./simulated-execution";
+import {
   createSlackService,
   type SlackService
 } from "./slack-service";
@@ -71,6 +76,7 @@ export type ServiceContainer = {
   repositories: Repositories;
   eventBus: EventBus;
   executionService: ExecutionService;
+  simulatedExecutionService: SimulatedExecutionService;
   approvalService: ApprovalService;
   checkpointService: CheckpointService;
   encryption: EncryptionService;
@@ -83,6 +89,7 @@ export type ServiceContainer = {
   daemonGateway: DaemonGateway;
   daemonAuthToken: string;
   remoteProvider: RemoteProvider;
+  simulationMode: boolean;
 };
 
 type InMemoryServiceContainerOptions = {
@@ -94,6 +101,8 @@ type InMemoryServiceContainerOptions = {
   daemonAuthToken?: string;
   workerStaleTimeoutMs?: number;
   workerSweepIntervalMs?: number;
+  simulationMode?: boolean;
+  simulationTimeline?: Partial<SimulatedExecutionTimeline>;
   slackTransport?: Pick<ChannelTransportAdapter, "deliver">;
   telegramTransport?: Pick<ChannelTransportAdapter, "deliver">;
   now?: () => Date;
@@ -250,6 +259,14 @@ export function createInMemoryServiceContainer(
     workspaceManager,
     ...(options.now ? { now: options.now } : {})
   });
+  const simulatedExecutionService = createSimulatedExecutionService({
+    repositories,
+    eventBus,
+    ...(options.now ? { now: options.now } : {}),
+    ...(options.simulationTimeline
+      ? { timeline: options.simulationTimeline }
+      : {})
+  });
   const approvalService = createApprovalService({
     repositories,
     eventBus,
@@ -308,7 +325,9 @@ export function createInMemoryServiceContainer(
     workerRegistry,
     daemonGateway,
     daemonAuthToken,
-    remoteProvider
+    remoteProvider,
+    simulatedExecutionService,
+    simulationMode: options.simulationMode ?? false
   };
 }
 
@@ -352,6 +371,10 @@ export async function createServiceContainer(env: AppEnv): Promise<ServiceContai
     checkpointService,
     sandboxProvider: remoteProvider,
     workspaceManager
+  });
+  const simulatedExecutionService = createSimulatedExecutionService({
+    repositories,
+    eventBus
   });
   const daemonGateway = createDaemonGateway({
     repositories,
@@ -492,7 +515,9 @@ export async function createServiceContainer(env: AppEnv): Promise<ServiceContai
     workerRegistry,
     daemonGateway,
     daemonAuthToken: env.MYCELIUM_DAEMON_TOKEN,
-    remoteProvider
+    remoteProvider,
+    simulatedExecutionService,
+    simulationMode: env.MYCELIUM_DEV_SIMULATION_MODE
   };
 }
 

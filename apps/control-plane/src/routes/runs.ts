@@ -14,12 +14,19 @@ import type { EventBus } from "../lib/event-bus";
 import type { ExecutionService } from "../lib/execution-service";
 import type { Repositories } from "../lib/repositories";
 import type { RouterService } from "../lib/router-service";
+import {
+  isDevelopmentSimulationEnabled,
+  resolveSimulatedRoute,
+  type SimulatedExecutionService
+} from "../lib/simulated-execution";
 
 type RunRouteOptions = {
   repositories: Repositories;
   eventBus: EventBus;
   executionService: ExecutionService;
+  simulatedExecutionService: SimulatedExecutionService;
   routerService: RouterService;
+  simulationMode?: boolean;
 };
 
 function badRequest(message: string) {
@@ -61,17 +68,23 @@ async function resolveAndPersistStepRoutes(
     workspaceId: string;
     runId: string;
     resolvedAt: string;
+    useSimulatedRoutes: boolean;
   }
 ) {
   const steps = await options.repositories.runs.listSteps(input.runId);
 
   await Promise.all(
     steps.map(async (step) => {
-      const route = await options.routerService.resolveRoute({
-        workspaceId: input.workspaceId,
-        capability: CapabilityFamilySchema.parse(step.capability),
-        resolvedAt: input.resolvedAt
-      });
+      const route = input.useSimulatedRoutes
+        ? resolveSimulatedRoute({
+            capability: CapabilityFamilySchema.parse(step.capability),
+            resolvedAt: input.resolvedAt
+          })
+        : await options.routerService.resolveRoute({
+            workspaceId: input.workspaceId,
+            capability: CapabilityFamilySchema.parse(step.capability),
+            resolvedAt: input.resolvedAt
+          });
 
       const updated = await options.repositories.runs.updateStepRoute({
         stepId: step.id,
@@ -109,6 +122,10 @@ export function registerRunRoutes(
 
     const now = new Date().toISOString();
     let run;
+    const useSimulatedRoutes = isDevelopmentSimulationEnabled({
+      simulationMode: options.simulationMode ?? false,
+      outcomeSource: outcome.source
+    });
 
     try {
       run = await options.repositories.runs.createFromPlan({
@@ -135,7 +152,8 @@ export function registerRunRoutes(
     await resolveAndPersistStepRoutes(options, {
       workspaceId: outcome.workspaceId,
       runId: run.id,
-      resolvedAt: now
+      resolvedAt: now,
+      useSimulatedRoutes
     });
 
     const updatedOutcome = await options.repositories.outcomes.updateStatus({
@@ -201,7 +219,11 @@ export function registerRunRoutes(
       });
     }
 
-    options.executionService.startRun(response.id);
+    if (useSimulatedRoutes) {
+      options.simulatedExecutionService.startRun(response.id);
+    } else {
+      options.executionService.startRun(response.id);
+    }
 
     return reply.code(201).send(response);
   });

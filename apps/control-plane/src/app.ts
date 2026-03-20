@@ -81,6 +81,8 @@ export function buildApp(options: BuildAppOptions = {}) {
   const daemonGateway = services.daemonGateway;
   const daemonAuthToken = services.daemonAuthToken;
   const remoteProvider = services.remoteProvider;
+  const simulatedExecutionService = services.simulatedExecutionService;
+  const simulationMode = services.simulationMode;
 
   registerHealthRoutes(app);
   registerProviderRoutes(app);
@@ -99,13 +101,15 @@ export function buildApp(options: BuildAppOptions = {}) {
   registerTelegramRoutes(app, { telegramService });
   registerMessageRoutes(app, { messagingService });
   registerOutcomeRoutes(app, { repositories, eventBus });
-  registerPlanRoutes(app, { repositories, eventBus });
+  registerPlanRoutes(app, { repositories, eventBus, simulationMode });
   registerCheckpointRoutes(app, { repositories, checkpointService });
   registerRunRoutes(app, {
     repositories,
     eventBus,
     executionService,
-    routerService
+    routerService,
+    simulatedExecutionService,
+    simulationMode
   });
   registerArtifactRoutes(app, { repositories });
   registerOutcomeEventRoutes(app, { repositories, eventBus });
@@ -120,6 +124,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     slackService.close();
     telegramService.close();
     services.workerRegistry.close();
+    simulatedExecutionService.close();
   });
 
   return app;
