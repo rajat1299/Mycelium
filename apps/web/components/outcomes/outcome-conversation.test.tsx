@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OutcomeConversation } from "./outcome-conversation";
 
@@ -147,12 +147,15 @@ describe("OutcomeConversation", () => {
       />
     );
 
-    expect(screen.getByText("Working session")).toBeInTheDocument();
-    expect(screen.getByText("Execution plan")).toBeInTheDocument();
+    expect(screen.getByText("Original request")).toBeInTheDocument();
+    expect(screen.getByText("Task checklist")).toBeInTheDocument();
     expect(screen.getAllByText("Analyze outcome").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Synthesize result").length).toBeGreaterThan(0);
     expect(screen.getAllByText("openrouter/claude-sonnet-4.5").length).toBeGreaterThan(0);
-    expect(screen.getByText("artifacts/analyze-outcome.md")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /analyze outcome/i }));
+    expect(
+      screen.getByText("/home/user/workspace/analyze-outcome.md")
+    ).toBeInTheDocument();
     expect(screen.getByText("Analysis finished and artifact persisted.")).toBeInTheDocument();
   });
 
@@ -253,8 +256,11 @@ describe("OutcomeConversation", () => {
       }
     });
 
-    expect(screen.getAllByText("completed").length).toBeGreaterThan(0);
-    expect(screen.getByText("artifacts/analyze-outcome.md")).toBeInTheDocument();
+    expect(screen.getAllByText("Done").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: /analyze outcome/i }));
+    expect(
+      screen.getByText("/home/user/workspace/analyze-outcome.md")
+    ).toBeInTheDocument();
   });
 
   it("shows a review blocker card when the run is waiting on approval", () => {
@@ -297,9 +303,10 @@ describe("OutcomeConversation", () => {
       />
     );
 
-    expect(screen.getByText("Waiting for review")).toBeInTheDocument();
+    expect(screen.getByText("Approval required")).toBeInTheDocument();
     expect(screen.getByText("Review final result")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /open review queue/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reject" })).toBeInTheDocument();
   });
 
   it("appends follow-up messages when message.created events arrive", () => {
