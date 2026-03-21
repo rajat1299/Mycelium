@@ -1,5 +1,9 @@
 # Internal docs and planning (not for public repo)
 README-Internal.md
+docs/
+
+# Sample designs (reference assets)
+sample deisgns/
 node_modules/
 .turbo/
 dist/
@@ -9,3 +13,6 @@ coverage/
 .env.local
 .env.*.local
 *.tsbuildinfo
+
+# Local runtime data (checkpoints, workspaces)
+.mycelium/

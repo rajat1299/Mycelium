@@ -177,60 +177,57 @@ export default async function OutcomeDetailPage({
     <main className="flex min-h-screen min-w-0 flex-1 overflow-hidden bg-shell">
       <TasksPane outcomes={workspaceOutcomes} selectedOutcomeId={outcome.id} />
 
-      <section className="flex min-w-0 flex-1 flex-col">
-        <header className="border-b border-panel-line bg-shell/92 px-6 py-4 backdrop-blur xl:px-8">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="min-w-0 space-y-2">
-              <h1 className="truncate text-[1.4rem] font-semibold tracking-tight text-ink xl:text-[1.55rem]">
-                {outcomeTitle}
-              </h1>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-                <span className="rounded-full border border-panel-line px-2.5 py-1">
-                  {outcome.status}
-                </span>
-                <span className="rounded-full border border-panel-line px-2.5 py-1">
-                  {outcome.source}
-                </span>
-                <span>{new Date(outcome.updatedAt).toLocaleString()}</span>
-              </div>
-            </div>
+      <section className="relative flex min-w-0 flex-1 flex-col max-h-screen">
+        {/* ── Header ──────────────────────────────────────────────── */}
+        <header className="sticky top-0 shrink-0 flex items-center justify-between gap-4 border-b border-panel-line/50 bg-shell/80 px-6 py-3 backdrop-blur-xl z-20">
+          <div className="min-w-0 flex-1 flex items-center gap-3">
+            <h2 className="truncate text-sm font-semibold text-ink [text-wrap:balance]">
+              {outcomeTitle}
+            </h2>
+            {(outcome.status === "running" || outcome.status === "planning") && (
+              <span className="relative flex h-1.5 w-1.5 shrink-0">
+                <span
+                  className="absolute inline-flex h-1.5 w-1.5 rounded-full bg-accent opacity-75"
+                  style={{ animation: "ping-slow 2s cubic-bezier(0,0,0.2,1) infinite" }}
+                />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
+              </span>
+            )}
+          </div>
 
-            <div className="flex items-center gap-2">
-              {artifacts.length > 0 ? (
-                <div className="rounded-full border border-panel-line px-3 py-2 text-sm font-medium text-muted">
-                  {artifacts.length}
-                </div>
-              ) : null}
-              <button
-                type="button"
-                className="inline-flex items-center gap-2 rounded-full border border-panel-line bg-panel px-4 py-2 text-sm font-medium text-ink transition-colors hover:border-accent hover:text-accent"
-              >
-                Todo
-              </button>
-              <button
-                type="button"
-                className="inline-flex items-center gap-2 rounded-full border border-panel-line bg-panel px-4 py-2 text-sm font-medium text-ink transition-colors hover:border-accent hover:text-accent"
-              >
-                Share
-              </button>
-            </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {/* Overflow menu */}
+            <button type="button" className="rounded-lg p-2 text-muted transition-colors hover:bg-surface-elevated hover:text-ink" aria-label="More options">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" /></svg>
+            </button>
+            {/* Todo / step count */}
+            <button type="button" className="flex items-center gap-1.5 rounded-lg p-2 text-muted transition-colors hover:bg-surface-elevated hover:text-ink" aria-label="Subtasks">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="m9 15 2 2 4-4" /></svg>
+              {run && run.steps.length > 0 && (
+                <span className="text-xs font-semibold tabular-nums">{run.steps.length}</span>
+              )}
+            </button>
+            {/* Share button */}
+            <button type="button" className="ml-1 flex items-center gap-1.5 rounded-lg bg-ink px-3.5 py-1.5 text-xs font-semibold text-shell transition-all duration-150 hover:opacity-90 active:scale-[0.97]">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+              Share
+            </button>
           </div>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto flex w-full max-w-[980px] flex-col gap-8 px-5 py-8 lg:px-8 xl:px-10">
+        {/* ── Execution Feed ──────────────────────────────────────── */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar scroll-smooth px-4 pb-44 sm:px-6 lg:px-8">
+          <div className="mx-auto w-full max-w-3xl space-y-6 py-6">
             {bootstrapState === "plan" ? (
-              <section className="rounded-[1.5rem] border border-amber-200 bg-amber-50/80 p-4 text-sm leading-6 text-amber-950 shadow-panel">
-                Automatic plan generation failed after creating the task. Retry from
-                operator details below.
-              </section>
+              <p className="rounded-xl border border-amber-300/40 bg-amber-50/40 px-4 py-3 text-sm text-amber-800">
+                Automatic plan generation failed. Retry from operator details below.
+              </p>
             ) : null}
 
             {bootstrapState === "run" ? (
-              <section className="rounded-[1.5rem] border border-amber-200 bg-amber-50/80 p-4 text-sm leading-6 text-amber-950 shadow-panel">
-                Automatic run start failed after creating the task. You can restart
-                it from operator details below.
-              </section>
+              <p className="rounded-xl border border-amber-300/40 bg-amber-50/40 px-4 py-3 text-sm text-amber-800">
+                Automatic run start failed. Restart from operator details below.
+              </p>
             ) : null}
 
             <OutcomeConversation
@@ -244,17 +241,17 @@ export default async function OutcomeDetailPage({
               initialPendingApprovals={pendingApprovalsForRun}
             />
 
-            <details className="rounded-[1.7rem] border border-panel-line bg-panel/92 shadow-panel">
-              <summary className="cursor-pointer list-none px-6 py-5 text-sm font-semibold tracking-[0.02em] text-ink marker:hidden">
-                <span className="flex items-center justify-between gap-3">
+            <details className="rounded-xl border border-panel-line/60 bg-surface-elevated/30">
+              <summary className="cursor-pointer list-none px-5 py-3.5 text-xs font-medium tracking-wide text-muted marker:hidden">
+                <span className="flex items-center gap-2">
                   <span>Operator details</span>
-                  <span className="text-xs font-medium uppercase tracking-[0.2em] text-muted">
-                    checkpoints, audit, lineage, recovery
+                  <span className="text-[10px] text-muted/50">
+                    checkpoints / audit / lineage
                   </span>
                 </span>
               </summary>
 
-              <div className="space-y-8 border-t border-panel-line px-6 py-6">
+              <div className="space-y-6 border-t border-panel-line/60 px-5 py-5">
                 {!plan || !run ? (
                   <PlanActions
                     planId={plan?.id ?? null}
@@ -285,7 +282,8 @@ export default async function OutcomeDetailPage({
           </div>
         </div>
 
-        <FollowUpInput action={appendMessageAction} />
+        {/* ── Sticky follow-up input with gradient fade ───────────── */}
+        <FollowUpInput action={appendMessageAction} hasConversation={Boolean(run)} />
       </section>
     </main>
   );

@@ -147,12 +147,11 @@ describe("OutcomeConversation", () => {
       />
     );
 
-    expect(screen.getByText("Original request")).toBeInTheDocument();
-    expect(screen.getByText("Task checklist")).toBeInTheDocument();
+    expect(screen.getByText("Draft the weekly update.")).toBeInTheDocument();
+    expect(screen.getByText(/2 subtasks/i)).toBeInTheDocument();
     expect(screen.getAllByText("Analyze outcome").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Synthesize result").length).toBeGreaterThan(0);
     expect(screen.getAllByText("openrouter/claude-sonnet-4.5").length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole("button", { name: /analyze outcome/i }));
     expect(
       screen.getByText("/home/user/workspace/analyze-outcome.md")
     ).toBeInTheDocument();
@@ -256,8 +255,6 @@ describe("OutcomeConversation", () => {
       }
     });
 
-    expect(screen.getAllByText("Done").length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole("button", { name: /analyze outcome/i }));
     expect(
       screen.getByText("/home/user/workspace/analyze-outcome.md")
     ).toBeInTheDocument();
@@ -339,7 +336,6 @@ describe("OutcomeConversation", () => {
       }
     });
 
-    expect(screen.getByText("Follow-up")).toBeInTheDocument();
     expect(
       screen.getByText("Refine the final report for principals.")
     ).toBeInTheDocument();

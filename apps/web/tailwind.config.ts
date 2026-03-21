@@ -23,7 +23,11 @@ const config: Config = {
         "sidebar-active": "var(--sidebar-active)"
       },
       boxShadow: {
-        panel: "var(--shadow-panel)"
+        panel: "var(--shadow-panel)",
+        card: "var(--shadow-card)",
+        "card-hover": "var(--shadow-card-hover)",
+        "card-active": "var(--shadow-card-active)",
+        "card-error": "var(--shadow-card-error)"
       },
       fontFamily: {
         serif: ['var(--font-display)', '"Iowan Old Style"', "Georgia", "serif"],

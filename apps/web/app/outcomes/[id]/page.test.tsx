@@ -688,7 +688,7 @@ describe("OutcomeDetailPage", () => {
     );
 
     expect(
-      screen.getByText(/automatic run start failed after creating the task/i)
+      screen.getByText(/automatic run start failed/i)
     ).toBeInTheDocument();
   });
 });
