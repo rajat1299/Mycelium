@@ -123,17 +123,6 @@ vi.mock("../../../components/outcomes/execution-console", () => ({
   ExecutionConsole: () => <div data-testid="execution-console" />
 }));
 
-vi.mock("../../../components/outcomes/artifact-list", () => ({
-  ArtifactList: ({
-    initialArtifacts
-  }: {
-    initialArtifacts: Array<{ id: string; relativePath: string }>;
-  }) => {
-    observedArtifacts = initialArtifacts;
-    return <div data-testid="artifact-list">{initialArtifacts.length}</div>;
-  }
-}));
-
 vi.mock("../../../lib/api", () => ({
   createPlan: mocks.createPlan,
   createRun: mocks.createRun,
