@@ -24,6 +24,7 @@ const BooleanFromStringSchema = z.preprocess((value) => {
 
 const EnvSchema = z.object({
   DATABASE_URL: z.string().min(1),
+  NODE_ENV: z.string().optional(),
   HOST: z.string().default("0.0.0.0"),
   PORT: z.coerce.number().int().positive().default(4000),
   WORKSPACE_ROOT: z.string().min(1).default(".mycelium/workspaces"),
@@ -31,15 +32,25 @@ const EnvSchema = z.object({
   SANDBOX_IMAGE: z.string().min(1).optional(),
   MYCELIUM_ENCRYPTION_KEY: z.string().min(1).optional(),
   MYCELIUM_DAEMON_TOKEN: z.string().min(1).default("local-daemon-token"),
-  MYCELIUM_DEV_SIMULATION_MODE: BooleanFromStringSchema.default(false),
+  MYCELIUM_DEV_SIMULATION_MODE: BooleanFromStringSchema.optional(),
   MYCELIUM_WORKER_STALE_TIMEOUT_MS: z.coerce.number()
     .int()
     .positive()
     .default(60_000)
 });
 
-export type AppEnv = z.infer<typeof EnvSchema>;
+type ParsedEnv = z.infer<typeof EnvSchema>;
+
+export type AppEnv = Omit<ParsedEnv, "MYCELIUM_DEV_SIMULATION_MODE"> & {
+  MYCELIUM_DEV_SIMULATION_MODE: boolean;
+};
 
 export function loadEnv(env: NodeJS.ProcessEnv = process.env): AppEnv {
-  return EnvSchema.parse(env);
+  const parsed = EnvSchema.parse(env);
+
+  return {
+    ...parsed,
+    MYCELIUM_DEV_SIMULATION_MODE:
+      parsed.MYCELIUM_DEV_SIMULATION_MODE ?? parsed.NODE_ENV === "development"
+  };
 }

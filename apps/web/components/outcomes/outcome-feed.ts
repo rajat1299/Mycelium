@@ -406,10 +406,12 @@ function buildPlanBlock(state: OutcomeConversationState): OutcomeFeedItem | null
   ).length;
   const allDone = completedCount === nodes.length && nodes.length > 0;
   const title = allDone
-    ? `All ${nodes.length} subtasks complete`
-    : state.run?.status === "running"
-      ? `Running ${nodes.length} subtasks`
-      : `${nodes.length} subtasks planned`;
+    ? `All ${nodes.length} steps complete`
+    : completedCount > 0
+      ? `${completedCount} of ${nodes.length} steps complete`
+      : state.run?.status === "running"
+        ? `${nodes.length} steps ready to execute`
+        : `${nodes.length} steps planned`;
 
   return {
     type: "plan",
@@ -490,6 +492,10 @@ function buildArtifactDeliveryNote(
   };
 }
 
+function shouldRenderStepCard(step: RunStep) {
+  return !["pending", "ready"].includes(step.status);
+}
+
 export function buildOutcomeFeed({
   outcomePrompt,
   outcomeSource,
@@ -510,8 +516,18 @@ export function buildOutcomeFeed({
     state.assistantMessages.filter((message) => message.content.length > 0)
   );
   const hasAssistantNarrative = visibleAssistantMessages.length > 0;
+  const leadAssistantMessage = hasAssistantNarrative ? visibleAssistantMessages[0] : null;
+  const trailingAssistantMessages = hasAssistantNarrative
+    ? visibleAssistantMessages.slice(1)
+    : [];
 
-  if (!hasAssistantNarrative) {
+  if (leadAssistantMessage) {
+    items.push({
+      type: "assistant-message",
+      key: `assistant-message:${leadAssistantMessage.id}`,
+      message: leadAssistantMessage
+    });
+  } else {
     const primaryIntent =
       promotedIntentLogs[0]?.message ?? fallbackIntroMessage(outcomeSource, state.run);
 
@@ -530,7 +546,9 @@ export function buildOutcomeFeed({
   }
 
   const orderedSteps = sortSteps(state.run?.steps ?? []);
-  const stepCards = orderedSteps.map((step) =>
+  const stepCards = orderedSteps
+    .filter((step) => shouldRenderStepCard(step))
+    .map((step) =>
     buildStepCardData(step, state.logs, state.artifacts)
   );
   const stepsById = new Map(orderedSteps.map((step) => [step.id, step]));
@@ -564,7 +582,7 @@ export function buildOutcomeFeed({
     }
   }
 
-  for (const assistantMessage of visibleAssistantMessages) {
+  for (const assistantMessage of trailingAssistantMessages) {
     chronoEntries.push({
       timestamp: assistantMessage.createdAt,
       order: 15,

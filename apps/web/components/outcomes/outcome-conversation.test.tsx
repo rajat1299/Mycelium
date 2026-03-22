@@ -149,7 +149,7 @@ describe("OutcomeConversation", () => {
     );
 
     expect(screen.getByText("Draft the weekly update.")).toBeInTheDocument();
-    expect(screen.getByText(/2 subtasks/i)).toBeInTheDocument();
+    expect(screen.getByText(/2 steps/i)).toBeInTheDocument();
     expect(screen.getAllByText("Analyze outcome").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Synthesize result").length).toBeGreaterThan(0);
     expect(screen.getAllByText("openrouter/claude-sonnet-4.5").length).toBeGreaterThan(0);
