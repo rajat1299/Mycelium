@@ -146,6 +146,7 @@ export function OutcomeConversation({
   const mountKeysRef = useRef<Set<string> | null>(null);
 
   useEffect(() => {
+    mountKeysRef.current = null;
     setViewState(
       buildInitialViewState(
         initialPlan,

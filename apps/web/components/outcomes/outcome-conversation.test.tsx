@@ -699,4 +699,77 @@ describe("OutcomeConversation", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Preparing steps…")).not.toBeInTheDocument();
   });
+
+  it("renders a newly selected persisted running run as hydrated content instead of live streaming", () => {
+    const rendered = render(
+      <OutcomeConversation
+        outcomeId="outcome_123"
+        outcomePrompt="Research AI in K-12 education and generate a PDF."
+        outcomeSource="web"
+        initialPlan={null}
+        initialRun={{
+          id: "run_123",
+          outcomeId: "outcome_123",
+          planId: "plan_outcome_123",
+          status: "completed",
+          createdAt: "2026-03-22T00:00:00.000Z",
+          updatedAt: "2026-03-22T00:04:00.000Z",
+          steps: []
+        }}
+        initialArtifacts={[]}
+        initialLogs={[
+          {
+            runId: "run_123",
+            level: "info",
+            message: "Historical persisted summary for the earlier run.",
+            createdAt: "2026-03-22T00:00:10.000Z"
+          }
+        ]}
+        initialAssistantMessages={[]}
+        initialPendingApprovals={[]}
+      />
+    );
+
+    expect(
+      screen.getByText("Historical persisted summary for the earlier run.")
+    ).toBeInTheDocument();
+
+    act(() => {
+      rendered.rerender(
+        <OutcomeConversation
+          outcomeId="outcome_123"
+          outcomePrompt="Research AI in K-12 education and generate a PDF."
+          outcomeSource="web"
+          initialPlan={null}
+          initialRun={{
+            id: "run_456",
+            outcomeId: "outcome_123",
+            planId: "plan_outcome_456",
+            status: "running",
+            createdAt: "2026-03-22T00:05:00.000Z",
+            updatedAt: "2026-03-22T00:05:00.000Z",
+            steps: []
+          }}
+          initialArtifacts={[]}
+          initialLogs={[
+            {
+              runId: "run_456",
+              level: "info",
+              message: "Loading fresh persisted context for the selected run.",
+              createdAt: "2026-03-22T00:05:05.000Z"
+            }
+          ]}
+          initialAssistantMessages={[]}
+          initialPendingApprovals={[]}
+        />
+      );
+    });
+
+    expect(
+      screen.queryByText("Historical persisted summary for the earlier run.")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Loading fresh persisted context for the selected run.")
+    ).toBeInTheDocument();
+  });
 });
