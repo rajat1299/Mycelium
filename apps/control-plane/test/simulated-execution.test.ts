@@ -10,15 +10,17 @@ import { createExecutionHarness } from "./execution-test-helpers";
 const FAST_SIMULATION_TIMELINE = {
   kickoffMs: 1,
   markRunningMs: 1,
-  memoryCompleteMs: 2,
-  landscapeCompleteMs: 4,
-  evidenceCompleteMs: 6,
-  policyCompleteMs: 8,
-  synthesisCompleteMs: 4
+  contextCompleteMs: 2,
+  toolsCompleteMs: 4,
+  effectivenessCompleteMs: 6,
+  concernsCompleteMs: 8,
+  trendsCompleteMs: 10,
+  synthesisCompleteMs: 4,
+  streamChunkMs: 1
 };
 
 describe("development simulation mode", () => {
-  it("creates the richer five-step simulated plan only for web outcomes", async () => {
+  it("creates the richer six-step mock narrative plan only for web outcomes", async () => {
     const harness = await createExecutionHarness({
       simulationMode: true,
       simulationTimeline: FAST_SIMULATION_TIMELINE
@@ -47,13 +49,14 @@ describe("development simulation mode", () => {
       const plan = PlanSchema.parse(createPlan.json());
 
       expect(plan.nodes.map((node) => node.title)).toEqual([
-        "Check memory and working context",
-        "Research the current landscape",
-        "Review evidence and effectiveness",
-        "Map challenges and policy response",
-        "Compile the final report"
+        "Load context and working preferences",
+        "Research AI tools used in K-12 classrooms",
+        "Research effectiveness studies and learning outcomes",
+        "Research concerns, challenges, and policy responses",
+        "Research emerging trends and future outlook",
+        "Compile the polished PDF report"
       ]);
-      expect(plan.edges).toHaveLength(6);
+      expect(plan.edges).toHaveLength(8);
 
       const createSlackOutcome = await app.inject({
         method: "POST",
@@ -86,7 +89,7 @@ describe("development simulation mode", () => {
     }
   });
 
-  it("simulates a full persisted run with fake routes, streamed logs, and delivered artifacts", async () => {
+  it("simulates a full persisted run with streamed assistant narrative and delivered artifacts", async () => {
     const harness = await createExecutionHarness({
       simulationMode: true,
       simulationTimeline: FAST_SIMULATION_TIMELINE
@@ -126,21 +129,21 @@ describe("development simulation mode", () => {
       expect(run.steps).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            title: "Check memory and working context",
+            title: "Load context and working preferences",
             routeProviderId: "openai",
             routeModelId: "gpt-5.4",
             routeAuthProfileId: "simulated_openai_primary",
             status: "ready"
           }),
           expect.objectContaining({
-            title: "Research the current landscape",
+            title: "Research AI tools used in K-12 classrooms",
             routeProviderId: "openrouter",
             routeModelId: "openrouter/claude-sonnet-4.5",
             routeAuthProfileId: "simulated_openrouter_primary",
             status: "pending"
           }),
           expect.objectContaining({
-            title: "Compile the final report",
+            title: "Compile the polished PDF report",
             routeProviderId: "anthropic",
             routeModelId: "claude-opus-4.6",
             routeAuthProfileId: "simulated_anthropic_primary",
@@ -161,23 +164,27 @@ describe("development simulation mode", () => {
       expect(completedRun.steps).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            title: "Check memory and working context",
+            title: "Load context and working preferences",
             status: "completed"
           }),
           expect.objectContaining({
-            title: "Research the current landscape",
+            title: "Research AI tools used in K-12 classrooms",
             status: "completed"
           }),
           expect.objectContaining({
-            title: "Review evidence and effectiveness",
+            title: "Research effectiveness studies and learning outcomes",
             status: "completed"
           }),
           expect.objectContaining({
-            title: "Map challenges and policy response",
+            title: "Research concerns, challenges, and policy responses",
             status: "completed"
           }),
           expect.objectContaining({
-            title: "Compile the final report",
+            title: "Research emerging trends and future outlook",
+            status: "completed"
+          }),
+          expect.objectContaining({
+            title: "Compile the polished PDF report",
             status: "completed"
           })
         ])
@@ -192,10 +199,10 @@ describe("development simulation mode", () => {
       expect(logs).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            message: expect.stringContaining("parallel research tracks")
+            message: expect.stringContaining("parallel research across all four topic areas")
           }),
           expect.objectContaining({
-            message: expect.stringContaining("final deliverable")
+            message: expect.stringContaining("building the PDF report")
           })
         ])
       );
@@ -209,20 +216,23 @@ describe("development simulation mode", () => {
       expect(artifacts).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            relativePath: "artifacts/context-check.md"
+            relativePath: "artifacts/context-and-preferences.md"
           }),
           expect.objectContaining({
-            relativePath: "artifacts/final-report.pdf",
+            relativePath: "artifacts/ai-k12-education-report.pdf",
             metadata: expect.objectContaining({
-              title: "Final report",
+              title: "The State of AI in K-12 Education",
               pageCount: 16
             })
           })
         ])
       );
-      expect(artifacts).toHaveLength(5);
+      expect(artifacts).toHaveLength(6);
 
       expect(events.some((event) => event.type === "run.updated")).toBe(true);
+      expect(events.some((event) => event.type === "assistant.message.started")).toBe(true);
+      expect(events.some((event) => event.type === "assistant.message.delta")).toBe(true);
+      expect(events.some((event) => event.type === "assistant.message.completed")).toBe(true);
       expect(
         events.some(
           (event) =>
@@ -230,9 +240,59 @@ describe("development simulation mode", () => {
             typeof event.data === "object" &&
             event.data !== null &&
             "relativePath" in event.data &&
-            event.data.relativePath === "artifacts/final-report.pdf"
+            event.data.relativePath === "artifacts/ai-k12-education-report.pdf"
         )
       ).toBe(true);
+
+      const completedAssistantMessages = events.filter(
+        (event) => event.type === "assistant.message.completed"
+      );
+      expect(completedAssistantMessages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            data: expect.objectContaining({
+              kind: "acknowledgment",
+              content: expect.stringContaining("loading relevant skills")
+            })
+          }),
+          expect.objectContaining({
+            data: expect.objectContaining({
+              kind: "delivery",
+              content: expect.stringContaining("Here's your report")
+            })
+          })
+        ])
+      );
+
+      const finalArtifactIndex = events.findIndex(
+        (event) =>
+          event.type === "artifact.created" &&
+          typeof event.data === "object" &&
+          event.data !== null &&
+          "relativePath" in event.data &&
+          event.data.relativePath === "artifacts/ai-k12-education-report.pdf"
+      );
+      const finalDeliveryIndex = events.findIndex(
+        (event) =>
+          event.type === "assistant.message.completed" &&
+          typeof event.data === "object" &&
+          event.data !== null &&
+          "kind" in event.data &&
+          event.data.kind === "delivery"
+      );
+      const openingAcknowledgmentIndex = events.findIndex(
+        (event) =>
+          event.type === "assistant.message.completed" &&
+          typeof event.data === "object" &&
+          event.data !== null &&
+          "kind" in event.data &&
+          event.data.kind === "acknowledgment"
+      );
+
+      expect(openingAcknowledgmentIndex).toBeGreaterThanOrEqual(0);
+      expect(finalArtifactIndex).toBeGreaterThanOrEqual(0);
+      expect(finalDeliveryIndex).toBeGreaterThan(finalArtifactIndex);
+      expect(finalDeliveryIndex).toBeGreaterThan(openingAcknowledgmentIndex);
     } finally {
       await harness.cleanup();
     }

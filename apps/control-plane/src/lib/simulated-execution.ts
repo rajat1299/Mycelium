@@ -1,11 +1,15 @@
 import { randomUUID } from "node:crypto";
 import {
+  AssistantMessageCompletedDataSchema,
+  AssistantMessageDeltaDataSchema,
+  AssistantMessageStartedDataSchema,
   ArtifactSchema,
   OutcomeSchema,
   PlanSchema,
   RunLogDataSchema,
   RunSchema,
   RunStepSchema,
+  type AssistantMessageKind,
   type CapabilityFamily,
   type StepRoute
 } from "@computer-oss/protocol";
@@ -15,11 +19,13 @@ import type { Repositories } from "./repositories";
 export type SimulatedExecutionTimeline = {
   kickoffMs: number;
   markRunningMs: number;
-  memoryCompleteMs: number;
-  landscapeCompleteMs: number;
-  evidenceCompleteMs: number;
-  policyCompleteMs: number;
+  contextCompleteMs: number;
+  toolsCompleteMs: number;
+  effectivenessCompleteMs: number;
+  concernsCompleteMs: number;
+  trendsCompleteMs: number;
   synthesisCompleteMs: number;
+  streamChunkMs: number;
 };
 
 export type SimulatedExecutionService = {
@@ -39,15 +45,102 @@ type StoredRun = Awaited<ReturnType<Repositories["runs"]["getById"]>>;
 type StoredOutcome = Awaited<ReturnType<Repositories["outcomes"]["getById"]>>;
 type StoredStep = Awaited<ReturnType<Repositories["runs"]["listSteps"]>>[number];
 
-const DEFAULT_TIMELINE: SimulatedExecutionTimeline = {
-  kickoffMs: 1_200,
-  markRunningMs: 800,
-  memoryCompleteMs: 3_000,
-  landscapeCompleteMs: 6_500,
-  evidenceCompleteMs: 8_500,
-  policyCompleteMs: 11_000,
-  synthesisCompleteMs: 7_500
+type PlanBlueprint = {
+  idSuffix: string;
+  kind: "root" | "task" | "synthesis";
+  title: string;
+  capability: CapabilityFamily;
+  instruction: string;
+  expectedArtifactPath: string;
+  expectedArtifactKind: "analysis" | "result";
+  position: number;
 };
+
+type IntermediateLog = {
+  at: number;
+  message: string;
+};
+
+const DEFAULT_TIMELINE: SimulatedExecutionTimeline = {
+  kickoffMs: 900,
+  markRunningMs: 450,
+  contextCompleteMs: 2_600,
+  toolsCompleteMs: 5_400,
+  effectivenessCompleteMs: 5_900,
+  concernsCompleteMs: 6_400,
+  trendsCompleteMs: 5_100,
+  synthesisCompleteMs: 4_800,
+  streamChunkMs: 80
+};
+
+const MOCK_PLAN_BLUEPRINT: PlanBlueprint[] = [
+  {
+    idSuffix: "context-and-preferences",
+    kind: "root",
+    title: "Load context and working preferences",
+    capability: "reasoning",
+    instruction:
+      "Inspect prior context, user preferences, and delivery expectations before planning or research begins.",
+    expectedArtifactPath: "artifacts/context-and-preferences.md",
+    expectedArtifactKind: "analysis",
+    position: 0
+  },
+  {
+    idSuffix: "research-tools",
+    kind: "task",
+    title: "Research AI tools used in K-12 classrooms",
+    capability: "research",
+    instruction:
+      "Research which AI products teachers and schools are actually using in 2025-2026, including adoption evidence and concrete classroom workflows.",
+    expectedArtifactPath: "artifacts/research-tools.md",
+    expectedArtifactKind: "analysis",
+    position: 1
+  },
+  {
+    idSuffix: "research-effectiveness",
+    kind: "task",
+    title: "Research effectiveness studies and learning outcomes",
+    capability: "research",
+    instruction:
+      "Collect source-backed findings about effectiveness, student outcomes, teacher productivity, and the limits of current evidence.",
+    expectedArtifactPath: "artifacts/research-effectiveness.md",
+    expectedArtifactKind: "analysis",
+    position: 2
+  },
+  {
+    idSuffix: "research-concerns",
+    kind: "task",
+    title: "Research concerns, challenges, and policy responses",
+    capability: "research",
+    instruction:
+      "Identify implementation risks, policy responses, guardrails, and the concerns school leaders need to understand before deployment.",
+    expectedArtifactPath: "artifacts/research-concerns.md",
+    expectedArtifactKind: "analysis",
+    position: 3
+  },
+  {
+    idSuffix: "research-trends",
+    kind: "task",
+    title: "Research emerging trends and future outlook",
+    capability: "research",
+    instruction:
+      "Map what is changing next across products, district adoption patterns, regulation, and the forward-looking market outlook.",
+    expectedArtifactPath: "artifacts/research-trends.md",
+    expectedArtifactKind: "analysis",
+    position: 4
+  },
+  {
+    idSuffix: "compile-pdf-report",
+    kind: "synthesis",
+    title: "Compile the polished PDF report",
+    capability: "document",
+    instruction:
+      "Read all completed research tracks, synthesize them into a polished PDF report, and generate a concise executive summary for delivery.",
+    expectedArtifactPath: "artifacts/ai-k12-education-report.pdf",
+    expectedArtifactKind: "result",
+    position: 5
+  }
+];
 
 export function isDevelopmentSimulationEnabled(input: {
   simulationMode: boolean;
@@ -62,99 +155,66 @@ export function createSimulatedDraftPlan(input: {
   createdAt: string;
   updatedAt: string;
 }) {
+  const nodes = MOCK_PLAN_BLUEPRINT.map((node) => ({
+    id: `${input.outcomeId}:${node.idSuffix}`,
+    kind: node.kind,
+    title: node.title,
+    capability: node.capability,
+    instruction: node.instruction,
+    expectedArtifactPath: node.expectedArtifactPath,
+    expectedArtifactKind: node.expectedArtifactKind,
+    position: node.position
+  }));
+  const rootNodeId = `${input.outcomeId}:${MOCK_PLAN_BLUEPRINT[0].idSuffix}`;
+  const synthesisNodeId = `${input.outcomeId}:${MOCK_PLAN_BLUEPRINT[5].idSuffix}`;
+
   return PlanSchema.parse({
     id: `plan_${input.outcomeId}`,
     outcomeId: input.outcomeId,
     status: "draft",
     createdAt: input.createdAt,
     updatedAt: input.updatedAt,
-    nodes: [
-      {
-        id: `${input.outcomeId}:memory-check`,
-        kind: "root",
-        title: "Check memory and working context",
-        capability: "reasoning",
-        instruction:
-          "Inspect prior context, preferred output style, and useful operating assumptions before research begins.",
-        expectedArtifactPath: "artifacts/context-check.md",
-        expectedArtifactKind: "analysis",
-        position: 0
-      },
-      {
-        id: `${input.outcomeId}:research-landscape`,
-        kind: "task",
-        title: "Research the current landscape",
-        capability: "research",
-        instruction:
-          "Map the current landscape, current-state examples, and notable signals relevant to the request.",
-        expectedArtifactPath: "artifacts/research-landscape.md",
-        expectedArtifactKind: "analysis",
-        position: 1
-      },
-      {
-        id: `${input.outcomeId}:research-evidence`,
-        kind: "task",
-        title: "Review evidence and effectiveness",
-        capability: "research",
-        instruction:
-          "Collect evidence, studies, and source-backed effectiveness claims relevant to the request.",
-        expectedArtifactPath: "artifacts/research-evidence.md",
-        expectedArtifactKind: "analysis",
-        position: 2
-      },
-      {
-        id: `${input.outcomeId}:research-policy`,
-        kind: "task",
-        title: "Map challenges and policy response",
-        capability: "research",
-        instruction:
-          "Identify risks, challenges, and policy or operator responses that matter for the decision.",
-        expectedArtifactPath: "artifacts/research-policy.md",
-        expectedArtifactKind: "analysis",
-        position: 3
-      },
-      {
-        id: `${input.outcomeId}:compile-report`,
-        kind: "synthesis",
-        title: "Compile the final report",
-        capability: "document",
-        instruction:
-          "Synthesize the research tracks into a polished final report with clear findings, recommendations, and delivery metadata.",
-        expectedArtifactPath: "artifacts/final-report.pdf",
-        expectedArtifactKind: "result",
-        position: 4
-      }
-    ],
+    nodes,
     edges: [
       {
-        id: `${input.outcomeId}:edge-memory-landscape`,
-        from: `${input.outcomeId}:memory-check`,
-        to: `${input.outcomeId}:research-landscape`
+        id: `${input.outcomeId}:edge-context-tools`,
+        from: rootNodeId,
+        to: `${input.outcomeId}:${MOCK_PLAN_BLUEPRINT[1].idSuffix}`
       },
       {
-        id: `${input.outcomeId}:edge-memory-evidence`,
-        from: `${input.outcomeId}:memory-check`,
-        to: `${input.outcomeId}:research-evidence`
+        id: `${input.outcomeId}:edge-context-effectiveness`,
+        from: rootNodeId,
+        to: `${input.outcomeId}:${MOCK_PLAN_BLUEPRINT[2].idSuffix}`
       },
       {
-        id: `${input.outcomeId}:edge-memory-policy`,
-        from: `${input.outcomeId}:memory-check`,
-        to: `${input.outcomeId}:research-policy`
+        id: `${input.outcomeId}:edge-context-concerns`,
+        from: rootNodeId,
+        to: `${input.outcomeId}:${MOCK_PLAN_BLUEPRINT[3].idSuffix}`
       },
       {
-        id: `${input.outcomeId}:edge-landscape-report`,
-        from: `${input.outcomeId}:research-landscape`,
-        to: `${input.outcomeId}:compile-report`
+        id: `${input.outcomeId}:edge-context-trends`,
+        from: rootNodeId,
+        to: `${input.outcomeId}:${MOCK_PLAN_BLUEPRINT[4].idSuffix}`
       },
       {
-        id: `${input.outcomeId}:edge-evidence-report`,
-        from: `${input.outcomeId}:research-evidence`,
-        to: `${input.outcomeId}:compile-report`
+        id: `${input.outcomeId}:edge-tools-report`,
+        from: `${input.outcomeId}:${MOCK_PLAN_BLUEPRINT[1].idSuffix}`,
+        to: synthesisNodeId
       },
       {
-        id: `${input.outcomeId}:edge-policy-report`,
-        from: `${input.outcomeId}:research-policy`,
-        to: `${input.outcomeId}:compile-report`
+        id: `${input.outcomeId}:edge-effectiveness-report`,
+        from: `${input.outcomeId}:${MOCK_PLAN_BLUEPRINT[2].idSuffix}`,
+        to: synthesisNodeId
+      },
+      {
+        id: `${input.outcomeId}:edge-concerns-report`,
+        from: `${input.outcomeId}:${MOCK_PLAN_BLUEPRINT[3].idSuffix}`,
+        to: synthesisNodeId
+      },
+      {
+        id: `${input.outcomeId}:edge-trends-report`,
+        from: `${input.outcomeId}:${MOCK_PLAN_BLUEPRINT[4].idSuffix}`,
+        to: synthesisNodeId
       }
     ]
   });
@@ -312,12 +372,12 @@ async function executeSimulatedRun(input: {
 
   try {
     await input.wait(input.timeline.kickoffMs);
-    await emitRunLog(input, {
+    await streamAssistantMessage(input, {
       outcomeId: outcome.id,
       runId: run.id,
-      level: "info",
-      message:
-        "Let me start by checking my memory for any relevant context from your previous work, then I\u2019ll break this into parallel research tracks."
+      kind: "acknowledgment",
+      content:
+        "I'll start by loading relevant skills and checking my memory for any context about your work, then I'll run parallel research across all four topic areas."
     });
 
     await input.wait(input.timeline.markRunningMs);
@@ -339,102 +399,50 @@ async function executeSimulatedRun(input: {
     const steps = [...(await input.repositories.runs.listSteps(run.id))].sort(
       (left, right) => left.position - right.position
     );
-    const memoryStep = steps[0];
+    const contextStep = steps.find((step) => step.position === 0);
 
-    if (!memoryStep) {
+    if (!contextStep) {
       return;
     }
 
-    const runningMemoryStep = await input.repositories.runs.updateStepStatus({
-      stepId: memoryStep.id,
-      status: "running",
-      updatedAt: input.now().toISOString()
-    });
-
-    if (!runningMemoryStep) {
-      return;
-    }
-
-    await emitRunStepUpdated(input, outcome.id, runningMemoryStep);
     await emitRunLog(input, {
       outcomeId: outcome.id,
       runId: run.id,
-      stepId: runningMemoryStep.id,
-      stepTitle: runningMemoryStep.title,
       level: "info",
-      message: runningMessageForStep(runningMemoryStep)
+      message: "Checking for context about the request and preferred document format."
     });
 
-    await waitWithProgress(
-      input,
-      delayForStep(input.timeline, runningMemoryStep),
-      {
-        outcomeId: outcome.id,
-        runId: run.id,
-        stepId: runningMemoryStep.id,
-        stepTitle: runningMemoryStep.title
-      },
-      intermediateMessagesForStep(runningMemoryStep.position)
-    );
-    await completeStep(input, {
+    await runStepScenario(input, {
       outcome,
       run: runningLifecycle.run,
-      step: runningMemoryStep
+      step: contextStep
     });
 
+    await streamAssistantMessage(input, {
+      outcomeId: outcome.id,
+      runId: run.id,
+      kind: "transition",
+      content: "Let me run parallel research across all four topic areas."
+    });
     await emitRunLog(input, {
       outcomeId: outcome.id,
       runId: run.id,
       level: "info",
-      message:
-        "Good \u2014 I found useful context from prior sessions. Now launching three parallel research tracks: landscape scan, evidence review, and policy mapping."
+      message: "Starting parallel research across all four topic areas."
     });
-
-    await input.wait(600);
 
     const researchSteps = [...(await input.repositories.runs.listSteps(run.id))]
       .sort((left, right) => left.position - right.position)
       .filter((step) => step.kind === "task" && step.status === "ready");
 
     await Promise.all(
-      researchSteps.map(async (step) => {
-        const runningStep = await input.repositories.runs.updateStepStatus({
-          stepId: step.id,
-          status: "running",
-          updatedAt: input.now().toISOString()
-        });
-
-        if (!runningStep) {
-          return;
-        }
-
-        await emitRunStepUpdated(input, outcome.id, runningStep);
-        await emitRunLog(input, {
-          outcomeId: outcome.id,
-          runId: run.id,
-          stepId: runningStep.id,
-          stepTitle: runningStep.title,
-          level: "info",
-          message: runningMessageForStep(runningStep)
-        });
-
-        await waitWithProgress(
-          input,
-          delayForStep(input.timeline, runningStep),
-          {
-            outcomeId: outcome.id,
-            runId: run.id,
-            stepId: runningStep.id,
-            stepTitle: runningStep.title
-          },
-          intermediateMessagesForStep(runningStep.position)
-        );
-        await completeStep(input, {
+      researchSteps.map((step) =>
+        runStepScenario(input, {
           outcome,
           run: runningLifecycle.run,
-          step: runningStep
-        });
-      })
+          step
+        })
+      )
     );
 
     const synthesisStep = [...(await input.repositories.runs.listSteps(run.id))]
@@ -445,61 +453,41 @@ async function executeSimulatedRun(input: {
       return;
     }
 
+    await streamAssistantMessage(input, {
+      outcomeId: outcome.id,
+      runId: run.id,
+      kind: "transition",
+      content:
+        "All four research tracks are complete. Let me read through the findings and then compile the PDF report."
+    });
     await emitRunLog(input, {
       outcomeId: outcome.id,
       runId: run.id,
       level: "info",
-      message:
-        "All three research tracks have returned results. I\u2019m now reading through the findings and compiling everything into a single deliverable."
+      message: "Research complete, now building the PDF report."
     });
 
-    await input.wait(500);
-
-    const runningSynthesisStep = await input.repositories.runs.updateStepStatus({
-      stepId: synthesisStep.id,
-      status: "running",
-      updatedAt: input.now().toISOString()
-    });
-
-    if (!runningSynthesisStep) {
-      return;
-    }
-
-    await emitRunStepUpdated(input, outcome.id, runningSynthesisStep);
-    await emitRunLog(input, {
-      outcomeId: outcome.id,
-      runId: run.id,
-      stepId: runningSynthesisStep.id,
-      stepTitle: runningSynthesisStep.title,
-      level: "info",
-      message: runningMessageForStep(runningSynthesisStep)
-    });
-
-    await waitWithProgress(
-      input,
-      input.timeline.synthesisCompleteMs,
-      {
-        outcomeId: outcome.id,
-        runId: run.id,
-        stepId: runningSynthesisStep.id,
-        stepTitle: runningSynthesisStep.title
-      },
-      intermediateMessagesForStep(runningSynthesisStep.position)
-    );
-    const finalArtifact = await completeStep(input, {
+    const finalArtifact = await runStepScenario(input, {
       outcome,
       run: runningLifecycle.run,
-      step: runningSynthesisStep
+      step: synthesisStep
     });
 
     if (finalArtifact) {
       await createDerivedArtifactLineage(input, {
-        outcomeId: outcome.id,
         runId: run.id,
         childArtifactId: finalArtifact.id,
-        childStepId: runningSynthesisStep.id
+        childStepId: synthesisStep.id
       });
     }
+
+    await streamAssistantMessage(input, {
+      outcomeId: outcome.id,
+      runId: run.id,
+      kind: "delivery",
+      content:
+        "Here's your report - a 16-page PDF covering the current state of AI in K-12 education.\n\n- Executive summary with adoption, time-saved, and market-size stats\n- Tools teachers are actually using in classrooms\n- Effectiveness research and where the evidence is still limited\n- Concerns, implementation risks, and policy responses\n- Emerging trends and where the market is heading next"
+    });
 
     const completedLifecycle = await input.repositories.runs.updateLifecycleStatus({
       runId: run.id,
@@ -519,8 +507,7 @@ async function executeSimulatedRun(input: {
       outcomeId: outcome.id,
       runId: run.id,
       level: "info",
-      message:
-        "Done. The final report is ready \u2014 16 pages covering landscape, evidence, policy, and recommendations with full source citations."
+      message: "Mock narrative run complete. Final report delivered with four research tracks and a PDF summary."
     });
   } catch (error) {
     const failedLifecycle = await input.repositories.runs.updateLifecycleStatus({
@@ -543,9 +530,62 @@ async function executeSimulatedRun(input: {
       message:
         error instanceof Error
           ? error.message
-          : "The simulated run failed before completion."
+          : "The mock narrative run failed before completion."
     });
   }
+}
+
+async function runStepScenario(
+  options: {
+    repositories: Repositories;
+    eventBus: EventBus;
+    now: () => Date;
+    wait: (ms: number) => Promise<void>;
+    timeline: SimulatedExecutionTimeline;
+  },
+  input: {
+    outcome: StoredOutcome & {};
+    run: StoredRun & {};
+    step: StoredStep;
+  }
+) {
+  const runningStep = await options.repositories.runs.updateStepStatus({
+    stepId: input.step.id,
+    status: "running",
+    updatedAt: options.now().toISOString()
+  });
+
+  if (!runningStep) {
+    return null;
+  }
+
+  await emitRunStepUpdated(options, input.outcome.id, runningStep);
+  await emitRunLog(options, {
+    outcomeId: input.outcome.id,
+    runId: input.run.id,
+    stepId: runningStep.id,
+    stepTitle: runningStep.title,
+    level: "info",
+    message: runningMessageForStep(runningStep)
+  });
+
+  await waitWithProgress(
+    options,
+    delayForStep(options.timeline, runningStep),
+    {
+      outcomeId: input.outcome.id,
+      runId: input.run.id,
+      stepId: runningStep.id,
+      stepTitle: runningStep.title
+    },
+    intermediateMessagesForStep(runningStep.position)
+  );
+
+  return completeStep(options, {
+    outcome: input.outcome,
+    run: input.run,
+    step: runningStep
+  });
 }
 
 async function completeStep(
@@ -634,7 +674,6 @@ async function createDerivedArtifactLineage(
     now: () => Date;
   },
   input: {
-    outcomeId: string;
     runId: string;
     childArtifactId: string;
     childStepId: string;
@@ -672,68 +711,115 @@ function delayForStep(
 ) {
   switch (step.position) {
     case 0:
-      return timeline.memoryCompleteMs;
+      return timeline.contextCompleteMs;
     case 1:
-      return timeline.landscapeCompleteMs;
+      return timeline.toolsCompleteMs;
     case 2:
-      return timeline.evidenceCompleteMs;
+      return timeline.effectivenessCompleteMs;
     case 3:
-      return timeline.policyCompleteMs;
+      return timeline.concernsCompleteMs;
+    case 4:
+      return timeline.trendsCompleteMs;
     default:
       return timeline.synthesisCompleteMs;
   }
 }
 
-type IntermediateLog = {
-  /** Fraction of total delay (0–1) at which to emit this log */
-  at: number;
-  message: string;
-};
-
 function intermediateMessagesForStep(position: number): IntermediateLog[] {
   switch (position) {
-    /* Memory check — 3s total, model loads context then reports back */
     case 0:
       return [
-        { at: 0.30, message: "Loading workspace context and checking for prior session data\u2026" },
-        { at: 0.65, message: "Found 3 prior sessions with relevant context. Extracting preferred output format and reusable patterns." }
+        {
+          at: 0.25,
+          message: "Querying saved context for role, formatting preferences, and past research patterns."
+        },
+        {
+          at: 0.55,
+          message: "Checking whether prior sessions contain a reusable report structure or citation format."
+        },
+        {
+          at: 0.82,
+          message: "Preparing context notes for the research phase and surfacing document expectations."
+        }
       ];
-
-    /* Landscape research — 6.5s, simulates web search + reading + synthesis */
     case 1:
       return [
-        { at: 0.15, message: "Querying indexed sources for current-state landscape data\u2026" },
-        { at: 0.40, message: "Processing 18 results across academic, industry, and news sources." },
-        { at: 0.68, message: "Synthesizing landscape overview \u2014 12 key data points identified across 3 sectors." },
-        { at: 0.88, message: "Drafting landscape summary with source annotations." }
+        {
+          at: 0.18,
+          message: "Searching 2025-2026 sources for the AI tools teachers are actually using in classrooms."
+        },
+        {
+          at: 0.45,
+          message: "Comparing district adoption signals, classroom workflows, and product-specific usage evidence."
+        },
+        {
+          at: 0.78,
+          message: "Summarizing the strongest tool-adoption findings and writing the tools brief."
+        }
       ];
-
-    /* Evidence review — 8.5s, simulates deep reading + cross-referencing */
     case 2:
       return [
-        { at: 0.12, message: "Searching for effectiveness studies and empirical evidence\u2026" },
-        { at: 0.32, message: "Found 23 candidate sources. Filtering for methodological rigor and recency." },
-        { at: 0.55, message: "Cross-referencing 8 high-quality evidence threads for internal consistency." },
-        { at: 0.78, message: "Scoring source reliability and extracting quantitative findings." }
+        {
+          at: 0.2,
+          message: "Collecting studies, pilots, and source-backed findings on learning outcomes and teacher productivity."
+        },
+        {
+          at: 0.5,
+          message: "Filtering for stronger methodology, clearer metrics, and the most defensible claims."
+        },
+        {
+          at: 0.8,
+          message: "Drafting the effectiveness summary with quantified takeaways and open questions."
+        }
       ];
-
-    /* Policy mapping — 11s, the slowest track, simulates regulatory search */
     case 3:
       return [
-        { at: 0.10, message: "Scanning regulatory databases and policy response archives\u2026" },
-        { at: 0.28, message: "Identified 7 relevant regulatory frameworks across 3 jurisdictions." },
-        { at: 0.48, message: "Mapping risk vectors: operational, compliance, and reputational." },
-        { at: 0.68, message: "Cataloging 5 documented policy responses with outcome data." },
-        { at: 0.88, message: "Finalizing challenge matrix with severity ratings and mitigations." }
+        {
+          at: 0.16,
+          message: "Scanning policy guidance, district guardrails, and implementation risks tied to classroom AI use."
+        },
+        {
+          at: 0.48,
+          message: "Organizing concerns around privacy, accuracy, equity, and teacher workflow friction."
+        },
+        {
+          at: 0.8,
+          message: "Writing the concerns brief with policy responses, mitigations, and operator notes."
+        }
       ];
-
-    /* Synthesis — 7.5s, reads all tracks and compiles final report */
+    case 4:
+      return [
+        {
+          at: 0.2,
+          message: "Tracking emerging product patterns, district demand shifts, and near-term market direction."
+        },
+        {
+          at: 0.52,
+          message: "Comparing trend signals across funding, policy, classroom workflows, and platform capabilities."
+        },
+        {
+          at: 0.82,
+          message: "Drafting the outlook brief with trend lines and next-year implications."
+        }
+      ];
     default:
       return [
-        { at: 0.15, message: "Reading all 4 completed research tracks\u2026" },
-        { at: 0.38, message: "Extracting key findings and ranking by relevance to the original request." },
-        { at: 0.60, message: "Building executive summary with citations from each research track." },
-        { at: 0.82, message: "Formatting final deliverable with recommendations, appendices, and metadata." }
+        {
+          at: 0.18,
+          message: "Reading research-tools.md and extracting the most concrete adoption findings."
+        },
+        {
+          at: 0.38,
+          message: "Reading research-effectiveness.md and ranking the strongest claims by confidence."
+        },
+        {
+          at: 0.56,
+          message: "Reading research-concerns.md and research-trends.md to round out the report structure."
+        },
+        {
+          at: 0.82,
+          message: "Building the PDF report and final executive summary with source-backed sections."
+        }
       ];
   }
 }
@@ -755,7 +841,7 @@ async function waitWithProgress(
   intermediates: IntermediateLog[]
 ) {
   let elapsed = 0;
-  const sorted = [...intermediates].sort((a, b) => a.at - b.at);
+  const sorted = [...intermediates].sort((left, right) => left.at - right.at);
 
   for (const entry of sorted) {
     const targetMs = Math.floor(totalMs * entry.at);
@@ -780,41 +866,48 @@ async function waitWithProgress(
   }
 }
 
-function runningMessageForStep(step: Pick<StoredStep, "position" | "title">) {
+function runningMessageForStep(step: Pick<StoredStep, "position">) {
   switch (step.position) {
     case 0:
-      return "Searching memory for prior context and preferred output formats\u2026";
+      return "Checking for context about the user's role, preferences, and output format.";
     case 1:
-      return "Starting landscape scan \u2014 searching for current examples, tools, and market signals.";
+      return "Researching which AI tools teachers are using in K-12 classrooms.";
     case 2:
-      return "Starting evidence review \u2014 looking for studies, data, and effectiveness claims.";
+      return "Researching effectiveness studies, learning outcomes, and teacher productivity findings.";
     case 3:
-      return "Starting policy mapping \u2014 scanning for risks, regulations, and operator responses.";
+      return "Researching implementation concerns, policy responses, and operational risks.";
+    case 4:
+      return "Researching emerging trends, near-term shifts, and the future outlook.";
     default:
-      return "Beginning synthesis \u2014 reading all research tracks and preparing the final report.";
+      return "Reading the completed research tracks and compiling the PDF report.";
   }
 }
 
 function completionMessageForStep(
-  step: Pick<StoredStep, "position" | "title">,
+  step: Pick<StoredStep, "position">,
   relativePath: string
 ) {
   switch (step.position) {
     case 0:
-      return `Memory and skills context checked. Saved notes to ${relativePath}.`;
+      return `Context and preferences loaded. Saved to ${relativePath}.`;
     case 1:
-      return `Landscape research complete. Saved the summary to ${relativePath}.`;
+      return `Research complete. Saved to ${relativePath}.`;
     case 2:
-      return `Evidence review complete. Saved the research to ${relativePath}.`;
+      return `Effectiveness research complete. Saved to ${relativePath}.`;
     case 3:
-      return `Challenges and policy mapping complete. Saved the research to ${relativePath}.`;
+      return `Concerns and policy research complete. Saved to ${relativePath}.`;
+    case 4:
+      return `Trend research complete. Saved to ${relativePath}.`;
     default:
-      return `Final report compiled and delivered at ${relativePath}.`;
+      return `PDF report compiled and saved to ${relativePath}.`;
   }
 }
 
 function artifactDescriptorForStep(
-  step: Pick<StoredStep, "position" | "expectedArtifactPath" | "expectedArtifactKind">,
+  step: Pick<
+    StoredStep,
+    "position" | "expectedArtifactPath" | "expectedArtifactKind"
+  >,
   prompt: string
 ) {
   const relativePath = step.expectedArtifactPath ?? `artifacts/${step.position + 1}.md`;
@@ -826,48 +919,61 @@ function artifactDescriptorForStep(
       return {
         relativePath,
         kind,
-        size: 1_284,
+        size: 2_048,
         metadata: {
-          title: "Memory and context check",
-          summary: "Checked memory, preferred formats, and reusable context. No prior context was found for this exact request.",
-          lineCount: 28,
-          byteSize: 1_284
+          title: "Context and working preferences",
+          summary:
+            "Loaded document expectations, citation requirements, and reusable context before research began.",
+          lineCount: 42,
+          byteSize: 2_048
         }
       };
     case 1:
       return {
         relativePath,
         kind,
-        size: 18_944,
+        size: 28_672,
         metadata: {
-          title: "Landscape research",
-          summary: `Current-state landscape notes for: ${topic}.`,
-          lineCount: 214,
-          byteSize: 18_944
+          title: "AI tools in K-12 classrooms (2025-2026)",
+          summary: `Adoption and classroom workflow findings for: ${topic}.`,
+          lineCount: 621,
+          byteSize: 28_672
         }
       };
     case 2:
       return {
         relativePath,
         kind,
-        size: 24_608,
+        size: 26_944,
         metadata: {
-          title: "Evidence review",
-          summary: `Evidence and effectiveness findings for: ${topic}.`,
-          lineCount: 289,
-          byteSize: 24_608
+          title: "AI effectiveness in K-12 education",
+          summary: `Effectiveness findings, limitations, and outcome measures for: ${topic}.`,
+          lineCount: 569,
+          byteSize: 26_944
         }
       };
     case 3:
       return {
         relativePath,
         kind,
-        size: 16_512,
+        size: 22_304,
         metadata: {
-          title: "Challenges and policy response",
-          summary: `Risks, constraints, and policy-response notes for: ${topic}.`,
-          lineCount: 173,
-          byteSize: 16_512
+          title: "Concerns, challenges, and policy responses",
+          summary: `Risks, implementation barriers, and policy responses for: ${topic}.`,
+          lineCount: 514,
+          byteSize: 22_304
+        }
+      };
+    case 4:
+      return {
+        relativePath,
+        kind,
+        size: 19_968,
+        metadata: {
+          title: "Emerging trends and future outlook",
+          summary: `Trend lines, adoption shifts, and market outlook for: ${topic}.`,
+          lineCount: 402,
+          byteSize: 19_968
         }
       };
     default:
@@ -876,19 +982,96 @@ function artifactDescriptorForStep(
         kind,
         size: 45_312,
         metadata: {
-          title: "Final report",
-          summary: `A polished final deliverable for: ${topic}.`,
+          title: "The State of AI in K-12 Education",
+          summary: `A polished PDF report synthesizing the four research tracks for: ${topic}.`,
           pageCount: 16,
           byteSize: 45_312,
           previewStats: [
-            { label: "Coverage", value: "60%" },
-            { label: "Reading time", value: "5.9 hrs" },
+            { label: "Adoption", value: "60%" },
+            { label: "Time saved", value: "5.9 hrs" },
             { label: "Sources", value: "34+" },
-            { label: "Market size", value: "$7.6B" }
+            { label: "Market", value: "$7.6B" }
           ]
         }
       };
   }
+}
+
+function chunkAssistantContent(content: string) {
+  const tokens = content.split(/(\s+)/).filter(Boolean);
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const token of tokens) {
+    const next = `${current}${token}`;
+
+    if (current.length > 0 && next.length > 42) {
+      chunks.push(current);
+      current = token;
+      continue;
+    }
+
+    current = next;
+  }
+
+  if (current.length > 0) {
+    chunks.push(current);
+  }
+
+  return chunks;
+}
+
+async function streamAssistantMessage(
+  options: {
+    repositories: Repositories;
+    eventBus: EventBus;
+    now: () => Date;
+    wait: (ms: number) => Promise<void>;
+    timeline: SimulatedExecutionTimeline;
+  },
+  input: {
+    outcomeId: string;
+    runId: string;
+    kind: AssistantMessageKind;
+    content: string;
+  }
+) {
+  const messageId = `assistant_${randomUUID()}`;
+  const createdAt = options.now().toISOString();
+
+  await emitAssistantMessageStarted(options, input.outcomeId, {
+    messageId,
+    runId: input.runId,
+    kind: input.kind,
+    createdAt
+  });
+
+  let content = "";
+  const chunks = chunkAssistantContent(input.content);
+
+  for (const chunk of chunks) {
+    content += chunk;
+
+    await emitAssistantMessageDelta(options, input.outcomeId, {
+      messageId,
+      runId: input.runId,
+      kind: input.kind,
+      delta: chunk,
+      content,
+      createdAt,
+      updatedAt: options.now().toISOString()
+    });
+    await options.wait(options.timeline.streamChunkMs);
+  }
+
+  await emitAssistantMessageCompleted(options, input.outcomeId, {
+    messageId,
+    runId: input.runId,
+    kind: input.kind,
+    content: input.content,
+    createdAt,
+    completedAt: options.now().toISOString()
+  });
 }
 
 async function emitOutcomeUpdated(
@@ -1018,6 +1201,101 @@ async function emitArtifactCreated(
   options.eventBus.publish({
     outcomeId,
     type: "artifact.created",
+    data
+  });
+}
+
+async function emitAssistantMessageStarted(
+  options: {
+    repositories: Repositories;
+    eventBus: EventBus;
+  },
+  outcomeId: string,
+  input: {
+    messageId: string;
+    runId: string;
+    kind: AssistantMessageKind;
+    createdAt: string;
+  }
+) {
+  const data = AssistantMessageStartedDataSchema.parse(input);
+
+  await options.repositories.runs.appendEvent({
+    id: `event_${randomUUID()}`,
+    runId: data.runId,
+    eventType: "assistant.message.started",
+    payload: data,
+    createdAt: data.createdAt
+  });
+
+  options.eventBus.publish({
+    outcomeId,
+    type: "assistant.message.started",
+    data
+  });
+}
+
+async function emitAssistantMessageDelta(
+  options: {
+    repositories: Repositories;
+    eventBus: EventBus;
+  },
+  outcomeId: string,
+  input: {
+    messageId: string;
+    runId: string;
+    kind: AssistantMessageKind;
+    delta: string;
+    content: string;
+    createdAt: string;
+    updatedAt: string;
+  }
+) {
+  const data = AssistantMessageDeltaDataSchema.parse(input);
+
+  await options.repositories.runs.appendEvent({
+    id: `event_${randomUUID()}`,
+    runId: data.runId,
+    eventType: "assistant.message.delta",
+    payload: data,
+    createdAt: data.updatedAt
+  });
+
+  options.eventBus.publish({
+    outcomeId,
+    type: "assistant.message.delta",
+    data
+  });
+}
+
+async function emitAssistantMessageCompleted(
+  options: {
+    repositories: Repositories;
+    eventBus: EventBus;
+  },
+  outcomeId: string,
+  input: {
+    messageId: string;
+    runId: string;
+    kind: AssistantMessageKind;
+    content: string;
+    createdAt: string;
+    completedAt: string;
+  }
+) {
+  const data = AssistantMessageCompletedDataSchema.parse(input);
+
+  await options.repositories.runs.appendEvent({
+    id: `event_${randomUUID()}`,
+    runId: data.runId,
+    eventType: "assistant.message.completed",
+    payload: data,
+    createdAt: data.completedAt
+  });
+
+  options.eventBus.publish({
+    outcomeId,
+    type: "assistant.message.completed",
     data
   });
 }
