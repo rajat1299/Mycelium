@@ -298,12 +298,27 @@ export function OutcomeConversation({
               <ArtifactDeliveryCard
                 key={item.key}
                 title={item.title}
-                summary={item.summary}
                 workspacePath={item.workspacePath}
                 artifact={item.artifact}
                 step={item.step}
                 delay={delay}
               />
+            );
+
+          case "delivery-note":
+            return (
+              <motion.div
+                key={item.key}
+                initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
+                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                transition={{ duration: 0.5, ease, delay }}
+              >
+                <div className="prose-feed">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {item.message}
+                  </ReactMarkdown>
+                </div>
+              </motion.div>
             );
 
           case "approval":
@@ -732,14 +747,12 @@ function SubtaskOutputCard({
 
 function ArtifactDeliveryCard({
   title,
-  summary,
   workspacePath,
   artifact,
   step,
   delay
 }: {
   title: string;
-  summary: string | null;
   workspacePath: string;
   artifact: Artifact;
   step: RunStep | null;
@@ -779,12 +792,6 @@ function ArtifactDeliveryCard({
           {formatByteSize(artifact.size)}
         </p>
       </div>
-
-      {summary ? (
-        <div className="mt-4 prose-feed">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown>
-        </div>
-      ) : null}
     </motion.div>
   );
 }

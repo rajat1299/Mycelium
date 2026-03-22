@@ -46,6 +46,7 @@ export type OutcomeFeedItem =
       summary: string | null;
       workspacePath: string;
     }
+  | { type: "delivery-note"; key: string; message: string }
   | { type: "approval"; key: string; approval: Approval; artifacts: Artifact[] }
   | { type: "message"; key: string; message: MessageCreatedData }
   | { type: "loading"; key: string };
@@ -333,6 +334,31 @@ function buildArtifactDeliveryBlock(
   };
 }
 
+function buildArtifactDeliveryNote(
+  artifact: Artifact
+): Extract<OutcomeFeedItem, { type: "delivery-note" }> | null {
+  if (artifact.kind !== "result") {
+    return null;
+  }
+
+  const message =
+    typeof artifact.metadata.summary === "string"
+      ? artifact.metadata.summary
+      : typeof artifact.metadata.previewBody === "string"
+        ? artifact.metadata.previewBody
+        : null;
+
+  if (!message) {
+    return null;
+  }
+
+  return {
+    type: "delivery-note",
+    key: `delivery-note:${artifact.id}`,
+    message
+  };
+}
+
 export function buildOutcomeFeed({
   outcomePrompt,
   outcomeSource,
@@ -374,7 +400,10 @@ export function buildOutcomeFeed({
   type ChronoEntry = {
     timestamp: string;
     order: number;
-    item: Exclude<OutcomeFeedItem, { type: "prompt" | "plan" | "loading" }>;
+    item: Exclude<
+      OutcomeFeedItem,
+      { type: "prompt" | "plan" | "loading" }
+    >;
   };
 
   const chronoEntries: ChronoEntry[] = [];
@@ -413,6 +442,16 @@ export function buildOutcomeFeed({
       order: 30,
       item: buildArtifactDeliveryBlock(artifact, stepsById.get(artifact.stepId ?? "") ?? null)
     });
+
+    const deliveryNote = buildArtifactDeliveryNote(artifact);
+
+    if (deliveryNote) {
+      chronoEntries.push({
+        timestamp: artifact.createdAt,
+        order: 35,
+        item: deliveryNote
+      });
+    }
   }
 
   const currentApproval = state.run
