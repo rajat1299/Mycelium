@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Approval,
   Artifact,
@@ -17,16 +17,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   CheckCircle2,
   ChevronDown,
-  ChevronUp,
   CircleDashed,
-  Download,
   FileCode2,
-  FileText,
   Loader2,
   Monitor,
-  Share2,
   Sparkles,
-  Terminal,
   XCircle
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -60,6 +55,21 @@ type StepCardData = {
   artifacts: Artifact[];
   primaryArtifact: Artifact | null;
   outputText: string | null;
+};
+
+type FeedItem =
+  | { type: "prompt"; key: string }
+  | { type: "narrative"; key: string; message: string }
+  | { type: "action-group"; key: string; title: string; items: ActionGroupItemData[] }
+  | { type: "subtask"; key: string; data: StepCardData }
+  | { type: "approval"; key: string; approval: Approval; artifacts: Artifact[] }
+  | { type: "message"; key: string; message: MessageCreatedData }
+  | { type: "loading"; key: string };
+
+type ActionGroupItemData = {
+  id: string;
+  title: string;
+  status: "pending" | "running" | "completed" | "failed";
 };
 
 /* ── Utilities ──────────────────────────────────────────────────────── */
@@ -155,23 +165,6 @@ function readMetadataString(artifact: Artifact | null, key: string) {
   return typeof value === "string" ? value : null;
 }
 
-function readPreviewStats(artifact: Artifact | null) {
-  if (!artifact) return [];
-  const value = artifact.metadata.previewStats;
-  if (!Array.isArray(value)) return [];
-  return value.filter(
-    (item): item is { label: string; value: string } =>
-      Boolean(
-        item &&
-          typeof item === "object" &&
-          "label" in item &&
-          typeof item.label === "string" &&
-          "value" in item &&
-          typeof item.value === "string"
-      )
-  );
-}
-
 function formatByteSize(value: number) {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}MB`;
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}KB`;
@@ -208,11 +201,123 @@ function readErrorMessage(payload: unknown, action: "approve" | "reject") {
   return action === "approve" ? "Failed to approve." : "Failed to reject.";
 }
 
-function formatStepTime(createdAt: string) {
-  return new Date(createdAt).toLocaleTimeString(undefined, {
+function formatStepTimestamp(step: RunStep) {
+  const time = new Date(step.updatedAt).toLocaleTimeString(undefined, {
     hour: "numeric",
     minute: "2-digit"
   });
+  if (step.status !== "completed") return time;
+  const ms = new Date(step.updatedAt).getTime() - new Date(step.createdAt).getTime();
+  const totalSeconds = Math.floor(ms / 1000);
+  if (totalSeconds < 60) return `${time} \u00b7 ${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  if (minutes < 60) return `${time} \u00b7 ${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  return `${time} \u00b7 ${hours}h ${minutes % 60}m`;
+}
+
+function normalizeStepStatus(status: string): ActionGroupItemData["status"] {
+  if (status === "completed") return "completed";
+  if (status === "running" || status === "claimed") return "running";
+  if (status === "failed") return "failed";
+  return "pending";
+}
+
+/* ── Feed Timeline Builder ─────────────────────────────────────────── */
+
+function buildFeedTimeline(
+  state: OutcomeConversationState,
+  systemLogs: RunLogData[],
+  stepCards: StepCardData[]
+): FeedItem[] {
+  const items: FeedItem[] = [];
+  const stepLookup = new Map(
+    (state.run?.steps ?? []).map((step) => [step.planNodeId, step])
+  );
+
+  /* 1. User prompt */
+  items.push({ type: "prompt", key: "prompt" });
+
+  /* 2. AI intro — content-aware key so it re-streams when SSE replaces fallback */
+  const introMessage = systemLogs[0]?.message ?? fallbackIntroMessage(state.run);
+  items.push({
+    type: "narrative",
+    key: `intro:${introMessage.slice(0, 40)}`,
+    message: introMessage
+  });
+
+  /* 3. Plan action group */
+  if (state.plan) {
+    const nodes = state.plan.nodes.slice().sort((a, b) => a.position - b.position);
+    const completedCount = nodes.filter((n) =>
+      stepLookup.get(n.id)?.status === "completed"
+    ).length;
+    const allDone = completedCount === nodes.length && nodes.length > 0;
+    const title = allDone
+      ? `All ${nodes.length} subtasks complete`
+      : state.run?.status === "running"
+        ? `Running ${nodes.length} subtasks`
+        : `${nodes.length} subtasks planned`;
+
+    items.push({
+      type: "action-group",
+      key: "plan",
+      title,
+      items: nodes.map((node) => ({
+        id: node.id,
+        title: node.title,
+        status: normalizeStepStatus(stepLookup.get(node.id)?.status ?? "pending")
+      }))
+    });
+  }
+
+  /* 4. Merge remaining system logs + step cards chronologically */
+  type ChronoEntry = { timestamp: string; item: FeedItem };
+  const chronoEntries: ChronoEntry[] = [];
+
+  for (const log of systemLogs.slice(1)) {
+    chronoEntries.push({
+      timestamp: log.createdAt,
+      item: { type: "narrative", key: `log:${logKey(log)}`, message: log.message }
+    });
+  }
+
+  for (const card of stepCards) {
+    chronoEntries.push({
+      timestamp: card.step.createdAt,
+      item: { type: "subtask", key: `step:${card.step.id}`, data: card }
+    });
+  }
+
+  chronoEntries.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  items.push(...chronoEntries.map((e) => e.item));
+
+  /* 5. Loading spinner when run exists but no steps yet */
+  if (state.run && stepCards.length === 0) {
+    items.push({ type: "loading", key: "loading" });
+  }
+
+  /* 6. Approval */
+  const currentApproval = state.run
+    ? (state.pendingApprovals.find((a) => a.runId === state.run?.id) ?? null)
+    : null;
+  if (currentApproval) {
+    items.push({
+      type: "approval",
+      key: `approval:${currentApproval.id}`,
+      approval: currentApproval,
+      artifacts: state.artifacts.filter((a) =>
+        currentApproval.artifactIds.includes(a.id)
+      )
+    });
+  }
+
+  /* 7. Follow-up messages */
+  for (const msg of state.messages) {
+    items.push({ type: "message", key: `msg:${msg.id}`, message: msg });
+  }
+
+  return items;
 }
 
 /* ── Easing ─────────────────────────────────────────────────────────── */
@@ -241,6 +346,9 @@ export function OutcomeConversation({
     )
   );
   const [showFullPrompt, setShowFullPrompt] = useState(false);
+
+  /* Keys present at first render — anything NOT in this set arrived via SSE */
+  const mountKeysRef = useRef<Set<string> | null>(null);
 
   useEffect(() => {
     setState(
@@ -282,14 +390,20 @@ export function OutcomeConversation({
               if (!current.run || current.run.id !== event.data.runId) return current;
               return {
                 ...current,
-                run: { ...current.run, steps: upsertStep(current.run.steps, event.data) }
+                run: {
+                  ...current.run,
+                  steps: upsertStep(current.run.steps, event.data)
+                }
               };
             case "run.log":
               if (!current.run || current.run.id !== event.data.runId) return current;
               return { ...current, logs: appendLog(current.logs, event.data) };
             case "artifact.created":
               if (!current.run || current.run.id !== event.data.runId) return current;
-              return { ...current, artifacts: upsertArtifact(current.artifacts, event.data) };
+              return {
+                ...current,
+                artifacts: upsertArtifact(current.artifacts, event.data)
+              };
             case "approval.requested":
               return {
                 ...current,
@@ -323,194 +437,177 @@ export function OutcomeConversation({
 
   /* ── Derived ────────────────────────────────────────────────── */
 
-  const currentApproval = state.run
-    ? (state.pendingApprovals.find((a) => a.runId === state.run?.id) ?? null)
-    : null;
-  const approvalArtifacts = currentApproval
-    ? state.artifacts.filter((a) => currentApproval.artifactIds.includes(a.id))
-    : [];
-  const stepLookup = new Map(
-    (state.run?.steps ?? []).map((step) => [step.planNodeId, step])
-  );
-  const systemLogs = state.logs.filter((log) => !log.stepId);
-  const introMessage = systemLogs[0]?.message ?? fallbackIntroMessage(state.run);
-  const completionNarrative =
-    state.run?.status === "completed" && systemLogs.length > 1
-      ? (systemLogs.at(-1)?.message ?? null)
-      : null;
-  const middleNarratives = systemLogs.filter((log, index) => {
-    if (index === 0) return false;
-    if (completionNarrative && log.message === completionNarrative) return false;
-    return true;
-  });
-  const orderedSteps = sortSteps(state.run?.steps ?? []);
   const promptPreview =
     showFullPrompt || outcomePrompt.length <= 280
       ? outcomePrompt
       : `${outcomePrompt.slice(0, 280).trimEnd()}\u2026`;
-  const finalArtifact =
-    [...state.artifacts].reverse().find((a) => a.kind === "result") ?? null;
-  const stepCards = useMemo(
-    () => orderedSteps.map((step) => buildStepCardData(step, state.logs, state.artifacts)),
-    [orderedSteps, state.logs, state.artifacts]
-  );
+
+  const isLive = !state.run || ["running", "queued", "blocked"].includes(state.run.status);
+
+  const feedItems = useMemo(() => {
+    const systemLogs = state.logs.filter((log) => !log.stepId);
+    const orderedSteps = sortSteps(state.run?.steps ?? []);
+    const stepCards = orderedSteps.map((step) =>
+      buildStepCardData(step, state.logs, state.artifacts)
+    );
+    return buildFeedTimeline(state, systemLogs, stepCards);
+  }, [state]);
+
+  /* Snapshot on first render */
+  if (mountKeysRef.current === null) {
+    mountKeysRef.current = new Set(feedItems.map((item) => item.key));
+  }
 
   /* ── Render ─────────────────────────────────────────────────── */
 
   return (
-    <div className="space-y-8">
-      {/* ── User prompt — subtle elevated card ──────────────── */}
-      <motion.div
-        initial={{ opacity: 0, filter: "blur(4px)" }}
-        animate={{ opacity: 1, filter: "blur(0px)" }}
-        transition={{ duration: 0.4, ease }}
-        className="rounded-2xl bg-surface-elevated/60 shadow-card px-5 py-4"
-      >
-        <p className="text-[15px] leading-relaxed text-ink whitespace-pre-wrap">
-          {promptPreview}
-        </p>
-        {outcomePrompt.length > 280 && (
-          <button
-            type="button"
-            onClick={() => setShowFullPrompt((c) => !c)}
-            className="mt-2 flex items-center gap-1 text-xs font-medium text-muted transition-colors hover:text-ink"
-          >
-            {showFullPrompt ? "Show less" : "Show more"}
-            <ChevronDown
-              className={cn(
-                "h-3 w-3 transition-transform duration-200",
-                showFullPrompt && "rotate-180"
-              )}
-            />
-          </button>
-        )}
-      </motion.div>
+    <div className="flex flex-col gap-6">
+      {feedItems.map((item, index) => {
+        const isFromSSE = !(mountKeysRef.current?.has(item.key) ?? true);
+        const delay = isFromSSE ? 0 : Math.min(index * 0.06, 0.5);
 
-      {/* ── AI intro — serif, directly on background ────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
-        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-        transition={{ duration: 0.5, ease, delay: 0.1 }}
-      >
-        <p className="font-serif text-lg leading-[1.65] text-ink sm:text-xl [text-wrap:pretty]">
-          {introMessage}
-        </p>
-      </motion.div>
-
-      {/* ── Plan checklist ──────────────────────────────────── */}
-      {state.plan && (
-        <PlanChecklist plan={state.plan} stepLookup={stepLookup} run={state.run} />
-      )}
-
-      {/* ── Middle narratives — serif, no card ──────────────── */}
-      {middleNarratives.map((log) => (
-        <motion.div
-          key={logKey(log)}
-          initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
-          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-          transition={{ duration: 0.4, ease }}
-        >
-          <p className="font-serif text-lg leading-[1.65] text-ink sm:text-xl [text-wrap:pretty]">
-            {log.message}
-          </p>
-        </motion.div>
-      ))}
-
-      {/* ── Subtask output cards ────────────────────────────── */}
-      {stepCards.length > 0 ? (
-        <div className="space-y-4">
-          {stepCards.map((card, index) => (
-            <SubtaskOutputCard key={card.step.id} data={card} index={index} />
-          ))}
-        </div>
-      ) : state.run ? (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.3, ease }}
-          className="flex items-center gap-2 py-6 text-sm text-muted"
-        >
-          <Loader2 className="h-4 w-4 animate-spin text-accent" />
-          <span>Preparing subtasks&hellip;</span>
-        </motion.div>
-      ) : null}
-
-      {/* ── Inline approval ─────────────────────────────────── */}
-      {currentApproval && (
-        <InlineApprovalCard approval={currentApproval} artifacts={approvalArtifacts} />
-      )}
-
-      {/* ── Completion ──────────────────────────────────────── */}
-      {(state.run?.status === "completed" || finalArtifact) && completionNarrative ? (
-        <CompletionSection narrative={completionNarrative} artifact={finalArtifact} />
-      ) : finalArtifact ? (
-        <CompletionSection narrative={null} artifact={finalArtifact} />
-      ) : null}
-
-      {/* ── Follow-up messages ──────────────────────────────── */}
-      {state.messages.length > 0 && (
-        <div className="space-y-6 pt-2">
-          {state.messages.map((message) => (
-            <motion.div
-              key={message.id}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35, ease }}
-            >
-              {message.role === "user" ? (
-                <div className="rounded-2xl bg-surface-elevated/60 border border-panel-line/50 px-5 py-4">
-                  <p className="text-[15px] leading-relaxed text-ink whitespace-pre-wrap">
-                    {message.content}
+        switch (item.type) {
+          case "prompt":
+            return (
+              <motion.div
+                key={item.key}
+                initial={{ opacity: 0, x: 12, filter: "blur(4px)" }}
+                animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+                transition={{ duration: 0.4, ease }}
+                className="flex justify-end"
+              >
+                <div className="max-w-[85%] rounded-2xl rounded-br-lg bg-accent-soft px-5 py-3.5">
+                  <p className="text-[15px] leading-relaxed text-ink whitespace-pre-wrap [text-wrap:pretty]">
+                    {promptPreview}
                   </p>
+                  {outcomePrompt.length > 280 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowFullPrompt((c) => !c)}
+                      className="mt-2 flex items-center gap-1 text-xs font-medium text-muted transition-colors hover:text-ink"
+                    >
+                      {showFullPrompt ? "Show less" : "Show more"}
+                      <ChevronDown
+                        className={cn(
+                          "h-3 w-3 transition-transform duration-200",
+                          showFullPrompt && "rotate-180"
+                        )}
+                      />
+                    </button>
+                  )}
                 </div>
-              ) : (
-                <div className="space-y-1">
-                  <p className="font-serif text-lg leading-[1.65] prose-feed">
+              </motion.div>
+            );
+
+          case "narrative":
+            return (
+              <motion.div
+                key={item.key}
+                initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
+                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                transition={{ duration: 0.5, ease, delay }}
+              >
+                <p className="font-serif text-lg leading-[1.65] text-ink sm:text-xl [text-wrap:pretty]">
+                  {isLive && isFromSSE ? (
+                    <StreamingText text={item.message} />
+                  ) : (
+                    item.message
+                  )}
+                </p>
+              </motion.div>
+            );
+
+          case "action-group":
+            return (
+              <ActionGroup
+                key={item.key}
+                title={item.title}
+                items={item.items}
+                delay={delay}
+              />
+            );
+
+          case "subtask":
+            return (
+              <SubtaskOutputCard
+                key={item.key}
+                data={item.data}
+                delay={delay}
+              />
+            );
+
+          case "approval":
+            return (
+              <InlineApprovalCard
+                key={item.key}
+                approval={item.approval}
+                artifacts={item.artifacts}
+              />
+            );
+
+          case "message":
+            return (
+              <motion.div
+                key={item.key}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.35, ease }}
+              >
+                {item.message.role === "user" ? (
+                  <div className="flex justify-end">
+                    <div className="max-w-[85%] rounded-2xl rounded-br-lg bg-accent-soft px-5 py-3.5">
+                      <p className="text-[15px] leading-relaxed text-ink whitespace-pre-wrap [text-wrap:pretty]">
+                        {item.message.content}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="prose-feed">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {message.content}
+                      {item.message.content}
                     </ReactMarkdown>
-                  </p>
-                </div>
-              )}
-            </motion.div>
-          ))}
-        </div>
-      )}
+                  </div>
+                )}
+              </motion.div>
+            );
+
+          case "loading":
+            return (
+              <motion.div
+                key={item.key}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.3, ease }}
+                className="flex items-center gap-2 py-6 text-sm text-muted"
+              >
+                <Loader2 className="h-4 w-4 animate-spin text-accent" />
+                <span>Preparing subtasks&hellip;</span>
+              </motion.div>
+            );
+        }
+      })}
     </div>
   );
 }
 
-/* ── Plan Checklist ─────────────────────────────────────────────────── */
+/* ── Action Group ──────────────────────────────────────────────────── */
 
-function PlanChecklist({
-  plan,
-  stepLookup,
-  run
+function ActionGroup({
+  title,
+  items,
+  delay
 }: {
-  plan: Plan;
-  stepLookup: Map<string, RunStep>;
-  run: RunDetail | null;
+  title: string;
+  items: ActionGroupItemData[];
+  delay: number;
 }) {
   const [open, setOpen] = useState(true);
-  const nodes = plan.nodes.slice().sort((a, b) => a.position - b.position);
-
-  const completedCount = nodes.filter((n) => {
-    const step = stepLookup.get(n.id);
-    return step?.status === "completed";
-  }).length;
-
-  const allDone = completedCount === nodes.length && nodes.length > 0;
-  const label = allDone
-    ? `All ${nodes.length} subtasks complete`
-    : run?.status === "running"
-      ? `Running ${nodes.length} subtasks`
-      : `${nodes.length} subtasks planned`;
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease, delay: 0.15 }}
+      initial={{ opacity: 0, y: 8, filter: "blur(4px)" }}
+      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+      transition={{ duration: 0.4, ease, delay }}
     >
       <button
         type="button"
@@ -519,17 +616,12 @@ function PlanChecklist({
       >
         <Monitor className="h-4 w-4 shrink-0 text-muted" />
         <span className="flex-1 text-sm font-medium text-muted truncate">
-          {label}
+          {title}
         </span>
-        {completedCount > 0 && !allDone && (
-          <span className="text-[11px] tabular-nums text-muted/60">
-            {completedCount}/{nodes.length}
-          </span>
-        )}
-        <ChevronUp
+        <ChevronDown
           className={cn(
             "h-3.5 w-3.5 shrink-0 text-muted/50 transition-transform duration-200",
-            !open && "rotate-180"
+            open && "rotate-180"
           )}
         />
       </button>
@@ -543,39 +635,34 @@ function PlanChecklist({
             transition={{ duration: 0.2, ease }}
             className="overflow-hidden"
           >
-            <ol className="mt-3 ml-6 space-y-1.5 border-l border-panel-line/40 pl-4">
-              {nodes.map((node) => {
-                const step = stepLookup.get(node.id);
-                const status = step?.status ?? "pending";
-
-                return (
-                  <li key={node.id} className="flex items-start gap-2.5 text-sm">
-                    <span className="mt-0.5 shrink-0">
-                      {status === "completed" ? (
-                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                      ) : status === "running" || status === "claimed" ? (
-                        <Loader2 className="h-4 w-4 text-accent animate-spin" />
-                      ) : status === "failed" ? (
-                        <XCircle className="h-4 w-4 text-red-400" />
-                      ) : (
-                        <CircleDashed className="h-4 w-4 text-muted/40" />
-                      )}
-                    </span>
-                    <span
-                      className={cn(
-                        "leading-6",
-                        status === "completed"
-                          ? "text-muted line-through decoration-muted/30"
-                          : status === "running" || status === "claimed"
-                            ? "text-ink"
-                            : "text-muted"
-                      )}
-                    >
-                      {node.title}
-                    </span>
-                  </li>
-                );
-              })}
+            <ol className="mt-3 ml-6 flex flex-col gap-1.5 border-l border-panel-line/40 pl-4">
+              {items.map((item) => (
+                <li key={item.id} className="flex items-start gap-2.5 text-sm">
+                  <span className="mt-0.5 shrink-0">
+                    {item.status === "completed" ? (
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    ) : item.status === "running" ? (
+                      <Loader2 className="h-4 w-4 text-accent animate-spin" />
+                    ) : item.status === "failed" ? (
+                      <XCircle className="h-4 w-4 text-red-400" />
+                    ) : (
+                      <CircleDashed className="h-4 w-4 text-muted/40" />
+                    )}
+                  </span>
+                  <span
+                    className={cn(
+                      "leading-6",
+                      item.status === "completed"
+                        ? "text-muted line-through decoration-muted/30"
+                        : item.status === "running"
+                          ? "text-ink"
+                          : "text-muted"
+                    )}
+                  >
+                    {item.title}
+                  </span>
+                </li>
+              ))}
             </ol>
           </motion.div>
         )}
@@ -584,14 +671,93 @@ function PlanChecklist({
   );
 }
 
+/* ── Streaming Text ────────────────────────────────────────────────── */
+
+function StreamingText({
+  text,
+  charInterval = 18
+}: {
+  text: string;
+  charInterval?: number;
+}) {
+  const [charCount, setCharCount] = useState(0);
+  const frameRef = useRef(0);
+  const startRef = useRef(0);
+
+  useEffect(() => {
+    setCharCount(0);
+    startRef.current = 0;
+
+    function step(timestamp: number) {
+      if (!startRef.current) startRef.current = timestamp;
+      const target = Math.min(
+        Math.floor((timestamp - startRef.current) / charInterval),
+        text.length
+      );
+      setCharCount(target);
+
+      if (target < text.length) {
+        frameRef.current = requestAnimationFrame(step);
+      }
+    }
+
+    frameRef.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frameRef.current);
+  }, [text, charInterval]);
+
+  const done = charCount >= text.length;
+
+  return (
+    <span>
+      {text.slice(0, charCount)}
+      {!done && (
+        <span
+          className="ml-0.5 inline-block h-[1.1em] w-[2px] bg-accent align-text-bottom"
+          style={{ animation: "blink-cursor 1s step-end infinite" }}
+        />
+      )}
+    </span>
+  );
+}
+
 /* ── Subtask Output Card ───────────────────────────────────────────── */
 
-function SubtaskOutputCard({ data, index }: { data: StepCardData; index: number }) {
+/**
+ * A streaming component that draws itself as SSE events arrive.
+ *
+ * Mount state: whatever data was present when the card first rendered.
+ * Each piece that appears AFTER mount animates in — model badge fades,
+ * file info slides, output text streams character by character.
+ * The card is "drawn" by the AI as it works, not filled into a template.
+ */
+function SubtaskOutputCard({
+  data,
+  delay
+}: {
+  data: StepCardData;
+  delay: number;
+}) {
   const { step, latestLog, primaryArtifact, outputText } = data;
   const isRunning = step.status === "running" || step.status === "claimed";
   const isDone = step.status === "completed";
   const isFailed = step.status === "failed";
-  const isBlocked = step.status === "blocked";
+
+  /* ── Track what existed when this card mounted ──────────────── */
+  const mountSnapshot = useRef({
+    outputText,
+    hadArtifact: !!primaryArtifact,
+    hadModel: !!step.routeModelId,
+    wasDone: isDone
+  });
+
+  /* Did outputText change after mount? If so, the new text is streaming in. */
+  const textChangedAfterMount = outputText !== mountSnapshot.current.outputText;
+  const shouldStreamText = textChangedAfterMount && isRunning;
+
+  /* Did these elements appear after mount? If so, animate them in. */
+  const artifactIsNew = !mountSnapshot.current.hadArtifact && !!primaryArtifact;
+  const modelIsNew = !mountSnapshot.current.hadModel && !!step.routeModelId;
+  const doneIsNew = !mountSnapshot.current.wasDone && isDone;
 
   const fileInfo = primaryArtifact
     ? {
@@ -603,15 +769,28 @@ function SubtaskOutputCard({ data, index }: { data: StepCardData; index: number 
         byteSize:
           typeof primaryArtifact.metadata.byteSize === "number"
             ? formatByteSize(primaryArtifact.metadata.byteSize)
-            : null
+            : primaryArtifact.size > 0
+              ? formatByteSize(primaryArtifact.size)
+              : null
       }
     : null;
+
+  /* ── Card status icon — evolves with the step ──────────────── */
+  const statusIcon = isRunning ? (
+    <Loader2 className="h-4 w-4 shrink-0 text-accent animate-spin" />
+  ) : isDone ? (
+    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+  ) : isFailed ? (
+    <XCircle className="h-4 w-4 shrink-0 text-red-400" />
+  ) : (
+    <CircleDashed className="h-4 w-4 shrink-0 text-muted/40" />
+  );
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
       animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-      transition={{ duration: 0.4, ease, delay: index * 0.08 }}
+      transition={{ duration: 0.4, ease, delay }}
       className={cn(
         "overflow-hidden rounded-2xl transition-shadow duration-300",
         isRunning
@@ -621,87 +800,146 @@ function SubtaskOutputCard({ data, index }: { data: StepCardData; index: number 
             : "shadow-card hover:shadow-card-hover"
       )}
     >
-      {/* Card header */}
+      {/* ── Header — title + status icon + model badge + timestamp ── */}
       <div className="flex items-center gap-3 px-5 py-3.5">
-        <Terminal className="h-4 w-4 shrink-0 text-muted" />
+        {statusIcon}
         <h4 className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
           {step.title}
         </h4>
-        {step.routeModelId && (
-          <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-panel-line/50 bg-surface-elevated px-2.5 py-1 text-[11px] font-medium text-muted">
-            <Sparkles className="h-3 w-3" />
-            <span>{step.routeModelId}</span>
-          </div>
-        )}
-        {isDone && (
-          <span className="shrink-0 text-[11px] tabular-nums text-muted/60">
-            {formatStepTime(step.updatedAt)}
-          </span>
-        )}
+
+        {/* Model badge — materializes when routing resolves */}
+        <AnimatePresence>
+          {step.routeModelId && (
+            <motion.div
+              initial={modelIsNew ? { opacity: 0, scale: 0.92 } : false}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.25, ease }}
+              className="flex shrink-0 items-center gap-1.5 rounded-full border border-panel-line/50 bg-surface-elevated px-2.5 py-1 text-[11px] font-medium text-muted"
+            >
+              <Sparkles className="h-3 w-3" />
+              <span>{step.routeModelId}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Timestamp — materializes when step completes */}
+        <AnimatePresence>
+          {isDone && (
+            <motion.span
+              initial={doneIsNew ? { opacity: 0 } : false}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.3, delay: 0.1 }}
+              className="shrink-0 text-[11px] tabular-nums text-muted/60"
+            >
+              {formatStepTimestamp(step)}
+            </motion.span>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* Card body */}
+      {/* ── Body — streams content as the AI works ─────────────── */}
       <div className="px-5 py-4 shadow-[inset_0_1px_0_var(--panel-line)]">
-        {/* File metadata */}
-        {fileInfo && (
-          <p className="mb-3 text-sm text-muted">
-            {isDone ? "Research complete. Saved to" : "Saving to"}{" "}
-            <code className="rounded bg-surface-elevated px-1.5 py-0.5 font-mono text-[12px] text-accent">
-              {fileInfo.path}
-            </code>
-            {fileInfo.lineCount || fileInfo.byteSize ? (
-              <span className="text-muted/60">
-                {" \u2014 "}
-                {[
-                  fileInfo.lineCount ? `${fileInfo.lineCount} lines` : null,
-                  fileInfo.byteSize
-                ]
-                  .filter(Boolean)
-                  .join(", ")}
-                .
-              </span>
-            ) : null}
-          </p>
-        )}
+        {/* File info — materializes when artifact is created */}
+        <AnimatePresence>
+          {fileInfo && (
+            <motion.p
+              initial={artifactIsNew ? { opacity: 0, y: -4 } : false}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, ease }}
+              className="mb-3 text-sm text-muted"
+            >
+              {isDone ? "Research complete. Saved to" : "Saving to"}{" "}
+              <code className="rounded bg-surface-elevated px-1.5 py-0.5 font-mono text-[12px] text-accent">
+                {fileInfo.path}
+              </code>
+              {fileInfo.lineCount || fileInfo.byteSize ? (
+                <span className="text-muted/60">
+                  {" \u2014 "}
+                  {[
+                    fileInfo.lineCount ? `${fileInfo.lineCount} lines` : null,
+                    fileInfo.byteSize
+                  ]
+                    .filter(Boolean)
+                    .join(", ")}
+                  .
+                </span>
+              ) : null}
+            </motion.p>
+          )}
+        </AnimatePresence>
 
-        {/* Content */}
-        {isRunning && !outputText ? (
-          <div className="flex items-center gap-2 py-3 text-sm text-muted">
-            <span>Generating</span>
-            <span className="flex gap-1">
-              <span
-                className="h-1.5 w-1.5 rounded-full bg-accent"
-                style={{ animation: "streaming-dot 1.2s ease-in-out infinite 0ms" }}
-              />
-              <span
-                className="h-1.5 w-1.5 rounded-full bg-accent"
-                style={{ animation: "streaming-dot 1.2s ease-in-out infinite 200ms" }}
-              />
-              <span
-                className="h-1.5 w-1.5 rounded-full bg-accent"
-                style={{ animation: "streaming-dot 1.2s ease-in-out infinite 400ms" }}
-              />
-            </span>
-          </div>
-        ) : outputText ? (
-          <div className="prose-feed">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{outputText}</ReactMarkdown>
-            {isRunning && (
-              <span
-                className="ml-1 inline-block h-4 w-1.5 bg-accent align-middle"
-                style={{ animation: "blink-cursor 1s step-end infinite" }}
-              />
-            )}
-          </div>
-        ) : latestLog ? (
-          <p className="text-sm leading-7 text-muted">{latestLog.message}</p>
-        ) : (
-          <p className="text-sm italic text-muted/60">
-            {step.status === "pending" || step.status === "ready"
-              ? "Waiting to start\u2026"
-              : "No output yet."}
-          </p>
-        )}
+        {/* Content — phases: generating dots → streaming text → settled text */}
+        <AnimatePresence mode="wait">
+          {isRunning && !outputText && !latestLog ? (
+            /* Phase 1: Generating — bouncing dots */
+            <motion.div
+              key="generating"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="flex items-center gap-2 py-3 text-sm text-muted"
+            >
+              <span>Generating</span>
+              <span className="flex gap-1">
+                {[0, 200, 400].map((d) => (
+                  <span
+                    key={d}
+                    className="h-1.5 w-1.5 rounded-full bg-accent"
+                    style={{
+                      animation: `streaming-dot 1.2s ease-in-out infinite ${d}ms`
+                    }}
+                  />
+                ))}
+              </span>
+            </motion.div>
+          ) : outputText ? (
+            /* Phase 2/3: Text content — streams when live, static when settled */
+            <motion.div
+              key="output"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.2 }}
+            >
+              {shouldStreamText ? (
+                /* Running + text arrived via SSE → stream it character by character */
+                <p className="text-sm leading-7 text-ink/80">
+                  <StreamingText text={outputText} charInterval={14} />
+                </p>
+              ) : (
+                /* Completed or initial render → show full text immediately */
+                <div className="prose-feed">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {outputText}
+                  </ReactMarkdown>
+                </div>
+              )}
+            </motion.div>
+          ) : latestLog ? (
+            /* Fallback: show latest log */
+            <motion.div
+              key="log"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.2 }}
+            >
+              <p className="text-sm leading-7 text-muted">{latestLog.message}</p>
+            </motion.div>
+          ) : (
+            /* No data yet */
+            <motion.div
+              key="waiting"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.6 }}
+            >
+              <p className="text-sm italic text-muted/60">
+                {step.status === "pending" || step.status === "ready"
+                  ? "Waiting to start\u2026"
+                  : "No output yet."}
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </motion.div>
   );
@@ -716,7 +954,9 @@ function InlineApprovalCard({
   approval: Approval;
   artifacts: Artifact[];
 }) {
-  const [inFlightAction, setInFlightAction] = useState<"approve" | "reject" | null>(null);
+  const [inFlightAction, setInFlightAction] = useState<
+    "approve" | "reject" | null
+  >(null);
   const [statusMessage, setStatusMessage] = useState<{
     tone: "default" | "error";
     text: string;
@@ -726,11 +966,14 @@ function InlineApprovalCard({
     setInFlightAction(action);
     setStatusMessage(null);
     try {
-      const response = await fetch(`/api/approvals/${approval.id}/${action}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ resolutionNote: null })
-      });
+      const response = await fetch(
+        `/api/approvals/${approval.id}/${action}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ resolutionNote: null })
+        }
+      );
       const payload = await response.json();
       if (!response.ok) throw new Error(readErrorMessage(payload, action));
       setStatusMessage({
@@ -743,7 +986,8 @@ function InlineApprovalCard({
     } catch (error) {
       setStatusMessage({
         tone: "error",
-        text: error instanceof Error ? error.message : `Failed to ${action}.`
+        text:
+          error instanceof Error ? error.message : `Failed to ${action}.`
       });
     } finally {
       setInFlightAction(null);
@@ -760,11 +1004,16 @@ function InlineApprovalCard({
       <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.15em] text-amber-700 dark:text-amber-400">
         <span
           className="h-2 w-2 rounded-full bg-amber-400"
-          style={{ animation: "ping-slow 2s cubic-bezier(0,0,0.2,1) infinite" }}
+          style={{
+            animation:
+              "ping-slow 2s cubic-bezier(0,0,0.2,1) infinite"
+          }}
         />
         <span>Approval required</span>
       </div>
-      <h4 className="mt-2 text-sm font-semibold text-ink">{approval.title}</h4>
+      <h4 className="mt-2 text-sm font-semibold text-ink">
+        {approval.title}
+      </h4>
       <p className="mt-1.5 text-sm leading-6 text-muted">
         {approval.instruction ?? "Approve to continue or reject to stop."}
       </p>
@@ -777,7 +1026,9 @@ function InlineApprovalCard({
               className="flex items-center gap-2 font-mono text-xs text-accent"
             >
               <FileCode2 className="h-3.5 w-3.5 text-muted" />
-              <span>{displayWorkspacePath(artifact.relativePath)}</span>
+              <span>
+                {displayWorkspacePath(artifact.relativePath)}
+              </span>
             </li>
           ))}
         </ul>
@@ -798,7 +1049,9 @@ function InlineApprovalCard({
           disabled={inFlightAction !== null}
           className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white transition hover:bg-accent-hover disabled:opacity-50"
         >
-          {inFlightAction === "approve" ? "Approving\u2026" : "Approve"}
+          {inFlightAction === "approve"
+            ? "Approving\u2026"
+            : "Approve"}
         </button>
       </div>
 
@@ -806,124 +1059,13 @@ function InlineApprovalCard({
         <p
           className={cn(
             "mt-3 text-sm",
-            statusMessage.tone === "error" ? "text-red-500" : "text-muted"
+            statusMessage.tone === "error"
+              ? "text-red-500"
+              : "text-muted"
           )}
         >
           {statusMessage.text}
         </p>
-      )}
-    </motion.div>
-  );
-}
-
-/* ── Completion Section ────────────────────────────────────────────── */
-
-function CompletionSection({
-  narrative,
-  artifact
-}: {
-  narrative: string | null;
-  artifact: Artifact | null;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ delay: 0.2, duration: 0.5, ease }}
-      className="space-y-6"
-    >
-      {/* Artifact thumbnail */}
-      {artifact && <ArtifactPreviewCard artifact={artifact} />}
-
-      {/* Completion narrative — serif */}
-      {narrative && (
-        <div className="prose-feed">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{narrative}</ReactMarkdown>
-        </div>
-      )}
-    </motion.div>
-  );
-}
-
-/* ── Artifact Preview Card ─────────────────────────────────────────── */
-
-function ArtifactPreviewCard({ artifact }: { artifact: Artifact }) {
-  const previewStats = readPreviewStats(artifact);
-  const summary =
-    readMetadataString(artifact, "previewBody") ??
-    readMetadataString(artifact, "summary") ??
-    null;
-  const title =
-    readMetadataString(artifact, "title") ?? "Final report";
-  const fileName =
-    artifact.relativePath.split("/").filter(Boolean).at(-1) ?? artifact.relativePath;
-  const fileType = artifact.kind === "result" ? "PDF Document" : artifact.kind;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.97 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ delay: 0.15, type: "spring", stiffness: 300, damping: 24 }}
-      className="space-y-3"
-    >
-      {/* Thumbnail */}
-      <div className="group relative overflow-hidden rounded-xl border border-panel-line bg-white">
-        <div className="flex aspect-[4/3] max-h-[320px] items-center justify-center bg-gradient-to-br from-white to-slate-50 p-8">
-          <div className="relative flex h-full w-auto max-w-[240px] flex-col rounded-sm bg-white p-6 shadow-lg ring-1 ring-slate-200/60 transition-transform duration-500 group-hover:scale-[1.02]">
-            <div className="mb-4 h-3 w-2/3 rounded bg-slate-800/80" />
-            <div className="mb-1 h-2 w-full rounded bg-slate-200/80" />
-            <div className="mb-1 h-2 w-full rounded bg-slate-200/80" />
-            <div className="mb-4 h-2 w-4/5 rounded bg-slate-200/80" />
-            {previewStats.length > 0 && (
-              <div className="mt-auto flex gap-3">
-                {previewStats.slice(0, 4).map((stat) => (
-                  <div
-                    key={`${stat.label}:${stat.value}`}
-                    className="flex flex-col items-center"
-                  >
-                    <span className="text-[8px] font-bold text-emerald-600">
-                      {stat.value}
-                    </span>
-                    <span className="text-[5px] text-slate-400">{stat.label}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="mt-3 h-1.5 w-full rounded bg-slate-100" />
-            <div className="mt-1 h-1.5 w-full rounded bg-slate-100" />
-          </div>
-        </div>
-      </div>
-
-      {/* Metadata row */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-ink">{fileName}</p>
-          <p className="text-xs text-muted">{fileType}</p>
-        </div>
-        <div className="flex shrink-0 gap-1.5">
-          <button
-            type="button"
-            className="rounded-lg p-2 text-muted transition-colors hover:bg-surface-elevated hover:text-ink"
-            title="Share"
-          >
-            <Share2 className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            className="rounded-lg p-2 text-muted transition-colors hover:bg-surface-elevated hover:text-ink"
-            title="Download"
-          >
-            <Download className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-
-      {/* Summary */}
-      {summary && (
-        <div className="prose-feed">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown>
-        </div>
       )}
     </motion.div>
   );

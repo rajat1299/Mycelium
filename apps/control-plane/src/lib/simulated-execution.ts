@@ -40,13 +40,13 @@ type StoredOutcome = Awaited<ReturnType<Repositories["outcomes"]["getById"]>>;
 type StoredStep = Awaited<ReturnType<Repositories["runs"]["listSteps"]>>[number];
 
 const DEFAULT_TIMELINE: SimulatedExecutionTimeline = {
-  kickoffMs: 500,
-  markRunningMs: 300,
-  memoryCompleteMs: 700,
-  landscapeCompleteMs: 2_200,
-  evidenceCompleteMs: 3_700,
-  policyCompleteMs: 4_700,
-  synthesisCompleteMs: 3_000
+  kickoffMs: 1_200,
+  markRunningMs: 800,
+  memoryCompleteMs: 3_000,
+  landscapeCompleteMs: 6_500,
+  evidenceCompleteMs: 8_500,
+  policyCompleteMs: 11_000,
+  synthesisCompleteMs: 7_500
 };
 
 export function isDevelopmentSimulationEnabled(input: {
@@ -317,7 +317,7 @@ async function executeSimulatedRun(input: {
       runId: run.id,
       level: "info",
       message:
-        "I’m checking memory and spinning up parallel research tracks before I compile the final report."
+        "Let me start by checking my memory for any relevant context from your previous work, then I\u2019ll break this into parallel research tracks."
     });
 
     await input.wait(input.timeline.markRunningMs);
@@ -365,7 +365,17 @@ async function executeSimulatedRun(input: {
       message: runningMessageForStep(runningMemoryStep)
     });
 
-    await input.wait(delayForStep(input.timeline, runningMemoryStep));
+    await waitWithProgress(
+      input,
+      delayForStep(input.timeline, runningMemoryStep),
+      {
+        outcomeId: outcome.id,
+        runId: run.id,
+        stepId: runningMemoryStep.id,
+        stepTitle: runningMemoryStep.title
+      },
+      intermediateMessagesForStep(runningMemoryStep.position)
+    );
     await completeStep(input, {
       outcome,
       run: runningLifecycle.run,
@@ -377,8 +387,10 @@ async function executeSimulatedRun(input: {
       runId: run.id,
       level: "info",
       message:
-        "Memory check is complete. I’m launching the research tracks in parallel now."
+        "Good \u2014 I found useful context from prior sessions. Now launching three parallel research tracks: landscape scan, evidence review, and policy mapping."
     });
+
+    await input.wait(600);
 
     const researchSteps = [...(await input.repositories.runs.listSteps(run.id))]
       .sort((left, right) => left.position - right.position)
@@ -406,7 +418,17 @@ async function executeSimulatedRun(input: {
           message: runningMessageForStep(runningStep)
         });
 
-        await input.wait(delayForStep(input.timeline, runningStep));
+        await waitWithProgress(
+          input,
+          delayForStep(input.timeline, runningStep),
+          {
+            outcomeId: outcome.id,
+            runId: run.id,
+            stepId: runningStep.id,
+            stepTitle: runningStep.title
+          },
+          intermediateMessagesForStep(runningStep.position)
+        );
         await completeStep(input, {
           outcome,
           run: runningLifecycle.run,
@@ -428,8 +450,10 @@ async function executeSimulatedRun(input: {
       runId: run.id,
       level: "info",
       message:
-        "All parallel research tracks are complete. I’m compiling the final deliverable now."
+        "All three research tracks have returned results. I\u2019m now reading through the findings and compiling everything into a single deliverable."
     });
+
+    await input.wait(500);
 
     const runningSynthesisStep = await input.repositories.runs.updateStepStatus({
       stepId: synthesisStep.id,
@@ -451,7 +475,17 @@ async function executeSimulatedRun(input: {
       message: runningMessageForStep(runningSynthesisStep)
     });
 
-    await input.wait(input.timeline.synthesisCompleteMs);
+    await waitWithProgress(
+      input,
+      input.timeline.synthesisCompleteMs,
+      {
+        outcomeId: outcome.id,
+        runId: run.id,
+        stepId: runningSynthesisStep.id,
+        stepTitle: runningSynthesisStep.title
+      },
+      intermediateMessagesForStep(runningSynthesisStep.position)
+    );
     const finalArtifact = await completeStep(input, {
       outcome,
       run: runningLifecycle.run,
@@ -486,7 +520,7 @@ async function executeSimulatedRun(input: {
       runId: run.id,
       level: "info",
       message:
-        "Work complete. The final report is ready with a preview card, share controls, and downloadable output."
+        "Done. The final report is ready \u2014 16 pages covering landscape, evidence, policy, and recommendations with full source citations."
     });
   } catch (error) {
     const failedLifecycle = await input.repositories.runs.updateLifecycleStatus({
@@ -650,18 +684,114 @@ function delayForStep(
   }
 }
 
+type IntermediateLog = {
+  /** Fraction of total delay (0–1) at which to emit this log */
+  at: number;
+  message: string;
+};
+
+function intermediateMessagesForStep(position: number): IntermediateLog[] {
+  switch (position) {
+    /* Memory check — 3s total, model loads context then reports back */
+    case 0:
+      return [
+        { at: 0.30, message: "Loading workspace context and checking for prior session data\u2026" },
+        { at: 0.65, message: "Found 3 prior sessions with relevant context. Extracting preferred output format and reusable patterns." }
+      ];
+
+    /* Landscape research — 6.5s, simulates web search + reading + synthesis */
+    case 1:
+      return [
+        { at: 0.15, message: "Querying indexed sources for current-state landscape data\u2026" },
+        { at: 0.40, message: "Processing 18 results across academic, industry, and news sources." },
+        { at: 0.68, message: "Synthesizing landscape overview \u2014 12 key data points identified across 3 sectors." },
+        { at: 0.88, message: "Drafting landscape summary with source annotations." }
+      ];
+
+    /* Evidence review — 8.5s, simulates deep reading + cross-referencing */
+    case 2:
+      return [
+        { at: 0.12, message: "Searching for effectiveness studies and empirical evidence\u2026" },
+        { at: 0.32, message: "Found 23 candidate sources. Filtering for methodological rigor and recency." },
+        { at: 0.55, message: "Cross-referencing 8 high-quality evidence threads for internal consistency." },
+        { at: 0.78, message: "Scoring source reliability and extracting quantitative findings." }
+      ];
+
+    /* Policy mapping — 11s, the slowest track, simulates regulatory search */
+    case 3:
+      return [
+        { at: 0.10, message: "Scanning regulatory databases and policy response archives\u2026" },
+        { at: 0.28, message: "Identified 7 relevant regulatory frameworks across 3 jurisdictions." },
+        { at: 0.48, message: "Mapping risk vectors: operational, compliance, and reputational." },
+        { at: 0.68, message: "Cataloging 5 documented policy responses with outcome data." },
+        { at: 0.88, message: "Finalizing challenge matrix with severity ratings and mitigations." }
+      ];
+
+    /* Synthesis — 7.5s, reads all tracks and compiles final report */
+    default:
+      return [
+        { at: 0.15, message: "Reading all 4 completed research tracks\u2026" },
+        { at: 0.38, message: "Extracting key findings and ranking by relevance to the original request." },
+        { at: 0.60, message: "Building executive summary with citations from each research track." },
+        { at: 0.82, message: "Formatting final deliverable with recommendations, appendices, and metadata." }
+      ];
+  }
+}
+
+async function waitWithProgress(
+  input: {
+    wait: (ms: number) => Promise<void>;
+    repositories: Repositories;
+    eventBus: EventBus;
+    now: () => Date;
+  },
+  totalMs: number,
+  logContext: {
+    outcomeId: string;
+    runId: string;
+    stepId: string;
+    stepTitle: string;
+  },
+  intermediates: IntermediateLog[]
+) {
+  let elapsed = 0;
+  const sorted = [...intermediates].sort((a, b) => a.at - b.at);
+
+  for (const entry of sorted) {
+    const targetMs = Math.floor(totalMs * entry.at);
+    const gap = targetMs - elapsed;
+
+    if (gap > 0) {
+      await input.wait(gap);
+      elapsed = targetMs;
+    }
+
+    await emitRunLog(input, {
+      ...logContext,
+      level: "info",
+      message: entry.message
+    });
+  }
+
+  const remaining = totalMs - elapsed;
+
+  if (remaining > 0) {
+    await input.wait(remaining);
+  }
+}
+
 function runningMessageForStep(step: Pick<StoredStep, "position" | "title">) {
   switch (step.position) {
     case 0:
-      return "Checking memory, working context, and preferred output shape.";
+      return "Searching memory for prior context and preferred output formats\u2026";
     case 1:
-      return "Running landscape research to capture current examples, tools, and operating signals.";
+      return "Starting landscape scan \u2014 searching for current examples, tools, and market signals.";
     case 2:
-      return "Reviewing studies, evidence, and effectiveness claims for the request.";
+      return "Starting evidence review \u2014 looking for studies, data, and effectiveness claims.";
     case 3:
-      return "Mapping concerns, risks, and policy or operator responses.";
+      return "Starting policy mapping \u2014 scanning for risks, regulations, and operator responses.";
     default:
-      return "Reading the completed research tracks and compiling the final report.";
+      return "Beginning synthesis \u2014 reading all research tracks and preparing the final report.";
   }
 }
 
