@@ -85,6 +85,22 @@ export const AssistantMessageCompletedDataSchema = z.object({
   completedAt: z.string().datetime()
 });
 
+export const AssistantMessageStatusSchema = z.enum(["streaming", "completed"]);
+
+export const AssistantMessageSnapshotSchema = z.object({
+  id: z.string(),
+  runId: z.string(),
+  kind: AssistantMessageKindSchema,
+  content: z.string(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  status: AssistantMessageStatusSchema
+});
+
+export const AssistantMessageListResponseSchema = z.object({
+  assistantMessages: z.array(AssistantMessageSnapshotSchema)
+});
+
 export const EventEnvelopeSchema = z.object({
   type: EventTypeSchema,
   data: z.unknown()
@@ -280,6 +296,10 @@ export type AssistantMessageDeltaData = z.infer<
 export type AssistantMessageCompletedData = z.infer<
   typeof AssistantMessageCompletedDataSchema
 >;
+export type AssistantMessageStatus = z.infer<typeof AssistantMessageStatusSchema>;
+export type AssistantMessageSnapshot = z.infer<
+  typeof AssistantMessageSnapshotSchema
+>;
 export type OutcomeUpdatedEvent = z.infer<typeof OutcomeUpdatedEventSchema>;
 export type MessageCreatedEvent = z.infer<typeof MessageCreatedEventSchema>;
 export type PlanCreatedEvent = z.infer<typeof PlanCreatedEventSchema>;
@@ -298,6 +318,9 @@ export type RunUpdatedEvent = z.infer<typeof RunUpdatedEventSchema>;
 export type RunLogData = z.infer<typeof RunLogDataSchema>;
 export type RunLogEvent = z.infer<typeof RunLogEventSchema>;
 export type RunLogListResponse = z.infer<typeof RunLogListResponseSchema>;
+export type AssistantMessageListResponse = z.infer<
+  typeof AssistantMessageListResponseSchema
+>;
 export type ArtifactCreatedEvent = z.infer<typeof ArtifactCreatedEventSchema>;
 export type CheckpointCreatedEvent = z.infer<typeof CheckpointCreatedEventSchema>;
 export type ApprovalRequestedEvent = z.infer<typeof ApprovalRequestedEventSchema>;

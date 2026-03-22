@@ -2,7 +2,7 @@ import type {
   Approval,
   AssistantMessageCompletedData,
   AssistantMessageDeltaData,
-  AssistantMessageKind,
+  AssistantMessageSnapshot,
   AssistantMessageStartedData,
   Artifact,
   MessageCreatedData,
@@ -23,15 +23,7 @@ export type OutcomeConversationState = {
   assistantMessages: AssistantNarrativeMessage[];
 };
 
-export type AssistantNarrativeMessage = {
-  id: string;
-  runId: string;
-  kind: AssistantMessageKind;
-  content: string;
-  createdAt: string;
-  updatedAt: string;
-  status: "streaming" | "completed";
-};
+export type AssistantNarrativeMessage = AssistantMessageSnapshot;
 
 export type StepCardData = {
   step: RunStep;
@@ -268,6 +260,7 @@ export function buildInitialOutcomeConversationState(
   initialRun: RunDetail | null,
   initialArtifacts: Artifact[],
   initialLogs: RunLogData[],
+  initialAssistantMessages: AssistantNarrativeMessage[],
   initialPendingApprovals: Approval[]
 ): OutcomeConversationState {
   return {
@@ -277,7 +270,7 @@ export function buildInitialOutcomeConversationState(
     logs: sortLogsInternal(initialLogs),
     pendingApprovals: initialPendingApprovals,
     messages: [],
-    assistantMessages: []
+    assistantMessages: sortAssistantMessagesInternal(initialAssistantMessages)
   };
 }
 

@@ -45,6 +45,30 @@ function createEntryFromEvent(event: OutcomeStreamEvent): ActivityEntry {
         timestamp: event.data.updatedAt,
         tone: "accent"
       };
+    case "assistant.message.started":
+      return {
+        id: `${event.data.messageId}:started`,
+        title: `Assistant ${event.data.kind} started`,
+        body: `Streaming a ${event.data.kind} narrative update.`,
+        timestamp: event.data.createdAt,
+        tone: "accent"
+      };
+    case "assistant.message.delta":
+      return {
+        id: `${event.data.messageId}:delta:${event.data.updatedAt}`,
+        title: `Assistant ${event.data.kind} updated`,
+        body: event.data.content,
+        timestamp: event.data.updatedAt,
+        tone: "accent"
+      };
+    case "assistant.message.completed":
+      return {
+        id: `${event.data.messageId}:completed:${event.data.completedAt}`,
+        title: `Assistant ${event.data.kind} completed`,
+        body: event.data.content,
+        timestamp: event.data.completedAt,
+        tone: event.data.kind === "delivery" ? "success" : "accent"
+      };
     case "run.created":
       return {
         id: `${event.data.id}:created`,

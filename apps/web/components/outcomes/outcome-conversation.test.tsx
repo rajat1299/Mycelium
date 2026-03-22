@@ -143,6 +143,7 @@ describe("OutcomeConversation", () => {
             createdAt: "2026-03-19T00:01:34.000Z"
           }
         ]}
+        initialAssistantMessages={[]}
         initialPendingApprovals={[]}
       />
     );
@@ -205,6 +206,7 @@ describe("OutcomeConversation", () => {
         }}
         initialArtifacts={[]}
         initialLogs={[]}
+        initialAssistantMessages={[]}
         initialPendingApprovals={[]}
       />
     );
@@ -278,6 +280,7 @@ describe("OutcomeConversation", () => {
         }}
         initialArtifacts={[]}
         initialLogs={[]}
+        initialAssistantMessages={[]}
         initialPendingApprovals={[
           {
             id: "approval_123",
@@ -316,6 +319,7 @@ describe("OutcomeConversation", () => {
         initialRun={null}
         initialArtifacts={[]}
         initialLogs={[]}
+        initialAssistantMessages={[]}
         initialPendingApprovals={[]}
       />
     );
@@ -418,6 +422,7 @@ describe("OutcomeConversation", () => {
             createdAt: "2026-03-21T00:03:30.000Z"
           }
         ]}
+        initialAssistantMessages={[]}
         initialPendingApprovals={[]}
       />
     );
@@ -450,6 +455,7 @@ describe("OutcomeConversation", () => {
         }}
         initialArtifacts={[]}
         initialLogs={[]}
+        initialAssistantMessages={[]}
         initialPendingApprovals={[]}
       />
     );

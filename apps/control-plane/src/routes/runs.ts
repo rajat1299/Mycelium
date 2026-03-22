@@ -1,5 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import {
+  AssistantMessageCompletedDataSchema,
+  AssistantMessageDeltaDataSchema,
+  AssistantMessageListResponseSchema,
+  AssistantMessageSnapshotSchema,
+  AssistantMessageStartedDataSchema,
   CapabilityFamilySchema,
   ResumeRunRequestSchema,
   ResumeRunResponseSchema,
@@ -42,6 +47,84 @@ async function buildRunResponse(
   const run = await repositories.runs.getById(runId);
 
   return buildRunDetail(repositories, run);
+}
+
+async function buildAssistantMessageSnapshots(
+  repositories: Repositories,
+  runId: string
+) {
+  const events = await repositories.runs.listEvents(runId);
+  const messages = new Map<string, ReturnType<typeof AssistantMessageSnapshotSchema.parse>>();
+
+  for (const event of events) {
+    switch (event.eventType) {
+      case "assistant.message.started": {
+        const data = AssistantMessageStartedDataSchema.parse(event.payload);
+        const existing = messages.get(data.messageId);
+
+        messages.set(
+          data.messageId,
+          AssistantMessageSnapshotSchema.parse({
+            id: data.messageId,
+            runId: data.runId,
+            kind: data.kind,
+            content: existing?.content ?? "",
+            createdAt: data.createdAt,
+            updatedAt: existing?.updatedAt ?? data.createdAt,
+            status: existing?.status ?? "streaming"
+          })
+        );
+        break;
+      }
+      case "assistant.message.delta": {
+        const data = AssistantMessageDeltaDataSchema.parse(event.payload);
+        const existing = messages.get(data.messageId);
+
+        messages.set(
+          data.messageId,
+          AssistantMessageSnapshotSchema.parse({
+            id: data.messageId,
+            runId: data.runId,
+            kind: data.kind,
+            content: data.content,
+            createdAt: existing?.createdAt ?? data.createdAt,
+            updatedAt: data.updatedAt,
+            status: existing?.status === "completed" ? "completed" : "streaming"
+          })
+        );
+        break;
+      }
+      case "assistant.message.completed": {
+        const data = AssistantMessageCompletedDataSchema.parse(event.payload);
+
+        messages.set(
+          data.messageId,
+          AssistantMessageSnapshotSchema.parse({
+            id: data.messageId,
+            runId: data.runId,
+            kind: data.kind,
+            content: data.content,
+            createdAt: data.createdAt,
+            updatedAt: data.completedAt,
+            status: "completed"
+          })
+        );
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  return Array.from(messages.values()).sort((left, right) => {
+    const createdDelta = left.createdAt.localeCompare(right.createdAt);
+
+    if (createdDelta !== 0) {
+      return createdDelta;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
 }
 
 async function buildRunDetail(
@@ -289,6 +372,31 @@ export function registerRunRoutes(
     return reply.code(200).send(
       RunLogListResponseSchema.parse({
         logs
+      })
+    );
+  });
+
+  app.get("/api/runs/:runId/assistant-messages", async (request, reply) => {
+    const params = request.params as { runId?: string };
+
+    if (!params.runId) {
+      return reply.code(400).send(badRequest("Run id is required."));
+    }
+
+    const run = await options.repositories.runs.getById(params.runId);
+
+    if (!run) {
+      return reply.code(404).send(badRequest("Run not found."));
+    }
+
+    const assistantMessages = await buildAssistantMessageSnapshots(
+      options.repositories,
+      params.runId
+    );
+
+    return reply.code(200).send(
+      AssistantMessageListResponseSchema.parse({
+        assistantMessages
       })
     );
   });

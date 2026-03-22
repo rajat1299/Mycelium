@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   getRun: vi.fn(),
   getLatestRun: vi.fn(),
   getRunArtifacts: vi.fn(),
+  getRunAssistantMessages: vi.fn(),
   getRunCheckpoints: vi.fn(),
   getCheckpoint: vi.fn(),
   getRunAudit: vi.fn(),
@@ -40,6 +41,7 @@ let observedSelectedOutcomeId: string | null = null;
 let observedConversationRun: RunDetail | null = null;
 let observedConversationArtifacts: Artifact[] = [];
 let observedConversationLogs: Array<{ message: string; level: string }> = [];
+let observedConversationAssistantMessages: Array<{ content: string; kind: string }> = [];
 let observedConversationPendingApprovals: Approval[] = [];
 let observedConversationSource: string | null = null;
 
@@ -80,17 +82,20 @@ vi.mock("../../../components/outcomes/outcome-conversation", () => ({
     initialRun,
     initialArtifacts,
     initialLogs,
+    initialAssistantMessages,
     initialPendingApprovals
   }: {
     outcomeSource: string;
     initialRun: RunDetail | null;
     initialArtifacts: Artifact[];
     initialLogs: Array<{ message: string; level: string }>;
+    initialAssistantMessages: Array<{ content: string; kind: string }>;
     initialPendingApprovals: Approval[];
   }) => {
     observedConversationRun = initialRun;
     observedConversationArtifacts = initialArtifacts;
     observedConversationLogs = initialLogs;
+    observedConversationAssistantMessages = initialAssistantMessages;
     observedConversationPendingApprovals = initialPendingApprovals;
     observedConversationSource = outcomeSource;
     return <div data-testid="outcome-conversation" />;
@@ -132,6 +137,7 @@ vi.mock("../../../lib/api", () => ({
   getRun: mocks.getRun,
   getLatestRun: mocks.getLatestRun,
   getRunArtifacts: mocks.getRunArtifacts,
+  getRunAssistantMessages: mocks.getRunAssistantMessages,
   getRunCheckpoints: mocks.getRunCheckpoints,
   getCheckpoint: mocks.getCheckpoint,
   getRunAudit: mocks.getRunAudit,
@@ -155,6 +161,7 @@ describe("OutcomeDetailPage", () => {
     observedConversationRun = null;
     observedConversationArtifacts = [];
     observedConversationLogs = [];
+    observedConversationAssistantMessages = [];
     observedConversationPendingApprovals = [];
     observedConversationSource = null;
     vi.clearAllMocks();
@@ -201,6 +208,17 @@ describe("OutcomeDetailPage", () => {
         level: "info",
         message: "Recovered persisted log output.",
         createdAt: "2026-03-11T00:09:20.000Z"
+      }
+    ]);
+    mocks.getRunAssistantMessages.mockResolvedValue([
+      {
+        id: "assistant_123",
+        runId: "run_latest",
+        kind: "acknowledgment",
+        content: "I'll start by loading relevant skills.",
+        createdAt: "2026-03-11T00:09:10.000Z",
+        updatedAt: "2026-03-11T00:09:12.000Z",
+        status: "completed"
       }
     ]);
     mocks.getRunArtifactLineage.mockResolvedValue([
@@ -380,6 +398,7 @@ describe("OutcomeDetailPage", () => {
     expect(mocks.listApprovals).toHaveBeenCalledWith("ws_default");
     expect(mocks.getRunArtifacts).toHaveBeenCalledWith("run_latest");
     expect(mocks.getRunLogs).toHaveBeenCalledWith("run_latest");
+    expect(mocks.getRunAssistantMessages).toHaveBeenCalledWith("run_latest");
     expect(mocks.listAuthProfiles).not.toHaveBeenCalled();
     expect(mocks.listWorkers).not.toHaveBeenCalled();
     expect(mocks.getRunArtifactLineage).not.toHaveBeenCalled();
@@ -409,6 +428,12 @@ describe("OutcomeDetailPage", () => {
       expect.objectContaining({
         message: "Recovered persisted log output.",
         level: "info"
+      })
+    ]);
+    expect(observedConversationAssistantMessages).toEqual([
+      expect.objectContaining({
+        kind: "acknowledgment",
+        content: "I'll start by loading relevant skills."
       })
     ]);
     expect(observedConversationPendingApprovals).toEqual([
@@ -447,6 +472,7 @@ describe("OutcomeDetailPage", () => {
     expect(mocks.listApprovals).toHaveBeenCalledWith("ws_default");
     expect(mocks.getRunArtifacts).toHaveBeenCalledWith("run_latest");
     expect(mocks.getRunLogs).toHaveBeenCalledWith("run_latest");
+    expect(mocks.getRunAssistantMessages).toHaveBeenCalledWith("run_latest");
     expect(mocks.listAuthProfiles).not.toHaveBeenCalled();
     expect(mocks.getRunArtifactLineage).not.toHaveBeenCalled();
     expect(mocks.getRunCheckpoints).not.toHaveBeenCalled();

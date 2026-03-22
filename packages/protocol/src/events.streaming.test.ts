@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { OutcomeStreamEventSchema } from "./index";
+import {
+  AssistantMessageListResponseSchema,
+  OutcomeStreamEventSchema
+} from "./index";
 
 describe("assistant streaming event contracts", () => {
   it("accepts assistant message lifecycle events", () => {
@@ -44,5 +47,24 @@ describe("assistant streaming event contracts", () => {
     expect(started.type).toBe("assistant.message.started");
     expect(delta.type).toBe("assistant.message.delta");
     expect(completed.type).toBe("assistant.message.completed");
+  });
+
+  it("accepts assistant message snapshots for initial hydration", () => {
+    const snapshots = AssistantMessageListResponseSchema.parse({
+      assistantMessages: [
+        {
+          id: "assistant_msg_1",
+          runId: "run_123",
+          kind: "acknowledgment",
+          content: "I'll start by loading relevant skills.",
+          createdAt: "2026-03-22T00:00:00.000Z",
+          updatedAt: "2026-03-22T00:00:01.000Z",
+          status: "completed"
+        }
+      ]
+    });
+
+    expect(snapshots.assistantMessages).toHaveLength(1);
+    expect(snapshots.assistantMessages[0]?.status).toBe("completed");
   });
 });

@@ -3,6 +3,7 @@
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Approval,
+  AssistantMessageSnapshot,
   Artifact,
   OutcomeSource,
   Plan,
@@ -52,6 +53,7 @@ type OutcomeConversationProps = {
   initialRun: RunDetail | null;
   initialArtifacts: Artifact[];
   initialLogs: RunLogData[];
+  initialAssistantMessages: AssistantMessageSnapshot[];
   initialPendingApprovals: Approval[];
 };
 
@@ -95,6 +97,7 @@ export function OutcomeConversation({
   initialRun,
   initialArtifacts,
   initialLogs,
+  initialAssistantMessages,
   initialPendingApprovals
 }: OutcomeConversationProps) {
   const [state, setState] = useState<OutcomeConversationState>(() =>
@@ -103,6 +106,7 @@ export function OutcomeConversation({
       initialRun,
       initialArtifacts,
       initialLogs,
+      initialAssistantMessages,
       initialPendingApprovals
     )
   );
@@ -118,10 +122,18 @@ export function OutcomeConversation({
         initialRun,
         initialArtifacts,
         initialLogs,
+        initialAssistantMessages,
         initialPendingApprovals
       )
     );
-  }, [initialPlan, initialRun, initialArtifacts, initialLogs, initialPendingApprovals]);
+  }, [
+    initialPlan,
+    initialRun,
+    initialArtifacts,
+    initialLogs,
+    initialAssistantMessages,
+    initialPendingApprovals
+  ]);
 
   useEffect(() => {
     return subscribeToOutcomeEvents(outcomeId, (event) => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  AssistantMessageListResponseSchema,
   ArtifactListResponseSchema,
   PlanSchema,
   RunDetailSchema,
@@ -213,6 +214,14 @@ describe("development simulation mode", () => {
       });
       const artifacts = ArtifactListResponseSchema.parse(readArtifacts.json()).artifacts;
 
+      const readAssistantMessages = await app.inject({
+        method: "GET",
+        url: `/api/runs/${run.id}/assistant-messages`
+      });
+      const assistantMessages = AssistantMessageListResponseSchema.parse(
+        readAssistantMessages.json()
+      ).assistantMessages;
+
       expect(artifacts).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -228,6 +237,25 @@ describe("development simulation mode", () => {
         ])
       );
       expect(artifacts).toHaveLength(6);
+      expect(assistantMessages).toEqual([
+        expect.objectContaining({
+          kind: "acknowledgment",
+          status: "completed"
+        }),
+        expect.objectContaining({
+          kind: "transition",
+          status: "completed"
+        }),
+        expect.objectContaining({
+          kind: "transition",
+          status: "completed"
+        }),
+        expect.objectContaining({
+          kind: "delivery",
+          status: "completed",
+          content: expect.stringContaining("Here's your report")
+        })
+      ]);
 
       expect(events.some((event) => event.type === "run.updated")).toBe(true);
       expect(events.some((event) => event.type === "assistant.message.started")).toBe(true);

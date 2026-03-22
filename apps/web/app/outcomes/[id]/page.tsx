@@ -11,6 +11,7 @@ import {
   getOutcome,
   getPlan,
   getRunArtifacts,
+  getRunAssistantMessages,
   getRunLogs,
   getRun
 } from "../../../lib/api";
@@ -58,14 +59,16 @@ export default async function OutcomeDetailPage({
 
   const outcomesPromise = listOutcomes(outcome.workspaceId);
   const approvalsPromise = listApprovals(outcome.workspaceId);
-  const [artifacts, logs, approvals, outcomes] = run
+  const [artifacts, logs, assistantMessages, approvals, outcomes] = run
     ? await Promise.all([
         getRunArtifacts(run.id),
         getRunLogs(run.id),
+        getRunAssistantMessages(run.id),
         approvalsPromise,
         outcomesPromise
       ])
     : [
+        [],
         [],
         [],
         await approvalsPromise,
@@ -155,6 +158,7 @@ export default async function OutcomeDetailPage({
               initialRun={run}
               initialArtifacts={artifacts}
               initialLogs={logs}
+              initialAssistantMessages={assistantMessages}
               initialPendingApprovals={pendingApprovalsForRun}
             />
           </div>

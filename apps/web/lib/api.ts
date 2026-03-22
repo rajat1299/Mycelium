@@ -1,6 +1,7 @@
 import {
   ApprovalListResponseSchema,
   ApprovalSchema,
+  AssistantMessageListResponseSchema,
   AuditListResponseSchema,
   AuthProfileSchema,
   ArtifactListResponseSchema,
@@ -30,6 +31,7 @@ import {
   type CreateRunRequest,
   type AuthProfile,
   type Approval,
+  type AssistantMessageSnapshot,
   type AuditEvent,
   type ArtifactLineageEdge,
   type CheckpointDetail,
@@ -296,6 +298,31 @@ export async function getRunLogs(runId: string) {
     );
 
     return parsed.logs;
+  } catch {
+    return [];
+  }
+}
+
+export async function getRunAssistantMessages(
+  runId: string
+): Promise<AssistantMessageSnapshot[]> {
+  try {
+    const response = await fetch(
+      `${getControlPlaneBaseUrl()}/api/runs/${runId}/assistant-messages`,
+      {
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const parsed = await parseJson(response, (value) =>
+      AssistantMessageListResponseSchema.parse(value)
+    );
+
+    return parsed.assistantMessages;
   } catch {
     return [];
   }
