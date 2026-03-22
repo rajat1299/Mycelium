@@ -83,65 +83,6 @@ function formatStepTimestamp(step: RunStep) {
   return `${time} \u00b7 ${hours}h ${minutes % 60}m`;
 }
 
-function assistantKindLabel(kind: AssistantMessageSnapshot["kind"]) {
-  switch (kind) {
-    case "acknowledgment":
-      return "Starting";
-    case "transition":
-      return "Progress update";
-    case "delivery":
-      return "Delivery";
-    default:
-      return "Update";
-  }
-}
-
-function stepStatusLabel(step: RunStep) {
-  switch (step.status) {
-    case "running":
-    case "claimed":
-      return "Working";
-    case "completed":
-      return "Complete";
-    case "failed":
-      return "Failed";
-    case "blocked":
-      return "Blocked";
-    default:
-      return "Queued";
-  }
-}
-
-function stepCategoryLabel(step: RunStep) {
-  if (step.kind === "root") {
-    return "Context gathering";
-  }
-
-  if (step.kind === "synthesis") {
-    return "Synthesis";
-  }
-
-  return "Research track";
-}
-
-function previewStatsFromArtifact(artifact: Artifact) {
-  const raw = artifact.metadata.previewStats;
-
-  if (!Array.isArray(raw)) {
-    return [];
-  }
-
-  return raw.filter(
-    (value): value is { label: string; value: string } =>
-      typeof value === "object" &&
-      value !== null &&
-      "label" in value &&
-      typeof value.label === "string" &&
-      "value" in value &&
-      typeof value.value === "string"
-  );
-}
-
 /* ── Easing ─────────────────────────────────────────────────────────── */
 
 const ease = [0.25, 1, 0.5, 1] as const;
@@ -316,7 +257,7 @@ export function OutcomeConversation({
   /* ── Render ─────────────────────────────────────────────────── */
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       {feedItems.map((item, index) => {
         const isFromSSE = !(mountKeysRef.current?.has(item.key) ?? true);
         const delay = isFromSSE ? 0 : Math.min(index * 0.06, 0.5);
@@ -331,10 +272,7 @@ export function OutcomeConversation({
                 transition={{ duration: 0.4, ease }}
                 className="flex justify-end"
               >
-                <div className="max-w-[85%] rounded-[1.6rem] rounded-br-lg border border-accent/10 bg-accent-soft px-5 py-4 shadow-[0_14px_32px_-26px_rgba(22,163,74,0.45)]">
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted/70">
-                    You asked
-                  </p>
+                <div className="max-w-[85%] rounded-2xl rounded-br-lg bg-accent-soft px-5 py-3.5">
                   <p className="text-[15px] leading-relaxed text-ink whitespace-pre-wrap [text-wrap:pretty]">
                     {promptPreview}
                   </p>
@@ -476,10 +414,10 @@ export function OutcomeConversation({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.3, ease }}
-                className="flex items-center gap-2 rounded-[1.4rem] border border-panel-line/60 bg-panel/70 px-4 py-4 text-sm text-muted"
+                className="flex items-center gap-2 py-6 text-sm text-muted"
               >
                 <Loader2 className="h-4 w-4 animate-spin text-accent" />
-                <span>Waiting for the first task to start&hellip;</span>
+                <span>Preparing steps&hellip;</span>
               </motion.div>
             );
         }
@@ -510,32 +448,18 @@ function ActionGroup({
       <button
         type="button"
         onClick={() => setOpen((c) => !c)}
-        className="w-full rounded-[1.6rem] border border-panel-line/70 bg-panel/80 px-5 py-4 text-left shadow-card transition-all duration-200 hover:border-panel-line hover:shadow-card-hover"
+        className="flex w-full items-center gap-2.5 text-left group"
       >
-        <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-surface-elevated text-muted shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]">
-            <Monitor className="h-4 w-4" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted/70">
-                Execution plan
-              </p>
-              <span className="rounded-full border border-panel-line/60 bg-surface-elevated/80 px-2.5 py-1 text-[11px] font-medium text-muted">
-                {title}
-              </span>
-            </div>
-            <p className="mt-2 text-sm leading-6 text-muted">
-              The run keeps this checklist visible while detailed work cards appear below as execution starts.
-            </p>
-          </div>
-          <ChevronDown
-            className={cn(
-              "mt-1 h-4 w-4 shrink-0 text-muted/50 transition-transform duration-200",
-              open && "rotate-180"
-            )}
-          />
-        </div>
+        <Monitor className="h-4 w-4 shrink-0 text-muted" />
+        <span className="flex-1 truncate text-sm font-medium text-muted">
+          {title}
+        </span>
+        <ChevronDown
+          className={cn(
+            "h-3.5 w-3.5 shrink-0 text-muted/50 transition-transform duration-200",
+            open && "rotate-180"
+          )}
+        />
       </button>
 
       <AnimatePresence initial={false}>
@@ -547,12 +471,9 @@ function ActionGroup({
             transition={{ duration: 0.2, ease }}
             className="overflow-hidden"
           >
-            <ol className="mt-3 ml-4 flex flex-col gap-2 border-l border-panel-line/40 pl-5">
+            <ol className="mt-3 ml-6 flex flex-col gap-1.5 border-l border-panel-line/40 pl-4">
               {items.map((item) => (
-                <li
-                  key={item.id}
-                  className="flex items-start gap-3 rounded-[1.2rem] bg-surface-elevated/55 px-3 py-2.5 text-sm"
-                >
+                <li key={item.id} className="flex items-start gap-2.5 text-sm">
                   <span className="mt-0.5 shrink-0">
                     {item.status === "completed" ? (
                       <CheckCircle2 className="h-4 w-4 text-emerald-500" />
@@ -564,20 +485,18 @@ function ActionGroup({
                       <CircleDashed className="h-4 w-4 text-muted/40" />
                     )}
                   </span>
-                  <div className="min-w-0 flex-1">
-                    <span
-                      className={cn(
-                        "block leading-6",
-                        item.status === "completed"
-                          ? "text-muted line-through decoration-muted/30"
-                          : item.status === "running"
-                            ? "text-ink"
-                            : "text-muted"
-                      )}
-                    >
-                      {item.title}
-                    </span>
-                  </div>
+                  <span
+                    className={cn(
+                      "leading-6",
+                      item.status === "completed"
+                        ? "text-muted line-through decoration-muted/30"
+                        : item.status === "running"
+                          ? "text-ink"
+                          : "text-muted"
+                    )}
+                  >
+                    {item.title}
+                  </span>
                 </li>
               ))}
             </ol>
@@ -593,71 +512,25 @@ function AssistantNarrativeBlock({
 }: {
   message: AssistantMessageSnapshot;
 }) {
-  const isStreaming = message.status === "streaming";
-  const isDelivery = message.kind === "delivery";
-
   if (message.status === "streaming") {
     return (
-      <div
-        className={cn(
-          "rounded-[1.6rem] border px-5 py-4 shadow-card",
-          isDelivery
-            ? "border-emerald-200/70 bg-emerald-50/55"
-            : "border-panel-line/70 bg-panel/80"
-        )}
-      >
-        <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted/70">
-          <span className="flex items-center gap-2 text-ink">
-            <Sparkles className="h-3.5 w-3.5 text-accent" />
-            Mycelium
-          </span>
-          <span className="rounded-full border border-panel-line/60 bg-surface-elevated/80 px-2.5 py-1 text-[10px] tracking-[0.16em] text-muted">
-            {assistantKindLabel(message.kind)}
-          </span>
-          {isStreaming ? (
-            <span className="rounded-full border border-accent/20 bg-accent-soft px-2.5 py-1 text-[10px] tracking-[0.16em] text-accent">
-              Live
-            </span>
-          ) : null}
-        </div>
-
-        <div className="prose-feed">
-          <p className="whitespace-pre-wrap [text-wrap:pretty]">
-            {message.content}
-            <span
-              className="ml-0.5 inline-block h-[1.1em] w-[2px] bg-accent align-text-bottom"
-              style={{ animation: "blink-cursor 1s step-end infinite" }}
-            />
-          </p>
-        </div>
+      <div className="prose-feed">
+        <p className="whitespace-pre-wrap [text-wrap:pretty]">
+          {message.content}
+          <span
+            className="ml-0.5 inline-block h-[1.1em] w-[2px] bg-accent align-text-bottom"
+            style={{ animation: "blink-cursor 1s step-end infinite" }}
+          />
+        </p>
       </div>
     );
   }
 
   return (
-    <div
-      className={cn(
-        "rounded-[1.6rem] border px-5 py-4 shadow-card",
-        isDelivery
-          ? "border-emerald-200/70 bg-emerald-50/55"
-          : "border-panel-line/70 bg-panel/80"
-      )}
-    >
-      <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted/70">
-        <span className="flex items-center gap-2 text-ink">
-          <Sparkles className="h-3.5 w-3.5 text-accent" />
-          Mycelium
-        </span>
-        <span className="rounded-full border border-panel-line/60 bg-surface-elevated/80 px-2.5 py-1 text-[10px] tracking-[0.16em] text-muted">
-          {assistantKindLabel(message.kind)}
-        </span>
-      </div>
-
-      <div className="prose-feed">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-          {message.content}
-        </ReactMarkdown>
-      </div>
+    <div className="prose-feed">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        {message.content}
+      </ReactMarkdown>
     </div>
   );
 }
@@ -750,8 +623,6 @@ function SubtaskOutputCard({
   const artifactIsNew = !mountSnapshot.current.hadArtifact && !!primaryArtifact;
   const modelIsNew = !mountSnapshot.current.hadModel && !!step.routeModelId;
   const doneIsNew = !mountSnapshot.current.wasDone && isDone;
-  const statusLabel = stepStatusLabel(step);
-  const previewStats = primaryArtifact ? previewStatsFromArtifact(primaryArtifact) : [];
 
   const fileInfo = primaryArtifact && !promotesResultDelivery
     ? {
@@ -786,89 +657,56 @@ function SubtaskOutputCard({
       animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
       transition={{ duration: 0.4, ease, delay }}
       className={cn(
-        "overflow-hidden rounded-[1.6rem] border bg-panel/90 transition-shadow duration-300",
+        "overflow-hidden rounded-2xl transition-shadow duration-300",
         isRunning
-          ? "border-accent/20 shadow-card-active"
+          ? "shadow-card-active"
           : isFailed
-            ? "border-red-300/30 shadow-card-error"
-            : isDone
-              ? "border-emerald-200/60 shadow-card hover:shadow-card-hover"
-              : "border-panel-line/70 shadow-card hover:shadow-card-hover"
+            ? "shadow-card-error"
+            : "shadow-card hover:shadow-card-hover"
       )}
     >
-      <div className="px-5 py-4">
-        <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-surface-elevated text-muted shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]">
-            {statusIcon}
-          </div>
+      <div className="flex items-center gap-3 px-5 py-3.5">
+        {statusIcon}
+        <h4 className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
+          {step.title}
+        </h4>
 
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted/70">
-                {stepCategoryLabel(step)}
-              </p>
-              <span
-                className={cn(
-                  "rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]",
-                  isRunning
-                    ? "border-accent/20 bg-accent-soft text-accent"
-                    : isDone
-                      ? "border-emerald-300/50 bg-emerald-50 text-emerald-700"
-                      : isFailed
-                        ? "border-red-300/40 bg-red-50 text-red-500"
-                        : "border-panel-line/60 bg-surface-elevated/80 text-muted"
-                )}
-              >
-                {statusLabel}
-              </span>
-            </div>
+        <AnimatePresence>
+          {step.routeModelId && (
+            <motion.div
+              initial={modelIsNew ? { opacity: 0, scale: 0.92 } : false}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.25, ease }}
+              className="flex shrink-0 items-center gap-1.5 rounded-full border border-panel-line/50 bg-surface-elevated px-2.5 py-1 text-[11px] font-medium text-muted"
+            >
+              <Sparkles className="h-3 w-3" />
+              <span>{step.routeModelId}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-            <div className="mt-2 flex flex-wrap items-center gap-3">
-              <h4 className="min-w-0 flex-1 text-[15px] font-semibold leading-6 text-ink [text-wrap:balance]">
-                {step.title}
-              </h4>
-
-              <AnimatePresence>
-                {isDone && (
-                  <motion.span
-                    initial={doneIsNew ? { opacity: 0 } : false}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: 0.3, delay: 0.1 }}
-                    className="shrink-0 text-[11px] tabular-nums text-muted/60"
-                  >
-                    {formatStepTimestamp(step)}
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </div>
-
-            <AnimatePresence>
-              {step.routeModelId && (
-                <motion.div
-                  initial={modelIsNew ? { opacity: 0, scale: 0.92 } : false}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.25, ease }}
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-panel-line/50 bg-surface-elevated px-2.5 py-1 text-[11px] font-medium text-muted"
-                >
-                  <Sparkles className="h-3 w-3" />
-                  <span>{step.routeModelId}</span>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
+        <AnimatePresence>
+          {isDone && (
+            <motion.span
+              initial={doneIsNew ? { opacity: 0 } : false}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.3, delay: 0.1 }}
+              className="shrink-0 text-[11px] tabular-nums text-muted/60"
+            >
+              {formatStepTimestamp(step)}
+            </motion.span>
+          )}
+        </AnimatePresence>
       </div>
 
-      <div className="px-5 pb-5">
-        <div className="rounded-[1.35rem] bg-surface-elevated/70 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]">
-        {/* File info — materializes when artifact is created */}
+      <div className="px-5 py-4 shadow-[inset_0_1px_0_var(--panel-line)]">
         <AnimatePresence>
           {fileInfo && (
             <motion.p
               initial={artifactIsNew ? { opacity: 0, y: -4 } : false}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, ease }}
-              className="mb-4 rounded-[1rem] border border-panel-line/60 bg-panel/75 px-3.5 py-3 text-sm text-muted"
+              className="mb-3 text-sm text-muted"
             >
               {isDone ? "Research complete. Saved to" : "Saving to"}{" "}
               <code className="rounded bg-surface-elevated px-1.5 py-0.5 font-mono text-[12px] text-accent">
@@ -898,29 +736,10 @@ function SubtaskOutputCard({
               animate={{ opacity: 1 }}
               transition={{ duration: 0.2 }}
             >
-              <div className="space-y-4">
-                <p className="text-sm leading-7 text-muted">
-                  Final artifact packaged. The delivery block below carries the
-                  file path and summary.
-                </p>
-                {previewStats.length > 0 ? (
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {previewStats.map((stat) => (
-                      <div
-                        key={`${step.id}:${stat.label}`}
-                        className="rounded-[1rem] border border-panel-line/60 bg-panel/75 px-3 py-2.5"
-                      >
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted/60">
-                          {stat.label}
-                        </p>
-                        <p className="mt-1 text-sm font-semibold text-ink">
-                          {stat.value}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
+              <p className="text-sm leading-7 text-muted">
+                Final artifact packaged. The delivery block below carries the
+                file path and summary.
+              </p>
             </motion.div>
           ) : isRunning && !outputText && !latestLog ? (
             <motion.div
@@ -931,7 +750,7 @@ function SubtaskOutputCard({
               transition={{ duration: 0.15 }}
               className="flex items-center gap-2 py-3 text-sm text-muted"
             >
-              <span>Working</span>
+              <span>Generating</span>
               <span className="flex gap-1">
                 {[0, 200, 400].map((d) => (
                   <span
@@ -987,7 +806,6 @@ function SubtaskOutputCard({
             </motion.div>
           )}
         </AnimatePresence>
-        </div>
       </div>
     </motion.div>
   );
@@ -1008,14 +826,12 @@ function ArtifactDeliveryCard({
   step: RunStep | null;
   delay: number;
 }) {
-  const previewStats = previewStatsFromArtifact(artifact);
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 10, filter: "blur(4px)" }}
       animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
       transition={{ duration: 0.35, ease, delay }}
-      className="rounded-[1.75rem] border border-emerald-200/70 bg-emerald-50/60 p-5 shadow-[0_18px_40px_-28px_rgba(22,163,74,0.55)]"
+      className="rounded-2xl border border-emerald-200/60 bg-emerald-50/60 p-5 shadow-[0_12px_35px_-24px_rgba(22,163,74,0.55)]"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-2">
@@ -1035,32 +851,14 @@ function ArtifactDeliveryCard({
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-        <div className="rounded-[1.35rem] border border-emerald-200/70 bg-white/85 px-4 py-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
-            Workspace output
-          </p>
-          <code className="mt-3 block text-sm text-emerald-700">{workspacePath}</code>
-          <p className="mt-2 text-xs text-muted">
-            {formatByteSize(artifact.size)}
-          </p>
-        </div>
-
-        {previewStats.length > 0 ? (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-            {previewStats.map((stat) => (
-              <div
-                key={`${artifact.id}:${stat.label}`}
-                className="rounded-[1.2rem] border border-emerald-200/70 bg-white/70 px-3.5 py-3"
-              >
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted/70">
-                  {stat.label}
-                </p>
-                <p className="mt-1 text-sm font-semibold text-ink">{stat.value}</p>
-              </div>
-            ))}
-          </div>
-        ) : null}
+      <div className="mt-4 rounded-[1.25rem] border border-emerald-200/70 bg-white/80 px-4 py-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+          Workspace output
+        </p>
+        <code className="mt-2 block text-sm text-emerald-700">{workspacePath}</code>
+        <p className="mt-2 text-xs text-muted">
+          {formatByteSize(artifact.size)}
+        </p>
       </div>
     </motion.div>
   );
