@@ -511,6 +511,7 @@ function SubtaskOutputCard({
   const isRunning = step.status === "running" || step.status === "claimed";
   const isDone = step.status === "completed";
   const isFailed = step.status === "failed";
+  const promotesResultDelivery = isDone && primaryArtifact?.kind === "result";
 
   /* ── Track what existed when this card mounted ──────────────── */
   const mountSnapshot = useRef({
@@ -529,7 +530,7 @@ function SubtaskOutputCard({
   const modelIsNew = !mountSnapshot.current.hadModel && !!step.routeModelId;
   const doneIsNew = !mountSnapshot.current.wasDone && isDone;
 
-  const fileInfo = primaryArtifact
+  const fileInfo = primaryArtifact && !promotesResultDelivery
     ? {
         path: displayWorkspacePath(primaryArtifact.relativePath),
         lineCount:
@@ -640,7 +641,19 @@ function SubtaskOutputCard({
 
         {/* Content — phases: generating dots → streaming text → settled text */}
         <AnimatePresence mode="wait">
-          {isRunning && !outputText && !latestLog ? (
+          {promotesResultDelivery ? (
+            <motion.div
+              key="delivery-handoff"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.2 }}
+            >
+              <p className="text-sm leading-7 text-muted">
+                Final artifact packaged. The delivery block below carries the
+                file path and summary.
+              </p>
+            </motion.div>
+          ) : isRunning && !outputText && !latestLog ? (
             /* Phase 1: Generating — bouncing dots */
             <motion.div
               key="generating"

@@ -426,9 +426,9 @@ describe("OutcomeConversation", () => {
     expect(screen.getByText("Final result ready")).toBeInTheDocument();
     expect(
       screen.getAllByText("/home/user/workspace/final-report.pdf").length
-    ).toBeGreaterThan(1);
+    ).toBe(1);
     expect(
       screen.getAllByText("Executive summary and district recommendations.").length
-    ).toBeGreaterThan(1);
+    ).toBe(1);
   });
 });
