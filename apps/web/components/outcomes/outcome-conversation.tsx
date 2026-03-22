@@ -57,6 +57,36 @@ type OutcomeConversationProps = {
   initialPendingApprovals: Approval[];
 };
 
+type OutcomeConversationViewState = {
+  pinnedRunId: string | null;
+  conversation: OutcomeConversationState;
+};
+
+function buildInitialViewState(
+  initialPlan: Plan | null,
+  initialRun: RunDetail | null,
+  initialArtifacts: Artifact[],
+  initialLogs: RunLogData[],
+  initialAssistantMessages: AssistantMessageSnapshot[],
+  initialPendingApprovals: Approval[]
+): OutcomeConversationViewState {
+  return {
+    pinnedRunId: initialRun?.id ?? null,
+    conversation: buildInitialOutcomeConversationState(
+      initialPlan,
+      initialRun,
+      initialArtifacts,
+      initialLogs,
+      initialAssistantMessages,
+      initialPendingApprovals
+    )
+  };
+}
+
+function resolveActiveRunId(state: OutcomeConversationViewState) {
+  return state.pinnedRunId ?? state.conversation.run?.id ?? null;
+}
+
 function readErrorMessage(payload: unknown, action: "approve" | "reject") {
   if (
     payload &&
@@ -100,8 +130,8 @@ export function OutcomeConversation({
   initialAssistantMessages,
   initialPendingApprovals
 }: OutcomeConversationProps) {
-  const [state, setState] = useState<OutcomeConversationState>(() =>
-    buildInitialOutcomeConversationState(
+  const [viewState, setViewState] = useState<OutcomeConversationViewState>(() =>
+    buildInitialViewState(
       initialPlan,
       initialRun,
       initialArtifacts,
@@ -116,8 +146,8 @@ export function OutcomeConversation({
   const mountKeysRef = useRef<Set<string> | null>(null);
 
   useEffect(() => {
-    setState(
-      buildInitialOutcomeConversationState(
+    setViewState(
+      buildInitialViewState(
         initialPlan,
         initialRun,
         initialArtifacts,
@@ -138,91 +168,168 @@ export function OutcomeConversation({
   useEffect(() => {
     return subscribeToOutcomeEvents(outcomeId, (event) => {
       startTransition(() => {
-        setState((current) => {
+        setViewState((current) => {
+          const activeRunId = resolveActiveRunId(current);
+          const conversation = current.conversation;
+
           switch (event.type) {
             case "plan.created":
-              return { ...current, plan: event.data };
-            case "assistant.message.started":
               return {
                 ...current,
-                assistantMessages: startAssistantMessage(
-                  current.assistantMessages,
-                  event.data
-                )
+                conversation: { ...conversation, plan: event.data }
+              };
+            case "assistant.message.started":
+              if (activeRunId && activeRunId !== event.data.runId) return current;
+              return {
+                ...current,
+                pinnedRunId: activeRunId ?? event.data.runId,
+                conversation: {
+                  ...conversation,
+                  assistantMessages: startAssistantMessage(
+                    conversation.assistantMessages,
+                    event.data
+                  )
+                }
               };
             case "assistant.message.delta":
+              if (activeRunId && activeRunId !== event.data.runId) return current;
               return {
                 ...current,
-                assistantMessages: appendAssistantMessageDelta(
-                  current.assistantMessages,
-                  event.data
-                )
+                pinnedRunId: activeRunId ?? event.data.runId,
+                conversation: {
+                  ...conversation,
+                  assistantMessages: appendAssistantMessageDelta(
+                    conversation.assistantMessages,
+                    event.data
+                  )
+                }
               };
             case "assistant.message.completed":
+              if (activeRunId && activeRunId !== event.data.runId) return current;
               return {
                 ...current,
-                assistantMessages: completeAssistantMessage(
-                  current.assistantMessages,
-                  event.data
-                )
+                pinnedRunId: activeRunId ?? event.data.runId,
+                conversation: {
+                  ...conversation,
+                  assistantMessages: completeAssistantMessage(
+                    conversation.assistantMessages,
+                    event.data
+                  )
+                }
               };
             case "run.created":
+              if (activeRunId && activeRunId !== event.data.id) return current;
               return {
                 ...current,
-                run:
-                  current.run && current.run.id === event.data.id
-                    ? { ...current.run, ...event.data }
-                    : {
-                        ...event.data,
-                        steps:
-                          current.run?.id === event.data.id
-                            ? current.run.steps
-                            : []
-                      }
+                pinnedRunId: activeRunId ?? event.data.id,
+                conversation: {
+                  ...conversation,
+                  run:
+                    conversation.run && conversation.run.id === event.data.id
+                      ? { ...conversation.run, ...event.data }
+                      : {
+                          ...event.data,
+                          steps:
+                            conversation.run?.id === event.data.id
+                              ? conversation.run.steps
+                              : []
+                        }
+                }
               };
             case "run.updated":
-              if (!current.run || current.run.id !== event.data.id) return current;
-              return { ...current, run: { ...current.run, ...event.data } };
-            case "run.step.updated":
-              if (!current.run || current.run.id !== event.data.runId) return current;
+              if (
+                !conversation.run ||
+                activeRunId !== event.data.id ||
+                conversation.run.id !== event.data.id
+              ) {
+                return current;
+              }
               return {
                 ...current,
-                run: {
-                  ...current.run,
-                  steps: upsertStep(current.run.steps, event.data)
+                conversation: {
+                  ...conversation,
+                  run: { ...conversation.run, ...event.data }
+                }
+              };
+            case "run.step.updated":
+              if (
+                !conversation.run ||
+                activeRunId !== event.data.runId ||
+                conversation.run.id !== event.data.runId
+              ) {
+                return current;
+              }
+              return {
+                ...current,
+                conversation: {
+                  ...conversation,
+                  run: {
+                    ...conversation.run,
+                    steps: upsertStep(conversation.run.steps, event.data)
+                  }
                 }
               };
             case "run.log":
-              if (!current.run || current.run.id !== event.data.runId) return current;
-              return { ...current, logs: appendLog(current.logs, event.data) };
-            case "artifact.created":
-              if (!current.run || current.run.id !== event.data.runId) return current;
+              if (
+                !conversation.run ||
+                activeRunId !== event.data.runId ||
+                conversation.run.id !== event.data.runId
+              ) {
+                return current;
+              }
               return {
                 ...current,
-                artifacts: upsertArtifact(current.artifacts, event.data)
+                conversation: {
+                  ...conversation,
+                  logs: appendLog(conversation.logs, event.data)
+                }
+              };
+            case "artifact.created":
+              if (
+                !conversation.run ||
+                activeRunId !== event.data.runId ||
+                conversation.run.id !== event.data.runId
+              ) {
+                return current;
+              }
+              return {
+                ...current,
+                conversation: {
+                  ...conversation,
+                  artifacts: upsertArtifact(conversation.artifacts, event.data)
+                }
               };
             case "approval.requested":
               return {
                 ...current,
-                pendingApprovals: current.pendingApprovals.some(
-                  (a) => a.id === event.data.id
-                )
-                  ? current.pendingApprovals.map((a) =>
-                      a.id === event.data.id ? event.data : a
-                    )
-                  : [...current.pendingApprovals, event.data]
+                conversation: {
+                  ...conversation,
+                  pendingApprovals: conversation.pendingApprovals.some(
+                    (a) => a.id === event.data.id
+                  )
+                    ? conversation.pendingApprovals.map((a) =>
+                        a.id === event.data.id ? event.data : a
+                      )
+                    : [...conversation.pendingApprovals, event.data]
+                }
               };
             case "approval.resolved":
               return {
                 ...current,
-                pendingApprovals: current.pendingApprovals.filter(
-                  (a) => a.id !== event.data.id
-                )
+                conversation: {
+                  ...conversation,
+                  pendingApprovals: conversation.pendingApprovals.filter(
+                    (a) => a.id !== event.data.id
+                  )
+                }
               };
             case "message.created":
               return {
                 ...current,
-                messages: appendMessage(current.messages, event.data)
+                conversation: {
+                  ...conversation,
+                  messages: appendMessage(conversation.messages, event.data)
+                }
               };
             default:
               return current;
@@ -239,6 +346,7 @@ export function OutcomeConversation({
       ? outcomePrompt
       : `${outcomePrompt.slice(0, 280).trimEnd()}\u2026`;
 
+  const state = viewState.conversation;
   const isLive = !state.run || ["running", "queued", "blocked"].includes(state.run.status);
 
   const feedItems = useMemo(() => {

@@ -553,4 +553,150 @@ describe("OutcomeConversation", () => {
       )
     ).not.toBeInTheDocument();
   });
+
+  it("ignores assistant and run events for a different run while viewing a historical run", () => {
+    render(
+      <OutcomeConversation
+        outcomeId="outcome_123"
+        outcomePrompt="Research AI in K-12 education and generate a PDF."
+        outcomeSource="web"
+        initialPlan={{
+          id: "plan_outcome_123",
+          outcomeId: "outcome_123",
+          status: "draft",
+          createdAt: "2026-03-22T00:00:00.000Z",
+          updatedAt: "2026-03-22T00:00:00.000Z",
+          nodes: [
+            {
+              id: "node_archive",
+              kind: "root",
+              title: "Archive current findings",
+              capability: "reasoning",
+              position: 0
+            }
+          ],
+          edges: []
+        }}
+        initialRun={{
+          id: "run_123",
+          outcomeId: "outcome_123",
+          planId: "plan_outcome_123",
+          status: "completed",
+          createdAt: "2026-03-22T00:00:00.000Z",
+          updatedAt: "2026-03-22T00:04:00.000Z",
+          steps: [
+            {
+              id: "step_archive",
+              runId: "run_123",
+              planNodeId: "node_archive",
+              title: "Archive current findings",
+              kind: "root",
+              capability: "reasoning",
+              status: "completed",
+              position: 0,
+              createdAt: "2026-03-22T00:00:00.000Z",
+              updatedAt: "2026-03-22T00:03:00.000Z"
+            }
+          ]
+        }}
+        initialArtifacts={[
+          {
+            id: "artifact_archive",
+            outcomeId: "outcome_123",
+            runId: "run_123",
+            stepId: "step_archive",
+            kind: "analysis",
+            relativePath: "artifacts/archive-findings.md",
+            size: 512,
+            metadata: {},
+            createdAt: "2026-03-22T00:03:01.000Z"
+          }
+        ]}
+        initialLogs={[
+          {
+            runId: "run_123",
+            stepId: "step_archive",
+            stepTitle: "Archive current findings",
+            level: "info",
+            message: "Historical run completed successfully.",
+            createdAt: "2026-03-22T00:03:00.000Z"
+          }
+        ]}
+        initialAssistantMessages={[
+          {
+            id: "assistant_msg_historical",
+            runId: "run_123",
+            kind: "acknowledgment",
+            content: "I archived the previous run and preserved the research trail.",
+            createdAt: "2026-03-22T00:00:10.000Z",
+            updatedAt: "2026-03-22T00:00:20.000Z",
+            status: "completed"
+          }
+        ]}
+        initialPendingApprovals={[]}
+      />
+    );
+
+    act(() => {
+      for (const handler of eventStream.handlers) {
+        handler({
+          outcomeId: "outcome_123",
+          type: "run.created",
+          data: {
+            id: "run_456",
+            outcomeId: "outcome_123",
+            planId: "plan_outcome_123",
+            status: "running",
+            createdAt: "2026-03-22T00:05:00.000Z",
+            updatedAt: "2026-03-22T00:05:00.000Z",
+            steps: []
+          }
+        });
+        handler({
+          outcomeId: "outcome_123",
+          type: "assistant.message.started",
+          data: {
+            messageId: "assistant_msg_live",
+            runId: "run_456",
+            kind: "acknowledgment",
+            createdAt: "2026-03-22T00:05:00.100Z"
+          }
+        });
+        handler({
+          outcomeId: "outcome_123",
+          type: "assistant.message.delta",
+          data: {
+            messageId: "assistant_msg_live",
+            runId: "run_456",
+            kind: "acknowledgment",
+            delta: "I’m starting a new live run.",
+            content: "I’m starting a new live run.",
+            createdAt: "2026-03-22T00:05:00.100Z",
+            updatedAt: "2026-03-22T00:05:00.300Z"
+          }
+        });
+        handler({
+          outcomeId: "outcome_123",
+          type: "assistant.message.completed",
+          data: {
+            messageId: "assistant_msg_live",
+            runId: "run_456",
+            kind: "acknowledgment",
+            content: "I’m starting a new live run and collecting fresh research.",
+            createdAt: "2026-03-22T00:05:00.100Z",
+            completedAt: "2026-03-22T00:05:01.000Z"
+          }
+        });
+      }
+    });
+
+    expect(
+      screen.getByText("I archived the previous run and preserved the research trail.")
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Archive current findings").length).toBeGreaterThan(0);
+    expect(
+      screen.queryByText("I’m starting a new live run and collecting fresh research.")
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Preparing steps…")).not.toBeInTheDocument();
+  });
 });
