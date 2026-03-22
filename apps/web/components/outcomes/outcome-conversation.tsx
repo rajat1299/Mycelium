@@ -4,7 +4,6 @@ import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Approval,
   Artifact,
-  MessageCreatedData,
   OutcomeSource,
   Plan,
   RunDetail,
@@ -26,6 +25,19 @@ import {
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import {
+  type ActionGroupItemData,
+  appendLog,
+  appendMessage,
+  buildInitialOutcomeConversationState,
+  buildOutcomeFeed,
+  displayWorkspacePath,
+  formatByteSize,
+  type OutcomeConversationState,
+  type StepCardData,
+  upsertArtifact,
+  upsertStep
+} from "./outcome-feed";
 
 /* ── Types ──────────────────────────────────────────────────────────── */
 
@@ -39,156 +51,6 @@ type OutcomeConversationProps = {
   initialLogs: RunLogData[];
   initialPendingApprovals: Approval[];
 };
-
-type OutcomeConversationState = {
-  plan: Plan | null;
-  run: RunDetail | null;
-  artifacts: Artifact[];
-  logs: RunLogData[];
-  pendingApprovals: Approval[];
-  messages: MessageCreatedData[];
-};
-
-type StepCardData = {
-  step: RunStep;
-  latestLog: RunLogData | null;
-  artifacts: Artifact[];
-  primaryArtifact: Artifact | null;
-  outputText: string | null;
-};
-
-type FeedItem =
-  | { type: "prompt"; key: string }
-  | { type: "narrative"; key: string; message: string }
-  | { type: "action-group"; key: string; title: string; items: ActionGroupItemData[] }
-  | { type: "subtask"; key: string; data: StepCardData }
-  | { type: "approval"; key: string; approval: Approval; artifacts: Artifact[] }
-  | { type: "message"; key: string; message: MessageCreatedData }
-  | { type: "loading"; key: string };
-
-type ActionGroupItemData = {
-  id: string;
-  title: string;
-  status: "pending" | "running" | "completed" | "failed";
-};
-
-/* ── Utilities ──────────────────────────────────────────────────────── */
-
-function sortArtifacts(artifacts: Artifact[]) {
-  return [...artifacts].sort((left, right) =>
-    left.createdAt.localeCompare(right.createdAt)
-  );
-}
-
-function upsertArtifact(artifacts: Artifact[], incoming: Artifact) {
-  const next = artifacts.some((a) => a.id === incoming.id)
-    ? artifacts.map((a) => (a.id === incoming.id ? incoming : a))
-    : [...artifacts, incoming];
-  return sortArtifacts(next);
-}
-
-function sortLogs(logs: RunLogData[]) {
-  return [...logs].sort((left, right) =>
-    left.createdAt.localeCompare(right.createdAt)
-  );
-}
-
-function logKey(log: RunLogData) {
-  return [log.runId, log.stepId ?? "run", log.createdAt, log.level, log.message].join(":");
-}
-
-function appendLog(logs: RunLogData[], incoming: RunLogData) {
-  if (logs.some((l) => logKey(l) === logKey(incoming))) return sortLogs(logs);
-  return sortLogs([...logs, incoming]);
-}
-
-function sortSteps(steps: RunStep[]) {
-  return [...steps].sort((left, right) => left.position - right.position);
-}
-
-function upsertStep(steps: RunStep[], incoming: RunStep) {
-  const next = steps.some((s) => s.id === incoming.id)
-    ? steps.map((s) => (s.id === incoming.id ? incoming : s))
-    : [...steps, incoming];
-  return sortSteps(next);
-}
-
-function sortMessages(messages: MessageCreatedData[]) {
-  return [...messages].sort((left, right) =>
-    left.createdAt.localeCompare(right.createdAt)
-  );
-}
-
-function appendMessage(messages: MessageCreatedData[], incoming: MessageCreatedData) {
-  if (messages.some((m) => m.id === incoming.id)) return sortMessages(messages);
-  return sortMessages([...messages, incoming]);
-}
-
-function buildInitialState(
-  initialPlan: Plan | null,
-  initialRun: RunDetail | null,
-  initialArtifacts: Artifact[],
-  initialLogs: RunLogData[],
-  initialPendingApprovals: Approval[]
-): OutcomeConversationState {
-  return {
-    plan: initialPlan,
-    run: initialRun,
-    artifacts: sortArtifacts(initialArtifacts),
-    logs: sortLogs(initialLogs),
-    pendingApprovals: initialPendingApprovals,
-    messages: []
-  };
-}
-
-function fallbackIntroMessage(run: RunDetail | null) {
-  if (!run)
-    return "I\u2019ll start by loading relevant skills and searching my memory for any context about your work\u2026";
-  if (run.status === "completed")
-    return "The work is complete. The finished subtasks and final artifact are collected below.";
-  if (run.status === "failed")
-    return "The task stopped before it finished. The latest subtask states and failure context are shown below.";
-  return "I\u2019ll start by loading relevant context, then break the work into focused subtasks and run them through the task feed below.";
-}
-
-function lastLogForStep(logs: RunLogData[], stepId: string) {
-  return [...logs].reverse().find((l) => l.stepId === stepId);
-}
-
-function artifactsForStep(artifacts: Artifact[], stepId: string) {
-  return artifacts.filter((a) => a.stepId === stepId);
-}
-
-function readMetadataString(artifact: Artifact | null, key: string) {
-  if (!artifact) return null;
-  const value = artifact.metadata[key];
-  return typeof value === "string" ? value : null;
-}
-
-function formatByteSize(value: number) {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}MB`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}KB`;
-  return `${value}B`;
-}
-
-function displayWorkspacePath(relativePath: string) {
-  const fileName = relativePath.split("/").filter(Boolean).at(-1) ?? relativePath;
-  return `/home/user/workspace/${fileName}`;
-}
-
-function buildStepCardData(
-  step: RunStep,
-  logs: RunLogData[],
-  artifacts: Artifact[]
-): StepCardData {
-  const stepArtifacts = artifactsForStep(artifacts, step.id);
-  const primaryArtifact = stepArtifacts.at(-1) ?? null;
-  const previewBody = readMetadataString(primaryArtifact, "previewBody");
-  const previewSummary = readMetadataString(primaryArtifact, "summary");
-  const latestLog = lastLogForStep(logs, step.id) ?? null;
-  const outputText = previewBody ?? previewSummary ?? latestLog?.message ?? null;
-  return { step, latestLog, artifacts: stepArtifacts, primaryArtifact, outputText };
-}
 
 function readErrorMessage(payload: unknown, action: "approve" | "reject") {
   if (
@@ -216,110 +78,6 @@ function formatStepTimestamp(step: RunStep) {
   return `${time} \u00b7 ${hours}h ${minutes % 60}m`;
 }
 
-function normalizeStepStatus(status: string): ActionGroupItemData["status"] {
-  if (status === "completed") return "completed";
-  if (status === "running" || status === "claimed") return "running";
-  if (status === "failed") return "failed";
-  return "pending";
-}
-
-/* ── Feed Timeline Builder ─────────────────────────────────────────── */
-
-function buildFeedTimeline(
-  state: OutcomeConversationState,
-  systemLogs: RunLogData[],
-  stepCards: StepCardData[]
-): FeedItem[] {
-  const items: FeedItem[] = [];
-  const stepLookup = new Map(
-    (state.run?.steps ?? []).map((step) => [step.planNodeId, step])
-  );
-
-  /* 1. User prompt */
-  items.push({ type: "prompt", key: "prompt" });
-
-  /* 2. AI intro — content-aware key so it re-streams when SSE replaces fallback */
-  const introMessage = systemLogs[0]?.message ?? fallbackIntroMessage(state.run);
-  items.push({
-    type: "narrative",
-    key: `intro:${introMessage.slice(0, 40)}`,
-    message: introMessage
-  });
-
-  /* 3. Plan action group */
-  if (state.plan) {
-    const nodes = state.plan.nodes.slice().sort((a, b) => a.position - b.position);
-    const completedCount = nodes.filter((n) =>
-      stepLookup.get(n.id)?.status === "completed"
-    ).length;
-    const allDone = completedCount === nodes.length && nodes.length > 0;
-    const title = allDone
-      ? `All ${nodes.length} subtasks complete`
-      : state.run?.status === "running"
-        ? `Running ${nodes.length} subtasks`
-        : `${nodes.length} subtasks planned`;
-
-    items.push({
-      type: "action-group",
-      key: "plan",
-      title,
-      items: nodes.map((node) => ({
-        id: node.id,
-        title: node.title,
-        status: normalizeStepStatus(stepLookup.get(node.id)?.status ?? "pending")
-      }))
-    });
-  }
-
-  /* 4. Merge remaining system logs + step cards chronologically */
-  type ChronoEntry = { timestamp: string; item: FeedItem };
-  const chronoEntries: ChronoEntry[] = [];
-
-  for (const log of systemLogs.slice(1)) {
-    chronoEntries.push({
-      timestamp: log.createdAt,
-      item: { type: "narrative", key: `log:${logKey(log)}`, message: log.message }
-    });
-  }
-
-  for (const card of stepCards) {
-    chronoEntries.push({
-      timestamp: card.step.createdAt,
-      item: { type: "subtask", key: `step:${card.step.id}`, data: card }
-    });
-  }
-
-  chronoEntries.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-  items.push(...chronoEntries.map((e) => e.item));
-
-  /* 5. Loading spinner when run exists but no steps yet */
-  if (state.run && stepCards.length === 0) {
-    items.push({ type: "loading", key: "loading" });
-  }
-
-  /* 6. Approval */
-  const currentApproval = state.run
-    ? (state.pendingApprovals.find((a) => a.runId === state.run?.id) ?? null)
-    : null;
-  if (currentApproval) {
-    items.push({
-      type: "approval",
-      key: `approval:${currentApproval.id}`,
-      approval: currentApproval,
-      artifacts: state.artifacts.filter((a) =>
-        currentApproval.artifactIds.includes(a.id)
-      )
-    });
-  }
-
-  /* 7. Follow-up messages */
-  for (const msg of state.messages) {
-    items.push({ type: "message", key: `msg:${msg.id}`, message: msg });
-  }
-
-  return items;
-}
-
 /* ── Easing ─────────────────────────────────────────────────────────── */
 
 const ease = [0.25, 1, 0.5, 1] as const;
@@ -337,7 +95,7 @@ export function OutcomeConversation({
   initialPendingApprovals
 }: OutcomeConversationProps) {
   const [state, setState] = useState<OutcomeConversationState>(() =>
-    buildInitialState(
+    buildInitialOutcomeConversationState(
       initialPlan,
       initialRun,
       initialArtifacts,
@@ -352,7 +110,7 @@ export function OutcomeConversation({
 
   useEffect(() => {
     setState(
-      buildInitialState(
+      buildInitialOutcomeConversationState(
         initialPlan,
         initialRun,
         initialArtifacts,
@@ -445,13 +203,12 @@ export function OutcomeConversation({
   const isLive = !state.run || ["running", "queued", "blocked"].includes(state.run.status);
 
   const feedItems = useMemo(() => {
-    const systemLogs = state.logs.filter((log) => !log.stepId);
-    const orderedSteps = sortSteps(state.run?.steps ?? []);
-    const stepCards = orderedSteps.map((step) =>
-      buildStepCardData(step, state.logs, state.artifacts)
-    );
-    return buildFeedTimeline(state, systemLogs, stepCards);
-  }, [state]);
+    return buildOutcomeFeed({
+      outcomePrompt,
+      outcomeSource,
+      state
+    });
+  }, [outcomePrompt, outcomeSource, state]);
 
   /* Snapshot on first render */
   if (mountKeysRef.current === null) {
@@ -499,7 +256,7 @@ export function OutcomeConversation({
               </motion.div>
             );
 
-          case "narrative":
+          case "intent":
             return (
               <motion.div
                 key={item.key}
@@ -517,7 +274,7 @@ export function OutcomeConversation({
               </motion.div>
             );
 
-          case "action-group":
+          case "plan":
             return (
               <ActionGroup
                 key={item.key}
@@ -527,11 +284,24 @@ export function OutcomeConversation({
               />
             );
 
-          case "subtask":
+          case "task":
             return (
               <SubtaskOutputCard
                 key={item.key}
                 data={item.data}
+                delay={delay}
+              />
+            );
+
+          case "artifact-delivery":
+            return (
+              <ArtifactDeliveryCard
+                key={item.key}
+                title={item.title}
+                summary={item.summary}
+                workspacePath={item.workspacePath}
+                artifact={item.artifact}
+                step={item.step}
                 delay={delay}
               />
             );
@@ -941,6 +711,67 @@ function SubtaskOutputCard({
           )}
         </AnimatePresence>
       </div>
+    </motion.div>
+  );
+}
+
+/* ── Artifact Delivery Card ───────────────────────────────────────── */
+
+function ArtifactDeliveryCard({
+  title,
+  summary,
+  workspacePath,
+  artifact,
+  step,
+  delay
+}: {
+  title: string;
+  summary: string | null;
+  workspacePath: string;
+  artifact: Artifact;
+  step: RunStep | null;
+  delay: number;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10, filter: "blur(4px)" }}
+      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+      transition={{ duration: 0.35, ease, delay }}
+      className="rounded-2xl border border-emerald-200/60 bg-emerald-50/60 p-5 shadow-[0_12px_35px_-24px_rgba(22,163,74,0.55)]"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700/80">
+            Delivered artifact
+          </p>
+          <h4 className="text-sm font-semibold text-ink">{title}</h4>
+          {step ? (
+            <p className="text-sm leading-6 text-muted">
+              Generated by <span className="font-medium text-ink">{step.title}</span>.
+            </p>
+          ) : null}
+        </div>
+
+        <div className="rounded-full border border-emerald-300/60 bg-white/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-800">
+          {artifact.kind}
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-[1.25rem] border border-emerald-200/70 bg-white/80 px-4 py-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+          Workspace output
+        </p>
+        <code className="mt-2 block text-sm text-emerald-700">{workspacePath}</code>
+        <p className="mt-2 text-xs text-muted">
+          {formatByteSize(artifact.size)}
+        </p>
+      </div>
+
+      {summary ? (
+        <div className="mt-4 prose-feed">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown>
+        </div>
+      ) : null}
     </motion.div>
   );
 }

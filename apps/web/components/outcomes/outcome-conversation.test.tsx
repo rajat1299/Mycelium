@@ -340,4 +340,95 @@ describe("OutcomeConversation", () => {
       screen.getByText("Refine the final report for principals.")
     ).toBeInTheDocument();
   });
+
+  it("surfaces a completed result artifact as a dedicated delivery block", () => {
+    render(
+      <OutcomeConversation
+        outcomeId="outcome_123"
+        outcomePrompt="Research AI in K-12 education and generate a PDF."
+        outcomeSource="web"
+        initialPlan={{
+          id: "plan_outcome_123",
+          outcomeId: "outcome_123",
+          status: "draft",
+          createdAt: "2026-03-21T00:00:00.000Z",
+          updatedAt: "2026-03-21T00:00:00.000Z",
+          nodes: [
+            {
+              id: "node_report",
+              kind: "synthesis",
+              title: "Compile final report",
+              capability: "document",
+              position: 0
+            }
+          ],
+          edges: []
+        }}
+        initialRun={{
+          id: "run_123",
+          outcomeId: "outcome_123",
+          planId: "plan_outcome_123",
+          status: "completed",
+          createdAt: "2026-03-21T00:01:00.000Z",
+          updatedAt: "2026-03-21T00:05:00.000Z",
+          steps: [
+            {
+              id: "step_report",
+              runId: "run_123",
+              planNodeId: "node_report",
+              title: "Compile final report",
+              kind: "synthesis",
+              capability: "document",
+              routeStatus: "resolved",
+              routeProviderId: "anthropic",
+              routeModelId: "claude-opus-4.6",
+              routeAuthProfileId: "profile_anthropic_primary",
+              routePolicyVersion: 1,
+              routeReason: null,
+              routeResolvedAt: "2026-03-21T00:01:00.000Z",
+              status: "completed",
+              position: 0,
+              expectedArtifactPath: "artifacts/final-report.pdf",
+              expectedArtifactKind: "result",
+              createdAt: "2026-03-21T00:01:00.000Z",
+              updatedAt: "2026-03-21T00:04:00.000Z"
+            }
+          ]
+        }}
+        initialArtifacts={[
+          {
+            id: "artifact_report",
+            outcomeId: "outcome_123",
+            runId: "run_123",
+            stepId: "step_report",
+            kind: "result",
+            relativePath: "artifacts/final-report.pdf",
+            size: 2048,
+            metadata: {
+              summary: "Executive summary and district recommendations."
+            },
+            createdAt: "2026-03-21T00:04:01.000Z"
+          }
+        ]}
+        initialLogs={[
+          {
+            runId: "run_123",
+            level: "info",
+            message: "All four research tracks are complete. Compiling the final report now.",
+            createdAt: "2026-03-21T00:03:30.000Z"
+          }
+        ]}
+        initialPendingApprovals={[]}
+      />
+    );
+
+    expect(screen.getByText("Delivered artifact")).toBeInTheDocument();
+    expect(screen.getByText("Final result ready")).toBeInTheDocument();
+    expect(
+      screen.getAllByText("/home/user/workspace/final-report.pdf").length
+    ).toBeGreaterThan(1);
+    expect(
+      screen.getAllByText("Executive summary and district recommendations.").length
+    ).toBeGreaterThan(1);
+  });
 });
