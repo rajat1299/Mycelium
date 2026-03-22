@@ -3,13 +3,7 @@ import React from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import type {
   Approval,
-  ArtifactLineageEdge,
-  AuditEvent,
-  CheckpointDetail,
-  CheckpointSummary,
-  ExternalConversationBinding,
-  MessagingConnection,
-  MessagingDelivery,
+  Artifact,
   RunDetail
 } from "@computer-oss/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -41,27 +35,13 @@ const mocks = vi.hoisted(() => ({
   revalidatePath: vi.fn()
 }));
 
-let observedRun: RunDetail | null = null;
-let observedSelectedRunId: string | null = null;
-let observedArtifacts: Array<{ id: string; relativePath: string }> = [];
-let observedLogs: Array<{ message: string; level: string }> = [];
-let observedAuthProfiles: Array<{ id: string; label: string }> = [];
-let observedPendingApprovals: Approval[] = [];
-let observedLineageEdges: ArtifactLineageEdge[] = [];
-let observedCheckpoints: CheckpointSummary[] = [];
-let observedSelectedCheckpoint: CheckpointDetail | null = null;
-let observedAuditEvents: AuditEvent[] = [];
-let observedWorkers: Array<{ id: string; label: string; availability: string }> = [];
-let observedOutcomeSource: string | null = null;
 let observedTaskOutcomes: Array<{ id: string; prompt: string; status: string }> = [];
 let observedSelectedOutcomeId: string | null = null;
-let observedMessageHistory:
-  | {
-      connection: MessagingConnection | null;
-      bindings: ExternalConversationBinding[];
-      deliveries: MessagingDelivery[];
-    }
-  | null = null;
+let observedConversationRun: RunDetail | null = null;
+let observedConversationArtifacts: Artifact[] = [];
+let observedConversationLogs: Array<{ message: string; level: string }> = [];
+let observedConversationPendingApprovals: Approval[] = [];
+let observedConversationSource: string | null = null;
 
 vi.mock("next/cache", () => ({
   revalidatePath: mocks.revalidatePath
@@ -95,7 +75,26 @@ vi.mock("../../../components/outcomes/plan-graph", () => ({
 }));
 
 vi.mock("../../../components/outcomes/outcome-conversation", () => ({
-  OutcomeConversation: () => <div data-testid="outcome-conversation" />
+  OutcomeConversation: ({
+    outcomeSource,
+    initialRun,
+    initialArtifacts,
+    initialLogs,
+    initialPendingApprovals
+  }: {
+    outcomeSource: string;
+    initialRun: RunDetail | null;
+    initialArtifacts: Artifact[];
+    initialLogs: Array<{ message: string; level: string }>;
+    initialPendingApprovals: Approval[];
+  }) => {
+    observedConversationRun = initialRun;
+    observedConversationArtifacts = initialArtifacts;
+    observedConversationLogs = initialLogs;
+    observedConversationPendingApprovals = initialPendingApprovals;
+    observedConversationSource = outcomeSource;
+    return <div data-testid="outcome-conversation" />;
+  }
 }));
 
 vi.mock("../../../components/outcomes/tasks-pane", () => ({
@@ -121,70 +120,7 @@ vi.mock("../../../components/outcomes/follow-up-input", () => ({
 }));
 
 vi.mock("../../../components/outcomes/execution-console", () => ({
-  ExecutionConsole: ({
-    outcomeSource,
-    initialRun,
-    initialArtifacts,
-    initialLogs,
-    initialAuthProfiles,
-    initialPendingApprovals = [],
-    initialLineageEdges = [],
-    initialWorkers = [],
-    initialCheckpoints = [],
-    initialSelectedCheckpoint = null,
-    initialAuditEvents = [],
-    initialMessageHistory = null
-  }: {
-    outcomeSource: string;
-    initialRun: RunDetail | null;
-    initialArtifacts: Array<{ id: string; relativePath: string }>;
-    initialLogs: Array<{ message: string; level: string }>;
-    initialAuthProfiles: Array<{ id: string; label: string }>;
-    initialPendingApprovals?: Approval[];
-    initialLineageEdges?: ArtifactLineageEdge[];
-    initialWorkers?: Array<{ id: string; label: string; availability: string }>;
-    initialCheckpoints?: CheckpointSummary[];
-    initialSelectedCheckpoint?: CheckpointDetail | null;
-    initialAuditEvents?: AuditEvent[];
-    initialMessageHistory?: {
-      connection: MessagingConnection | null;
-      bindings: ExternalConversationBinding[];
-      deliveries: MessagingDelivery[];
-    } | null;
-  }) => {
-    observedOutcomeSource = outcomeSource;
-    observedRun = initialRun;
-    observedSelectedRunId = initialRun?.id ?? null;
-    observedArtifacts = initialArtifacts;
-    observedLogs = initialLogs;
-    observedAuthProfiles = initialAuthProfiles;
-    observedPendingApprovals = initialPendingApprovals;
-    observedLineageEdges = initialLineageEdges;
-    observedWorkers = initialWorkers;
-    observedCheckpoints = initialCheckpoints;
-    observedSelectedCheckpoint = initialSelectedCheckpoint;
-    observedAuditEvents = initialAuditEvents;
-    observedMessageHistory = initialMessageHistory;
-    return (
-      <div data-testid="execution-console">
-        {outcomeSource +
-          ":" +
-          (initialRun?.id ?? "none") +
-          ":" +
-          initialArtifacts.length +
-          ":" +
-          initialLogs.length +
-          ":" +
-          initialPendingApprovals.length +
-          ":" +
-          initialLineageEdges.length +
-          ":" +
-          initialCheckpoints.length +
-          ":" +
-          initialAuditEvents.length}
-      </div>
-    );
-  }
+  ExecutionConsole: () => <div data-testid="execution-console" />
 }));
 
 vi.mock("../../../components/outcomes/artifact-list", () => ({
@@ -225,21 +161,13 @@ afterEach(() => {
 
 describe("OutcomeDetailPage", () => {
   beforeEach(() => {
-    observedRun = null;
-    observedSelectedRunId = null;
-    observedArtifacts = [];
-    observedLogs = [];
-    observedAuthProfiles = [];
-    observedPendingApprovals = [];
-    observedLineageEdges = [];
-    observedCheckpoints = [];
-    observedSelectedCheckpoint = null;
-    observedAuditEvents = [];
-    observedWorkers = [];
-    observedOutcomeSource = null;
     observedTaskOutcomes = [];
     observedSelectedOutcomeId = null;
-    observedMessageHistory = null;
+    observedConversationRun = null;
+    observedConversationArtifacts = [];
+    observedConversationLogs = [];
+    observedConversationPendingApprovals = [];
+    observedConversationSource = null;
     vi.clearAllMocks();
 
     mocks.getOutcome.mockResolvedValue({
@@ -459,20 +387,17 @@ describe("OutcomeDetailPage", () => {
     expect(mocks.getLatestRun).toHaveBeenCalledWith("outcome_123");
     expect(mocks.getOutcomeMessageHistory).not.toHaveBeenCalled();
     expect(mocks.getRun).not.toHaveBeenCalled();
-    expect(mocks.listAuthProfiles).toHaveBeenCalledWith("ws_default");
     expect(mocks.listOutcomes).toHaveBeenCalledWith("ws_default");
-    expect(mocks.listWorkers).toHaveBeenCalledWith("ws_default");
     expect(mocks.listApprovals).toHaveBeenCalledWith("ws_default");
     expect(mocks.getRunArtifacts).toHaveBeenCalledWith("run_latest");
-    expect(mocks.getRunArtifactLineage).toHaveBeenCalledWith("run_latest");
-    expect(mocks.getRunCheckpoints).toHaveBeenCalledWith("run_latest");
-    expect(mocks.getCheckpoint).toHaveBeenCalledWith("checkpoint_123");
-    expect(mocks.getRunAudit).toHaveBeenCalledWith("run_latest");
     expect(mocks.getRunLogs).toHaveBeenCalledWith("run_latest");
-    expect(screen.getByTestId("execution-console")).toHaveTextContent(
-      "web:run_latest:1:1:1:1:1:1"
-    );
-    expect(observedOutcomeSource).toBe("web");
+    expect(mocks.listAuthProfiles).not.toHaveBeenCalled();
+    expect(mocks.listWorkers).not.toHaveBeenCalled();
+    expect(mocks.getRunArtifactLineage).not.toHaveBeenCalled();
+    expect(mocks.getRunCheckpoints).not.toHaveBeenCalled();
+    expect(mocks.getCheckpoint).not.toHaveBeenCalled();
+    expect(mocks.getRunAudit).not.toHaveBeenCalled();
+    expect(observedConversationSource).toBe("web");
     expect(observedSelectedOutcomeId).toBe("outcome_123");
     expect(observedTaskOutcomes).toEqual([
       expect.objectContaining({
@@ -484,65 +409,30 @@ describe("OutcomeDetailPage", () => {
         prompt: "Summarize the overnight alerts."
       })
     ]);
-    expect(observedMessageHistory).toBeNull();
-    expect(observedRun?.id).toBe("run_latest");
-    expect(observedSelectedRunId).toBe("run_latest");
-    expect(observedArtifacts).toEqual([
+    expect(observedConversationRun?.id).toBe("run_latest");
+    expect(observedConversationArtifacts).toEqual([
       expect.objectContaining({
         id: "artifact_123",
         relativePath: "artifacts/analyze-outcome.md"
       })
     ]);
-    expect(observedLogs).toEqual([
+    expect(observedConversationLogs).toEqual([
       expect.objectContaining({
         message: "Recovered persisted log output.",
         level: "info"
       })
     ]);
-    expect(observedAuthProfiles).toEqual([
-      expect.objectContaining({
-        id: "profile_openai_primary",
-        label: "OpenAI Primary"
-      })
-    ]);
-    expect(observedWorkers).toEqual([
-      expect.objectContaining({
-        id: "worker_1",
-        label: "Primary remote worker",
-        availability: "available"
-      })
-    ]);
-    expect(observedPendingApprovals).toEqual([
+    expect(observedConversationPendingApprovals).toEqual([
       expect.objectContaining({
         id: "approval_123",
         runId: "run_latest"
       })
     ]);
-    expect(observedCheckpoints).toEqual([
-      expect.objectContaining({
-        id: "checkpoint_123",
-        sequence: 2
-      })
-    ]);
-    expect(observedSelectedCheckpoint).toEqual(
-      expect.objectContaining({
-        id: "checkpoint_123"
-      })
-    );
-    expect(observedAuditEvents).toEqual([
-      expect.objectContaining({
-        id: "audit_123",
-        sequence: 2
-      })
-    ]);
-    expect(observedLineageEdges).toEqual([
-      expect.objectContaining({
-        id: "edge_123",
-        runId: "run_latest"
-      })
-    ]);
     expect(screen.getByTestId("tasks-pane")).toHaveTextContent("outcome_123:2");
+    expect(screen.getByTestId("outcome-conversation")).toBeInTheDocument();
     expect(screen.getByTestId("follow-up-input")).toBeInTheDocument();
+    expect(screen.queryByTestId("execution-console")).not.toBeInTheDocument();
+    expect(screen.queryByText("Operator trace")).not.toBeInTheDocument();
   });
 
   it("ignores a runId that belongs to a different outcome and falls back to the latest local run", async () => {
@@ -565,22 +455,18 @@ describe("OutcomeDetailPage", () => {
 
     expect(mocks.getRun).toHaveBeenCalledWith("run_other");
     expect(mocks.getLatestRun).toHaveBeenCalledWith("outcome_123");
-    expect(mocks.listAuthProfiles).toHaveBeenCalledWith("ws_default");
     expect(mocks.listApprovals).toHaveBeenCalledWith("ws_default");
     expect(mocks.getRunArtifacts).toHaveBeenCalledWith("run_latest");
-    expect(mocks.getRunArtifactLineage).toHaveBeenCalledWith("run_latest");
-    expect(mocks.getRunCheckpoints).toHaveBeenCalledWith("run_latest");
-    expect(mocks.getCheckpoint).toHaveBeenCalledWith("checkpoint_123");
-    expect(mocks.getRunAudit).toHaveBeenCalledWith("run_latest");
     expect(mocks.getRunLogs).toHaveBeenCalledWith("run_latest");
-    expect(screen.getByTestId("execution-console")).toHaveTextContent(
-      "web:run_latest:1:1:1:1:1:1"
-    );
-    expect(observedRun?.id).toBe("run_latest");
-    expect(observedSelectedRunId).toBe("run_latest");
+    expect(mocks.listAuthProfiles).not.toHaveBeenCalled();
+    expect(mocks.getRunArtifactLineage).not.toHaveBeenCalled();
+    expect(mocks.getRunCheckpoints).not.toHaveBeenCalled();
+    expect(mocks.getCheckpoint).not.toHaveBeenCalled();
+    expect(mocks.getRunAudit).not.toHaveBeenCalled();
+    expect(observedConversationRun?.id).toBe("run_latest");
   });
 
-  it("loads message history for messaging-triggered outcomes and passes it to the console", async () => {
+  it("keeps the outcome page narrative-first even for messaging-triggered outcomes", async () => {
     mocks.getOutcome.mockResolvedValue({
       id: "outcome_123",
       workspaceId: "ws_default",
@@ -591,59 +477,6 @@ describe("OutcomeDetailPage", () => {
       createdAt: "2026-03-18T14:00:00.000Z",
       updatedAt: "2026-03-18T14:10:00.000Z"
     });
-    mocks.getOutcomeMessageHistory.mockResolvedValue({
-      connection: {
-        id: "connection_slack_1",
-        workspaceId: "ws_default",
-        channel: "slack",
-        transport: "socket_mode",
-        status: "connected",
-        enabled: true,
-        accountLabel: "Operations Slack",
-        externalWorkspaceId: "T123456",
-        externalWorkspaceLabel: "Mycelium Ops",
-        connectedAt: "2026-03-18T12:00:00.000Z",
-        lastInboundAt: "2026-03-18T14:00:00.000Z",
-        lastOutboundAt: "2026-03-18T14:05:00.000Z",
-        lastError: null,
-        updatedAt: "2026-03-18T14:05:00.000Z"
-      },
-      bindings: [
-        {
-          id: "binding_slack_1",
-          workspaceId: "ws_default",
-          outcomeId: "outcome_123",
-          channel: "slack",
-          connectionId: "connection_slack_1",
-          externalWorkspaceId: "T123456",
-          conversationId: "C123456",
-          threadId: "1710763200.000100",
-          lastInboundMessageId: "1710763200.000100",
-          lastOutboundDeliveryId: "delivery_1",
-          createdAt: "2026-03-18T14:00:00.000Z",
-          updatedAt: "2026-03-18T14:05:00.000Z"
-        }
-      ],
-      deliveries: [
-        {
-          id: "delivery_1",
-          workspaceId: "ws_default",
-          connectionId: "connection_slack_1",
-          channel: "slack",
-          externalWorkspaceId: "T123456",
-          conversationId: "C123456",
-          threadId: "1710763200.000100",
-          kind: "status_update",
-          status: "sent",
-          body: "Outcome outcome_123 created from slack message.",
-          outcomeId: "outcome_123",
-          runId: null,
-          sentAt: "2026-03-18T14:05:00.000Z",
-          lastAttemptAt: "2026-03-18T14:05:00.000Z",
-          errorMessage: null
-        }
-      ]
-    });
 
     render(
       await OutcomeDetailPage({
@@ -652,31 +485,9 @@ describe("OutcomeDetailPage", () => {
       })
     );
 
-    expect(mocks.getOutcomeMessageHistory).toHaveBeenCalledWith("outcome_123");
-    expect(observedOutcomeSource).toBe("slack");
-    expect(observedMessageHistory).toEqual(
-      expect.objectContaining({
-        connection: expect.objectContaining({
-          id: "connection_slack_1",
-          accountLabel: "Operations Slack"
-        }),
-        bindings: [
-          expect.objectContaining({
-            id: "binding_slack_1",
-            conversationId: "C123456"
-          })
-        ],
-        deliveries: [
-          expect.objectContaining({
-            id: "delivery_1",
-            status: "sent"
-          })
-        ]
-      })
-    );
-    expect(screen.getByTestId("execution-console")).toHaveTextContent(
-      "slack:run_latest:1:1:1:1:1:1"
-    );
+    expect(mocks.getOutcomeMessageHistory).not.toHaveBeenCalled();
+    expect(observedConversationSource).toBe("slack");
+    expect(screen.queryByTestId("execution-console")).not.toBeInTheDocument();
   });
 
   it("shows a bootstrap error banner when automatic run start failed on home submit", async () => {
@@ -692,7 +503,7 @@ describe("OutcomeDetailPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps operator controls secondary to the narrative stream", async () => {
+  it("removes operator controls from the outcomes page", async () => {
     render(
       await OutcomeDetailPage({
         params: Promise.resolve({ id: "outcome_123" }),
@@ -700,10 +511,11 @@ describe("OutcomeDetailPage", () => {
       })
     );
 
-    expect(screen.getByText("Operator trace")).toBeInTheDocument();
-    expect(
-      screen.getByText("advanced logs / checkpoints / lineage / audit")
-    ).toBeInTheDocument();
+    expect(screen.queryByText("Operator trace")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("execution-console")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("plan-graph")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("plan-actions")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("outcome-activity")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "More options" })
     ).not.toBeInTheDocument();
