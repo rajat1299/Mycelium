@@ -691,4 +691,22 @@ describe("OutcomeDetailPage", () => {
       screen.getByText(/automatic run start failed/i)
     ).toBeInTheDocument();
   });
+
+  it("keeps operator controls secondary to the narrative stream", async () => {
+    render(
+      await OutcomeDetailPage({
+        params: Promise.resolve({ id: "outcome_123" }),
+        searchParams: Promise.resolve({})
+      })
+    );
+
+    expect(screen.getByText("Operator trace")).toBeInTheDocument();
+    expect(
+      screen.getByText("advanced logs / checkpoints / lineage / audit")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "More options" })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Share")).not.toBeInTheDocument();
+  });
 });

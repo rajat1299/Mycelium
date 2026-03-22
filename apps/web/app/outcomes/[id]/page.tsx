@@ -195,23 +195,15 @@ export default async function OutcomeDetailPage({
             )}
           </div>
 
-          <div className="flex shrink-0 items-center gap-1.5">
-            {/* Overflow menu */}
-            <button type="button" className="rounded-lg p-2 text-muted transition-colors hover:bg-surface-elevated hover:text-ink" aria-label="More options">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" /></svg>
-            </button>
-            {/* Todo / step count */}
-            <button type="button" className="flex items-center gap-1.5 rounded-lg p-2 text-muted transition-colors hover:bg-surface-elevated hover:text-ink" aria-label="Subtasks">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="m9 15 2 2 4-4" /></svg>
-              {run && run.steps.length > 0 && (
-                <span className="text-xs font-semibold tabular-nums">{run.steps.length}</span>
-              )}
-            </button>
-            {/* Share button */}
-            <button type="button" className="ml-1 flex items-center gap-1.5 rounded-lg bg-ink px-3.5 py-1.5 text-xs font-semibold text-shell transition-all duration-150 hover:opacity-90 active:scale-[0.97]">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
-              Share
-            </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="rounded-full border border-panel-line/70 bg-surface-elevated/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+              {outcome.status}
+            </span>
+            {run ? (
+              <span className="rounded-full border border-panel-line/70 bg-surface-elevated/70 px-3 py-1 text-[11px] font-semibold text-muted">
+                {run.steps.length} {run.steps.length === 1 ? "step" : "steps"}
+              </span>
+            ) : null}
           </div>
         </header>
 
@@ -244,9 +236,9 @@ export default async function OutcomeDetailPage({
             <details className="rounded-xl border border-panel-line/60 bg-surface-elevated/30">
               <summary className="cursor-pointer list-none px-5 py-3.5 text-xs font-medium tracking-wide text-muted marker:hidden">
                 <span className="flex items-center gap-2">
-                  <span>Operator details</span>
+                  <span>Operator trace</span>
                   <span className="text-[10px] text-muted/50">
-                    checkpoints / audit / lineage
+                    advanced logs / checkpoints / lineage / audit
                   </span>
                 </span>
               </summary>
