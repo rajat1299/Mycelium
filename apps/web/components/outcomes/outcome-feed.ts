@@ -1,5 +1,9 @@
 import type {
   Approval,
+  AssistantMessageCompletedData,
+  AssistantMessageDeltaData,
+  AssistantMessageKind,
+  AssistantMessageStartedData,
   Artifact,
   MessageCreatedData,
   OutcomeSource,
@@ -16,6 +20,17 @@ export type OutcomeConversationState = {
   logs: RunLogData[];
   pendingApprovals: Approval[];
   messages: MessageCreatedData[];
+  assistantMessages: AssistantNarrativeMessage[];
+};
+
+export type AssistantNarrativeMessage = {
+  id: string;
+  runId: string;
+  kind: AssistantMessageKind;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+  status: "streaming" | "completed";
 };
 
 export type StepCardData = {
@@ -35,6 +50,7 @@ export type ActionGroupItemData = {
 export type OutcomeFeedItem =
   | { type: "prompt"; key: string; prompt: string }
   | { type: "intent"; key: string; message: string }
+  | { type: "assistant-message"; key: string; message: AssistantNarrativeMessage }
   | { type: "plan"; key: string; title: string; items: ActionGroupItemData[] }
   | { type: "task"; key: string; data: StepCardData }
   | {
@@ -126,6 +142,127 @@ export function appendMessage(
   return sortMessagesInternal([...messages, incoming]);
 }
 
+function sortAssistantMessagesInternal(messages: AssistantNarrativeMessage[]) {
+  return [...messages].sort((left, right) => {
+    const timestampDelta = left.createdAt.localeCompare(right.createdAt);
+
+    if (timestampDelta !== 0) {
+      return timestampDelta;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+}
+
+export function startAssistantMessage(
+  messages: AssistantNarrativeMessage[],
+  incoming: AssistantMessageStartedData
+) {
+  const existing = messages.find((message) => message.id === incoming.messageId);
+
+  if (existing) {
+    return sortAssistantMessagesInternal(
+      messages.map((message) =>
+        message.id === incoming.messageId
+          ? {
+              ...message,
+              runId: incoming.runId,
+              kind: incoming.kind,
+              createdAt: incoming.createdAt
+            }
+          : message
+      )
+    );
+  }
+
+  return sortAssistantMessagesInternal([
+    ...messages,
+    {
+      id: incoming.messageId,
+      runId: incoming.runId,
+      kind: incoming.kind,
+      content: "",
+      createdAt: incoming.createdAt,
+      updatedAt: incoming.createdAt,
+      status: "streaming"
+    }
+  ]);
+}
+
+export function appendAssistantMessageDelta(
+  messages: AssistantNarrativeMessage[],
+  incoming: AssistantMessageDeltaData
+) {
+  const existing = messages.find((message) => message.id === incoming.messageId);
+
+  if (!existing) {
+    return sortAssistantMessagesInternal([
+      ...messages,
+      {
+        id: incoming.messageId,
+        runId: incoming.runId,
+        kind: incoming.kind,
+        content: incoming.content,
+        createdAt: incoming.createdAt,
+        updatedAt: incoming.updatedAt,
+        status: "streaming"
+      }
+    ]);
+  }
+
+  return sortAssistantMessagesInternal(
+    messages.map((message) =>
+      message.id === incoming.messageId
+        ? {
+            ...message,
+            runId: incoming.runId,
+            kind: incoming.kind,
+            content: incoming.content,
+            updatedAt: incoming.updatedAt,
+            status: message.status === "completed" ? "completed" : "streaming"
+          }
+        : message
+    )
+  );
+}
+
+export function completeAssistantMessage(
+  messages: AssistantNarrativeMessage[],
+  incoming: AssistantMessageCompletedData
+) {
+  const existing = messages.find((message) => message.id === incoming.messageId);
+
+  if (!existing) {
+    return sortAssistantMessagesInternal([
+      ...messages,
+      {
+        id: incoming.messageId,
+        runId: incoming.runId,
+        kind: incoming.kind,
+        content: incoming.content,
+        createdAt: incoming.createdAt,
+        updatedAt: incoming.completedAt,
+        status: "completed"
+      }
+    ]);
+  }
+
+  return sortAssistantMessagesInternal(
+    messages.map((message) =>
+      message.id === incoming.messageId
+        ? {
+            ...message,
+            runId: incoming.runId,
+            kind: incoming.kind,
+            content: incoming.content,
+            updatedAt: incoming.completedAt,
+            status: "completed"
+          }
+        : message
+    )
+  );
+}
+
 export function buildInitialOutcomeConversationState(
   initialPlan: Plan | null,
   initialRun: RunDetail | null,
@@ -139,7 +276,8 @@ export function buildInitialOutcomeConversationState(
     artifacts: sortArtifactsInternal(initialArtifacts),
     logs: sortLogsInternal(initialLogs),
     pendingApprovals: initialPendingApprovals,
-    messages: []
+    messages: [],
+    assistantMessages: []
   };
 }
 
@@ -375,15 +513,23 @@ export function buildOutcomeFeed({
   const orderedLogs = sortLogsInternal(state.logs);
   const systemLogs = orderedLogs.filter((log) => !log.stepId);
   const promotedIntentLogs = collectPromotedIntentLogs(systemLogs);
-  const primaryIntent = promotedIntentLogs[0]?.message ?? fallbackIntroMessage(outcomeSource, state.run);
+  const visibleAssistantMessages = sortAssistantMessagesInternal(
+    state.assistantMessages.filter((message) => message.content.length > 0)
+  );
+  const hasAssistantNarrative = visibleAssistantMessages.length > 0;
 
-  items.push({
-    type: "intent",
-    key: promotedIntentLogs[0]
-      ? `intent:${logKey(promotedIntentLogs[0])}`
-      : `intent:fallback:${state.run?.status ?? "idle"}`,
-    message: primaryIntent
-  });
+  if (!hasAssistantNarrative) {
+    const primaryIntent =
+      promotedIntentLogs[0]?.message ?? fallbackIntroMessage(outcomeSource, state.run);
+
+    items.push({
+      type: "intent",
+      key: promotedIntentLogs[0]
+        ? `intent:${logKey(promotedIntentLogs[0])}`
+        : `intent:fallback:${state.run?.status ?? "idle"}`,
+      message: primaryIntent
+    });
+  }
 
   const planBlock = buildPlanBlock(state);
   if (planBlock) {
@@ -396,6 +542,9 @@ export function buildOutcomeFeed({
   );
   const stepsById = new Map(orderedSteps.map((step) => [step.id, step]));
   const promotedDeliveryIds = promotedDeliveryArtifactIds(orderedSteps, state.artifacts);
+  const hasAssistantDeliveryNarrative = visibleAssistantMessages.some(
+    (message) => message.kind === "delivery"
+  );
 
   type ChronoEntry = {
     timestamp: string;
@@ -408,14 +557,28 @@ export function buildOutcomeFeed({
 
   const chronoEntries: ChronoEntry[] = [];
 
-  for (const intentLog of promotedIntentLogs.slice(1)) {
+  if (!hasAssistantNarrative) {
+    for (const intentLog of promotedIntentLogs.slice(1)) {
+      chronoEntries.push({
+        timestamp: intentLog.createdAt,
+        order: 10,
+        item: {
+          type: "intent",
+          key: `intent:${logKey(intentLog)}`,
+          message: intentLog.message
+        }
+      });
+    }
+  }
+
+  for (const assistantMessage of visibleAssistantMessages) {
     chronoEntries.push({
-      timestamp: intentLog.createdAt,
-      order: 10,
+      timestamp: assistantMessage.createdAt,
+      order: 15,
       item: {
-        type: "intent",
-        key: `intent:${logKey(intentLog)}`,
-        message: intentLog.message
+        type: "assistant-message",
+        key: `assistant-message:${assistantMessage.id}`,
+        message: assistantMessage
       }
     });
   }
@@ -443,7 +606,9 @@ export function buildOutcomeFeed({
       item: buildArtifactDeliveryBlock(artifact, stepsById.get(artifact.stepId ?? "") ?? null)
     });
 
-    const deliveryNote = buildArtifactDeliveryNote(artifact);
+    const deliveryNote = hasAssistantDeliveryNarrative
+      ? null
+      : buildArtifactDeliveryNote(artifact);
 
     if (deliveryNote) {
       chronoEntries.push({

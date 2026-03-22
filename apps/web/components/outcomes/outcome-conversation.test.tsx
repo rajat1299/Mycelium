@@ -431,4 +431,120 @@ describe("OutcomeConversation", () => {
       screen.getAllByText("Executive summary and district recommendations.").length
     ).toBe(1);
   });
+
+  it("keeps streamed assistant acknowledgment and final delivery as separate narrative blocks", () => {
+    render(
+      <OutcomeConversation
+        outcomeId="outcome_123"
+        outcomePrompt="Research AI in K-12 education and generate a PDF."
+        outcomeSource="web"
+        initialPlan={null}
+        initialRun={{
+          id: "run_123",
+          outcomeId: "outcome_123",
+          planId: "plan_outcome_123",
+          status: "running",
+          createdAt: "2026-03-22T00:00:00.000Z",
+          updatedAt: "2026-03-22T00:00:00.000Z",
+          steps: []
+        }}
+        initialArtifacts={[]}
+        initialLogs={[]}
+        initialPendingApprovals={[]}
+      />
+    );
+
+    act(() => {
+      for (const handler of eventStream.handlers) {
+        handler({
+          outcomeId: "outcome_123",
+          type: "assistant.message.started",
+          data: {
+            messageId: "assistant_msg_1",
+            runId: "run_123",
+            kind: "acknowledgment",
+            createdAt: "2026-03-22T00:00:00.000Z"
+          }
+        });
+        handler({
+          outcomeId: "outcome_123",
+          type: "assistant.message.delta",
+          data: {
+            messageId: "assistant_msg_1",
+            runId: "run_123",
+            kind: "acknowledgment",
+            delta: "I’ll start by loading relevant context.",
+            content: "I’ll start by loading relevant context.",
+            createdAt: "2026-03-22T00:00:00.000Z",
+            updatedAt: "2026-03-22T00:00:00.300Z"
+          }
+        });
+        handler({
+          outcomeId: "outcome_123",
+          type: "assistant.message.completed",
+          data: {
+            messageId: "assistant_msg_1",
+            runId: "run_123",
+            kind: "acknowledgment",
+            content:
+              "I’ll start by loading relevant context and then break the work into four research tracks.",
+            createdAt: "2026-03-22T00:00:00.000Z",
+            completedAt: "2026-03-22T00:00:01.000Z"
+          }
+        });
+        handler({
+          outcomeId: "outcome_123",
+          type: "assistant.message.started",
+          data: {
+            messageId: "assistant_msg_2",
+            runId: "run_123",
+            kind: "delivery",
+            createdAt: "2026-03-22T00:00:05.000Z"
+          }
+        });
+        handler({
+          outcomeId: "outcome_123",
+          type: "assistant.message.delta",
+          data: {
+            messageId: "assistant_msg_2",
+            runId: "run_123",
+            kind: "delivery",
+            delta: "Here’s your report",
+            content: "Here’s your report",
+            createdAt: "2026-03-22T00:00:05.000Z",
+            updatedAt: "2026-03-22T00:00:05.300Z"
+          }
+        });
+        handler({
+          outcomeId: "outcome_123",
+          type: "assistant.message.completed",
+          data: {
+            messageId: "assistant_msg_2",
+            runId: "run_123",
+            kind: "delivery",
+            content:
+              "Here’s your report — a 16-page PDF covering tools in use, effectiveness research, risks, and emerging trends.",
+            createdAt: "2026-03-22T00:00:05.000Z",
+            completedAt: "2026-03-22T00:00:06.000Z"
+          }
+        });
+      }
+    });
+
+    expect(
+      screen.getByText(
+        "I’ll start by loading relevant context and then break the work into four research tracks."
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Here’s your report — a 16-page PDF covering tools in use, effectiveness research, risks, and emerging trends."
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "I'll start by loading relevant context and shaping the work into focused subtasks."
+      )
+    ).not.toBeInTheDocument();
+  });
 });

@@ -311,6 +311,64 @@ describe("subscribeToOutcomeEvents", () => {
     unsubscribe();
   });
 
+  it("forwards assistant message streaming SSE events to subscribers", () => {
+    vi.stubGlobal("EventSource", FakeEventSource as unknown as typeof EventSource);
+
+    const handler = vi.fn();
+    const unsubscribe = subscribeToOutcomeEvents("outcome_streaming", handler);
+
+    FakeEventSource.instances[0]?.emit("assistant.message.started", {
+      messageId: "assistant_msg_1",
+      runId: "run_123",
+      kind: "acknowledgment",
+      createdAt: "2026-03-22T00:00:00.000Z"
+    });
+
+    FakeEventSource.instances[0]?.emit("assistant.message.delta", {
+      messageId: "assistant_msg_1",
+      runId: "run_123",
+      kind: "acknowledgment",
+      delta: "I’ll start by loading context",
+      content: "I’ll start by loading context",
+      createdAt: "2026-03-22T00:00:00.000Z",
+      updatedAt: "2026-03-22T00:00:00.300Z"
+    });
+
+    FakeEventSource.instances[0]?.emit("assistant.message.completed", {
+      messageId: "assistant_msg_1",
+      runId: "run_123",
+      kind: "acknowledgment",
+      content:
+        "I’ll start by loading context and then break the work into parallel research tracks.",
+      createdAt: "2026-03-22T00:00:00.000Z",
+      completedAt: "2026-03-22T00:00:01.000Z"
+    });
+
+    expect(handler).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        outcomeId: "outcome_streaming",
+        type: "assistant.message.started"
+      })
+    );
+    expect(handler).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        outcomeId: "outcome_streaming",
+        type: "assistant.message.delta"
+      })
+    );
+    expect(handler).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        outcomeId: "outcome_streaming",
+        type: "assistant.message.completed"
+      })
+    );
+
+    unsubscribe();
+  });
+
   it("forwards schedule and messaging SSE events to subscribers", () => {
     vi.stubGlobal("EventSource", FakeEventSource as unknown as typeof EventSource);
 

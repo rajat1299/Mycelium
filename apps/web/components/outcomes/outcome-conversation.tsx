@@ -28,12 +28,15 @@ import remarkGfm from "remark-gfm";
 import {
   type ActionGroupItemData,
   appendLog,
+  appendAssistantMessageDelta,
   appendMessage,
   buildInitialOutcomeConversationState,
   buildOutcomeFeed,
+  completeAssistantMessage,
   displayWorkspacePath,
   formatByteSize,
   type OutcomeConversationState,
+  startAssistantMessage,
   type StepCardData,
   upsertArtifact,
   upsertStep
@@ -127,6 +130,30 @@ export function OutcomeConversation({
           switch (event.type) {
             case "plan.created":
               return { ...current, plan: event.data };
+            case "assistant.message.started":
+              return {
+                ...current,
+                assistantMessages: startAssistantMessage(
+                  current.assistantMessages,
+                  event.data
+                )
+              };
+            case "assistant.message.delta":
+              return {
+                ...current,
+                assistantMessages: appendAssistantMessageDelta(
+                  current.assistantMessages,
+                  event.data
+                )
+              };
+            case "assistant.message.completed":
+              return {
+                ...current,
+                assistantMessages: completeAssistantMessage(
+                  current.assistantMessages,
+                  event.data
+                )
+              };
             case "run.created":
               return {
                 ...current,
@@ -271,6 +298,18 @@ export function OutcomeConversation({
                     item.message
                   )}
                 </p>
+              </motion.div>
+            );
+
+          case "assistant-message":
+            return (
+              <motion.div
+                key={item.key}
+                initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
+                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                transition={{ duration: 0.5, ease, delay }}
+              >
+                <AssistantNarrativeBlock message={item.message} />
               </motion.div>
             );
 
@@ -453,6 +492,37 @@ function ActionGroup({
         )}
       </AnimatePresence>
     </motion.div>
+  );
+}
+
+function AssistantNarrativeBlock({
+  message
+}: {
+  message: {
+    content: string;
+    status: "streaming" | "completed";
+  };
+}) {
+  if (message.status === "streaming") {
+    return (
+      <div className="prose-feed">
+        <p className="whitespace-pre-wrap [text-wrap:pretty]">
+          {message.content}
+          <span
+            className="ml-0.5 inline-block h-[1.1em] w-[2px] bg-accent align-text-bottom"
+            style={{ animation: "blink-cursor 1s step-end infinite" }}
+          />
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="prose-feed">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        {message.content}
+      </ReactMarkdown>
+    </div>
   );
 }
 

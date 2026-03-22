@@ -1,5 +1,8 @@
 import {
   ApprovalSchema,
+  AssistantMessageCompletedDataSchema,
+  AssistantMessageDeltaDataSchema,
+  AssistantMessageStartedDataSchema,
   ArtifactSchema,
   CheckpointSummarySchema,
   MessagingConnectionSchema,
@@ -69,6 +72,15 @@ export function subscribeToOutcomeEvents(
       MessageCreatedDataSchema.parse(payload)
     );
     registerListener("plan.created", (payload) => PlanSchema.parse(payload));
+    registerListener("assistant.message.started", (payload) =>
+      AssistantMessageStartedDataSchema.parse(payload)
+    );
+    registerListener("assistant.message.delta", (payload) =>
+      AssistantMessageDeltaDataSchema.parse(payload)
+    );
+    registerListener("assistant.message.completed", (payload) =>
+      AssistantMessageCompletedDataSchema.parse(payload)
+    );
     registerListener("run.created", (payload) => RunSchema.parse(payload));
     registerListener("run.updated", (payload) => RunSchema.parse(payload));
     registerListener("run.log", (payload) => RunLogDataSchema.parse(payload));

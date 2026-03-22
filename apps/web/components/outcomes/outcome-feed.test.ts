@@ -88,7 +88,8 @@ describe("buildOutcomeFeed", () => {
           }
         ],
         pendingApprovals: [],
-        messages: []
+        messages: [],
+        assistantMessages: []
       }
     });
 

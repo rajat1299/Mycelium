@@ -22,6 +22,9 @@ export const EventTypeSchema = z.enum([
   "outcome.updated",
   "plan.created",
   "plan_node.updated",
+  "assistant.message.started",
+  "assistant.message.delta",
+  "assistant.message.completed",
   "run.created",
   "run.step.updated",
   "run.updated",
@@ -50,6 +53,38 @@ export const MessageCreatedDataSchema = z.object({
   createdAt: z.string().datetime()
 });
 
+export const AssistantMessageKindSchema = z.enum([
+  "acknowledgment",
+  "transition",
+  "delivery"
+]);
+
+export const AssistantMessageStartedDataSchema = z.object({
+  messageId: z.string(),
+  runId: z.string(),
+  kind: AssistantMessageKindSchema,
+  createdAt: z.string().datetime()
+});
+
+export const AssistantMessageDeltaDataSchema = z.object({
+  messageId: z.string(),
+  runId: z.string(),
+  kind: AssistantMessageKindSchema,
+  delta: z.string(),
+  content: z.string(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime()
+});
+
+export const AssistantMessageCompletedDataSchema = z.object({
+  messageId: z.string(),
+  runId: z.string(),
+  kind: AssistantMessageKindSchema,
+  content: z.string(),
+  createdAt: z.string().datetime(),
+  completedAt: z.string().datetime()
+});
+
 export const EventEnvelopeSchema = z.object({
   type: EventTypeSchema,
   data: z.unknown()
@@ -71,6 +106,24 @@ export const PlanCreatedEventSchema = z.object({
   outcomeId: z.string(),
   type: z.literal("plan.created"),
   data: PlanSchema
+});
+
+export const AssistantMessageStartedEventSchema = z.object({
+  outcomeId: z.string(),
+  type: z.literal("assistant.message.started"),
+  data: AssistantMessageStartedDataSchema
+});
+
+export const AssistantMessageDeltaEventSchema = z.object({
+  outcomeId: z.string(),
+  type: z.literal("assistant.message.delta"),
+  data: AssistantMessageDeltaDataSchema
+});
+
+export const AssistantMessageCompletedEventSchema = z.object({
+  outcomeId: z.string(),
+  type: z.literal("assistant.message.completed"),
+  data: AssistantMessageCompletedDataSchema
 });
 
 export const RunCreatedEventSchema = z.object({
@@ -192,6 +245,9 @@ export const OutcomeStreamEventSchema = z.discriminatedUnion("type", [
   OutcomeUpdatedEventSchema,
   MessageCreatedEventSchema,
   PlanCreatedEventSchema,
+  AssistantMessageStartedEventSchema,
+  AssistantMessageDeltaEventSchema,
+  AssistantMessageCompletedEventSchema,
   RunCreatedEventSchema,
   RunStepUpdatedEventSchema,
   RunUpdatedEventSchema,
@@ -214,9 +270,28 @@ export const OutcomeStreamEventSchema = z.discriminatedUnion("type", [
 export type EventType = z.infer<typeof EventTypeSchema>;
 export type EventEnvelope = z.infer<typeof EventEnvelopeSchema>;
 export type MessageCreatedData = z.infer<typeof MessageCreatedDataSchema>;
+export type AssistantMessageKind = z.infer<typeof AssistantMessageKindSchema>;
+export type AssistantMessageStartedData = z.infer<
+  typeof AssistantMessageStartedDataSchema
+>;
+export type AssistantMessageDeltaData = z.infer<
+  typeof AssistantMessageDeltaDataSchema
+>;
+export type AssistantMessageCompletedData = z.infer<
+  typeof AssistantMessageCompletedDataSchema
+>;
 export type OutcomeUpdatedEvent = z.infer<typeof OutcomeUpdatedEventSchema>;
 export type MessageCreatedEvent = z.infer<typeof MessageCreatedEventSchema>;
 export type PlanCreatedEvent = z.infer<typeof PlanCreatedEventSchema>;
+export type AssistantMessageStartedEvent = z.infer<
+  typeof AssistantMessageStartedEventSchema
+>;
+export type AssistantMessageDeltaEvent = z.infer<
+  typeof AssistantMessageDeltaEventSchema
+>;
+export type AssistantMessageCompletedEvent = z.infer<
+  typeof AssistantMessageCompletedEventSchema
+>;
 export type RunCreatedEvent = z.infer<typeof RunCreatedEventSchema>;
 export type RunStepUpdatedEvent = z.infer<typeof RunStepUpdatedEventSchema>;
 export type RunUpdatedEvent = z.infer<typeof RunUpdatedEventSchema>;
