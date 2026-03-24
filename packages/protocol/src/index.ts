@@ -10,6 +10,7 @@ export * from "./messaging";
 export * from "./outcome-message";
 export * from "./plan";
 export * from "./outcome";
+export * from "./outcome-thread";
 export * from "./remote-worker";
 export * from "./router";
 export * from "./schedule";
