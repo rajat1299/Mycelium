@@ -582,6 +582,40 @@ function resolveThreadRuns(state: OutcomeConversationState) {
   return sortRunsInternal(runs);
 }
 
+function resolvePromptTriggerMessage(
+  orderedUserMessages: MessageCreatedData[],
+  threadPlans: Plan[],
+  threadRuns: RunDetail[],
+  state: OutcomeConversationState,
+  outcomePrompt: string
+) {
+  if (state.thread) {
+    const initialThreadTriggerMessageId =
+      sortPlansInternal(threadPlans)[0]?.triggerMessageId ??
+      sortRunsInternal(threadRuns)[0]?.triggerMessageId ??
+      orderedUserMessages[0]?.id ??
+      null;
+
+    if (!initialThreadTriggerMessageId) {
+      return null;
+    }
+
+    return (
+      orderedUserMessages.find(
+        (message) => message.id === initialThreadTriggerMessageId
+      ) ?? null
+    );
+  }
+
+  if (orderedUserMessages.length !== 1) {
+    return null;
+  }
+
+  return orderedUserMessages[0]?.content === outcomePrompt
+    ? orderedUserMessages[0]
+    : null;
+}
+
 function selectRunForPlan(plan: Plan, runs: RunDetail[]) {
   return (
     sortRunsInternal(
@@ -620,14 +654,19 @@ export function buildOutcomeThreadTurns({
 }: OutcomeFeedInput): OutcomeThreadTurn[] {
   const orderedMessages = sortMessagesInternal(state.messages);
   const orderedUserMessages = orderedMessages.filter((message) => message.role === "user");
-  const promptTriggerMessage =
-    orderedUserMessages.find((message) => message.content === outcomePrompt) ?? null;
+  const threadPlans = resolveThreadPlans(state);
+  const threadRuns = resolveThreadRuns(state);
+  const promptTriggerMessage = resolvePromptTriggerMessage(
+    orderedUserMessages,
+    threadPlans,
+    threadRuns,
+    state,
+    outcomePrompt
+  );
   const followUpUserMessages = orderedUserMessages.filter(
     (message) => message.id !== promptTriggerMessage?.id
   );
   const nonUserMessages = orderedMessages.filter((message) => message.role !== "user");
-  const threadPlans = resolveThreadPlans(state);
-  const threadRuns = resolveThreadRuns(state);
   const userMessageIds = new Set(followUpUserMessages.map((message) => message.id));
   const turns = new Map<string, TurnSeed>();
 

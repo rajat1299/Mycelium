@@ -386,6 +386,44 @@ describe("buildOutcomeFeed", () => {
     expect(wednesdayAssistantIndex).toBeGreaterThan(wednesdayMessageIndex);
   });
 
+  it("maps the initial prompt message to the prompt turn from thread identity even when the text differs", () => {
+    const state = buildMultiTurnState();
+    const initialMessage = {
+      id: "msg_monday",
+      outcomeId: "outcome_123",
+      role: "user" as const,
+      content: "  Map the system architecture and propose a path forward.\n",
+      createdAt: "2026-03-17T09:00:00.000Z"
+    };
+
+    state.messages = [initialMessage, ...state.messages];
+
+    const turns = buildOutcomeThreadTurns({
+      outcomePrompt: "Map the system architecture and propose a path forward.",
+      outcomeSource: "web",
+      state
+    });
+
+    expect(turns[0]?.triggerMessageId).toBe("msg_monday");
+    expect(turns[0]?.promptItem).toMatchObject({
+      type: "prompt",
+      prompt: "Map the system architecture and propose a path forward."
+    });
+    expect(turns[0]?.messageItem).toBeNull();
+    expect(turns[0]?.planIds).toEqual(["plan_monday"]);
+    expect(turns[0]?.runIds).toEqual(["run_monday"]);
+
+    const feed = buildOutcomeFeed({
+      outcomePrompt: "Map the system architecture and propose a path forward.",
+      outcomeSource: "web",
+      state
+    });
+
+    expect(
+      feed.some((item) => item.type === "message" && item.message.id === "msg_monday")
+    ).toBe(false);
+  });
+
   it("keeps the single-turn delivery flow compatible for the current renderer", () => {
     const feed = buildOutcomeFeed({
       outcomePrompt: "Research AI in K-12 education and generate a PDF.",
