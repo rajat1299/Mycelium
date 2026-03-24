@@ -11,7 +11,10 @@ import {
   StartOutcomeRequestSchema
 } from "@computer-oss/protocol";
 import type { EventBus } from "../lib/event-bus";
-import type { OutcomeTurnService } from "../lib/outcome-turn-service";
+import {
+  OutcomeTurnConflictError,
+  type OutcomeTurnService
+} from "../lib/outcome-turn-service";
 import type { Repositories } from "../lib/repositories";
 
 type OutcomeRouteOptions = {
@@ -94,6 +97,10 @@ export function registerOutcomeRoutes(
       return reply.code(201).send(OutcomeTurnResponseSchema.parse(response));
     } catch (error) {
       if (error instanceof Error) {
+        if (error instanceof OutcomeTurnConflictError) {
+          return reply.code(409).send(badRequest(error.message));
+        }
+
         if (error.message.includes("not found")) {
           return reply.code(404).send(badRequest(error.message));
         }

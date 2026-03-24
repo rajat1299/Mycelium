@@ -48,6 +48,7 @@ let observedConversationMessages: Array<{ content: string; role: string }> = [];
 let observedConversationPendingApprovals: Approval[] = [];
 let observedConversationSource: string | null = null;
 let observedFollowUpAction: ((formData: FormData) => Promise<void>) | null = null;
+let observedFollowUpDisabled: boolean | null = null;
 
 vi.mock("next/cache", () => ({
   revalidatePath: mocks.revalidatePath
@@ -132,11 +133,14 @@ vi.mock("../../../components/outcomes/tasks-pane", () => ({
 
 vi.mock("../../../components/outcomes/follow-up-input", () => ({
   FollowUpInput: ({
-    action
+    action,
+    disabled
   }: {
     action: (formData: FormData) => Promise<void>;
+    disabled?: boolean;
   }) => {
     observedFollowUpAction = action;
+    observedFollowUpDisabled = disabled ?? null;
     return <div data-testid="follow-up-input" />;
   }
 }));
@@ -184,6 +188,7 @@ describe("OutcomeDetailPage", () => {
     observedConversationPendingApprovals = [];
     observedConversationSource = null;
     observedFollowUpAction = null;
+    observedFollowUpDisabled = null;
     vi.clearAllMocks();
 
     mocks.getOutcome.mockResolvedValue({
@@ -497,6 +502,7 @@ describe("OutcomeDetailPage", () => {
         runId: "run_latest"
       })
     ]);
+    expect(observedFollowUpDisabled).toBe(true);
     expect(screen.getByTestId("tasks-pane")).toHaveTextContent("outcome_123:2");
     expect(screen.getByTestId("outcome-conversation")).toBeInTheDocument();
     expect(screen.getByTestId("follow-up-input")).toBeInTheDocument();
@@ -589,6 +595,7 @@ describe("OutcomeDetailPage", () => {
     expect(mocks.getRunPlan).not.toHaveBeenCalled();
     expect(mocks.getOutcomeMessages).toHaveBeenCalledWith("outcome_123");
     expect(observedConversationRun).toBeNull();
+    expect(observedFollowUpDisabled).toBe(false);
     expect(observedConversationMessages).toEqual([
       expect.objectContaining({
         role: "user",

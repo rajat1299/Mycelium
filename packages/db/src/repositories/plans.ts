@@ -1,6 +1,7 @@
+import { eq } from "drizzle-orm";
 import type { ApprovalRequirement } from "@computer-oss/protocol";
 import type { DatabaseClient } from "../client";
-import { outcomeMessages, outcomePlans, planEdges, planNodes } from "../schema";
+import { outcomeMessages, outcomePlans, outcomeRuns, planEdges, planNodes } from "../schema";
 
 type PlanRow = typeof outcomePlans.$inferSelect;
 type OutcomeMessageRow = typeof outcomeMessages.$inferSelect;
@@ -277,5 +278,29 @@ export class PlanRepository {
   async listEdges(planId: string): Promise<StoredPlanEdge[]> {
     const rows = await this.db.select().from(planEdges);
     return rows.filter((row) => row.planId === planId).map(mapPlanEdgeRow);
+  }
+
+  async delete(id: string): Promise<boolean> {
+    return this.db.transaction(async (transaction) => {
+      const runs = await transaction.select().from(outcomeRuns);
+
+      if (runs.some((run) => run.planId === id)) {
+        throw new Error(`Plan ${id} is still referenced by an outcome run.`);
+      }
+
+      const edgeRows = await transaction.select().from(planEdges);
+      for (const edge of edgeRows.filter((edge) => edge.planId === id)) {
+        await transaction.delete(planEdges).where(eq(planEdges.id, edge.id));
+      }
+
+      const nodeRows = await transaction.select().from(planNodes);
+      for (const node of nodeRows.filter((node) => node.planId === id)) {
+        await transaction.delete(planNodes).where(eq(planNodes.id, node.id));
+      }
+
+      await transaction.delete(outcomePlans).where(eq(outcomePlans.id, id));
+
+      return true;
+    });
   }
 }

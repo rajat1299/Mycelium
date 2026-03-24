@@ -24,6 +24,12 @@ describe("outcome turn routes", () => {
       expect(start.statusCode).toBe(201);
       const started = OutcomeTurnResponseSchema.parse(start.json());
 
+      await harness.services.repositories.runs.updateStatus({
+        runId: started.run?.id ?? "",
+        status: "completed",
+        updatedAt: "2026-03-24T12:15:00.000Z"
+      });
+
       expect(started.triggerMessage.content).toBe("Draft the kickoff brief.");
       expect(started.run?.triggerMessageId).toBe(started.triggerMessage.id);
 
@@ -46,6 +52,42 @@ describe("outcome turn routes", () => {
       expect(continued.plan?.id).not.toBe(started.plan?.id);
       expect(continued.run?.id).not.toBe(started.run?.id);
       expect(continued.run?.triggerMessageId).toBe(continued.triggerMessage.id);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("returns 409 when continuing while the latest run is still active", async () => {
+    const harness = await createExecutionHarness({
+      simulationMode: true
+    });
+
+    try {
+      const start = await harness.app.inject({
+        method: "POST",
+        url: "/api/outcomes/start",
+        payload: {
+          workspaceId: "ws_123",
+          userId: "user_123",
+          prompt: "Draft the kickoff brief.",
+          source: "web"
+        }
+      });
+
+      const started = OutcomeTurnResponseSchema.parse(start.json());
+
+      const cont = await harness.app.inject({
+        method: "POST",
+        url: `/api/outcomes/${started.outcome.id}/continue`,
+        payload: {
+          content: "Add the rollout milestones."
+        }
+      });
+
+      expect(cont.statusCode).toBe(409);
+      expect(cont.json()).toEqual({
+        error: expect.stringContaining("active run")
+      });
     } finally {
       await harness.cleanup();
     }

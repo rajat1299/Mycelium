@@ -8,6 +8,9 @@ import {
 } from "@computer-oss/protocol";
 import type { DatabaseClient } from "../client";
 import {
+  artifacts,
+  approvals,
+  artifactLineageEdges,
   outcomes,
   outcomeMessages,
   outcomePlans,
@@ -15,9 +18,12 @@ import {
   planEdges,
   planNodes,
   remoteWorkers,
+  runAuditEvents,
   runCheckpoints,
   runEvents,
-  runSteps
+  runSteps,
+  scheduleFires,
+  workspaceLeases
 } from "../schema";
 import type { StoredOutcome } from "./outcomes";
 
@@ -989,6 +995,74 @@ export class RunRepository {
           .sort((left, right) => left.position - right.position)
           .map(mapRunStepRow)
       };
+    });
+  }
+
+  async delete(id: string): Promise<boolean> {
+    return this.db.transaction(async (transaction) => {
+      const runs = await transaction.select().from(outcomeRuns);
+      const existing = runs.find((run) => run.id === id);
+
+      if (!existing) {
+        return false;
+      }
+
+      const steps = await transaction.select().from(runSteps);
+      const stepIds = steps
+        .filter((step) => step.runId === id)
+        .map((step) => step.id);
+
+      const approvalRows = await transaction.select().from(approvals);
+      for (const approval of approvalRows.filter((row) => row.runId === id)) {
+        await transaction.delete(approvals).where(eq(approvals.id, approval.id));
+      }
+
+      const artifactRows = await transaction.select().from(artifacts);
+      for (const artifact of artifactRows.filter((row) => row.runId === id)) {
+        await transaction.delete(artifacts).where(eq(artifacts.id, artifact.id));
+      }
+
+      const lineageRows = await transaction.select().from(artifactLineageEdges);
+      for (const edge of lineageRows.filter((row) => row.runId === id)) {
+        await transaction
+          .delete(artifactLineageEdges)
+          .where(eq(artifactLineageEdges.id, edge.id));
+      }
+
+      const auditRows = await transaction.select().from(runAuditEvents);
+      for (const event of auditRows.filter((row) => row.runId === id)) {
+        await transaction.delete(runAuditEvents).where(eq(runAuditEvents.id, event.id));
+      }
+
+      const checkpointRows = await transaction.select().from(runCheckpoints);
+      for (const checkpoint of checkpointRows.filter((row) => row.runId === id)) {
+        await transaction
+          .delete(runCheckpoints)
+          .where(eq(runCheckpoints.id, checkpoint.id));
+      }
+
+      const leaseRows = await transaction.select().from(workspaceLeases);
+      for (const lease of leaseRows.filter((row) => row.runId === id)) {
+        await transaction.delete(workspaceLeases).where(eq(workspaceLeases.runId, lease.runId));
+      }
+
+      const fireRows = await transaction.select().from(scheduleFires);
+      for (const fire of fireRows.filter((row) => row.runId === id)) {
+        await transaction.delete(scheduleFires).where(eq(scheduleFires.id, fire.id));
+      }
+
+      const eventRows = await transaction.select().from(runEvents);
+      for (const event of eventRows.filter((row) => row.runId === id)) {
+        await transaction.delete(runEvents).where(eq(runEvents.id, event.id));
+      }
+
+      for (const stepId of stepIds) {
+        await transaction.delete(runSteps).where(eq(runSteps.id, stepId));
+      }
+
+      await transaction.delete(outcomeRuns).where(eq(outcomeRuns.id, id));
+
+      return true;
     });
   }
 }

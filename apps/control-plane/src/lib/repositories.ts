@@ -89,6 +89,8 @@ export type OutcomeStore = {
   listByWorkspace(workspaceId: string): Promise<Outcome[]>;
   updateStatus(input: UpdateOutcomeStatusInput): Promise<Outcome | null>;
   appendMessage(input: AppendOutcomeMessageInput): Promise<void>;
+  delete(id: string): Promise<boolean>;
+  deleteMessage(id: string): Promise<boolean>;
 };
 
 export type PlanStore = {
@@ -99,12 +101,14 @@ export type PlanStore = {
   listByOutcome(outcomeId: string): Promise<StoredPlan[]>;
   listNodes(planId: string): Promise<StoredPlanNode[]>;
   listEdges(planId: string): Promise<StoredPlanEdge[]>;
+  delete(id: string): Promise<boolean>;
 };
 
 export type RunStore = {
   createFromPlan(input: CreateRunFromPlanInput): Promise<StoredRun>;
   getById(id: string): Promise<StoredRun | null>;
   getLatestByOutcome(outcomeId: string): Promise<StoredRun | null>;
+  listByOutcome(outcomeId: string): Promise<StoredRun[]>;
   listByStatuses(statuses: StoredRun["status"][]): Promise<StoredRun[]>;
   listSteps(runId: string): Promise<StoredRunStep[]>;
   listReadySteps(runId: string): Promise<StoredRunStep[]>;
@@ -128,6 +132,7 @@ export type RunStore = {
   restoreFromCheckpoint(
     input: RestoreFromCheckpointInput
   ): Promise<{ run: StoredRun; steps: StoredRunStep[] } | null>;
+  delete(id: string): Promise<boolean>;
 };
 
 export type ArtifactStore = {
@@ -676,6 +681,50 @@ function createInMemoryRepositoriesState() {
       }
 
       outcomeMessagesById.set(input.id, input);
+    },
+    async delete(id) {
+      const removed = outcomes.delete(id);
+
+      if (!removed) {
+        return false;
+      }
+
+      for (const [messageId, message] of outcomeMessagesById.entries()) {
+        if (message.outcomeId === id) {
+          outcomeMessagesById.delete(messageId);
+        }
+      }
+
+      const runIds = Array.from(runsById.values())
+        .filter((run) => run.outcomeId === id)
+        .map((run) => run.id);
+      for (const runId of runIds) {
+        await runsStore.delete(runId);
+      }
+
+      const planIds = Array.from(plansById.values())
+        .filter((plan) => plan.outcomeId === id)
+        .map((plan) => plan.id);
+      for (const planId of planIds) {
+        await plansStore.delete(planId);
+      }
+
+      for (const [fireId, fire] of scheduleFiresById.entries()) {
+        if (fire.outcomeId === id) {
+          scheduleFiresById.delete(fireId);
+        }
+      }
+
+      for (const [bindingId, binding] of conversationBindingsById.entries()) {
+        if (binding.outcomeId === id) {
+          conversationBindingsById.delete(bindingId);
+        }
+      }
+
+      return true;
+    },
+    async deleteMessage(id) {
+      return outcomeMessagesById.delete(id);
     }
   };
 
@@ -780,6 +829,17 @@ function createInMemoryRepositoriesState() {
     },
     async listEdges(planId) {
       return [...(planEdgesByPlanId.get(planId) ?? [])];
+    },
+    async delete(id) {
+      const removed = plansById.delete(id);
+
+      if (!removed) {
+        return false;
+      }
+
+      planNodesByPlanId.delete(id);
+      planEdgesByPlanId.delete(id);
+      return true;
     }
   };
 
@@ -877,6 +937,11 @@ function createInMemoryRepositoriesState() {
           .sort(compareRuns)
           .at(-1) ?? null
       );
+    },
+    async listByOutcome(outcomeId) {
+      return Array.from(runsById.values())
+        .filter((run) => run.outcomeId === outcomeId)
+        .sort(compareRuns);
     },
     async listByStatuses(statuses) {
       const allowed = new Set(statuses);
@@ -1178,6 +1243,58 @@ function createInMemoryRepositoriesState() {
       }
 
       return releasedSteps.sort((left, right) => left.position - right.position);
+    },
+    async delete(id) {
+      const removed = runsById.delete(id);
+
+      if (!removed) {
+        return false;
+      }
+
+      runStepsByRunId.delete(id);
+      workspaceLeasesByRunId.delete(id);
+
+      for (const [artifactId, artifact] of artifacts.entries()) {
+        if (artifact.runId === id) {
+          artifacts.delete(artifactId);
+        }
+      }
+
+      for (const [checkpointId, checkpoint] of checkpointsById.entries()) {
+        if (checkpoint.runId === id) {
+          checkpointsById.delete(checkpointId);
+        }
+      }
+
+      for (const [auditId, event] of auditEventsById.entries()) {
+        if (event.runId === id) {
+          auditEventsById.delete(auditId);
+        }
+      }
+
+      for (const [approvalId, approval] of approvalsById.entries()) {
+        if (approval.runId === id) {
+          approvalsById.delete(approvalId);
+        }
+      }
+
+      for (const [edgeId, edge] of artifactLineageEdgesById.entries()) {
+        if (edge.runId === id) {
+          artifactLineageEdgesById.delete(edgeId);
+        }
+      }
+
+      const remainingRunEvents = runEvents.filter((event) => event.runId !== id);
+      runEvents.length = 0;
+      runEvents.push(...remainingRunEvents);
+
+      for (const [fireId, fire] of scheduleFiresById.entries()) {
+        if (fire.runId === id) {
+          scheduleFiresById.delete(fireId);
+        }
+      }
+
+      return true;
     },
     async restoreFromCheckpoint(input) {
       const run = runsById.get(input.runId);

@@ -7,6 +7,7 @@ import {
 } from "../src/lib/repositories";
 import { createRouterService } from "../src/lib/router-service";
 import {
+  OutcomeTurnConflictError,
   createOutcomeTurnService,
   type OutcomeTurnService
 } from "../src/lib/outcome-turn-service";
@@ -131,6 +132,62 @@ describe("OutcomeTurnService", () => {
     expect(harness.executionService.startRun).not.toHaveBeenCalled();
   });
 
+  it("rolls back a failed start thread without publishing partial turn records", async () => {
+    const harness = createTurnServiceHarness({ simulationMode: true });
+    let createdOutcomeId = "";
+
+    const originalCreateOutcome = harness.repositories.outcomes.create.bind(
+      harness.repositories.outcomes
+    );
+    vi.spyOn(harness.repositories.outcomes, "create").mockImplementation(
+      async (input) => {
+        const outcome = await originalCreateOutcome(input);
+        createdOutcomeId = outcome.id;
+        return outcome;
+      }
+    );
+
+    const originalListSteps = harness.repositories.runs.listSteps.bind(
+      harness.repositories.runs
+    );
+    let listStepsCalls = 0;
+    vi.spyOn(harness.repositories.runs, "listSteps").mockImplementation(
+      async (runId) => {
+        listStepsCalls += 1;
+
+        if (listStepsCalls === 2) {
+          throw new Error("simulated run detail failure");
+        }
+
+        return originalListSteps(runId);
+      }
+    );
+
+    await expect(
+      harness.service.startThread({
+        workspaceId: "ws_123",
+        userId: "user_123",
+        prompt: "Draft the customer follow-up response.",
+        source: "web"
+      })
+    ).rejects.toThrow("simulated run detail failure");
+
+    expect(createdOutcomeId).toBeTruthy();
+    expect(harness.events).toEqual([]);
+    await expect(
+      harness.repositories.outcomes.listByWorkspace("ws_123")
+    ).resolves.toEqual([]);
+    await expect(
+      harness.repositories.outcomes.listMessages(createdOutcomeId)
+    ).resolves.toEqual([]);
+    await expect(
+      harness.repositories.plans.listByOutcome(createdOutcomeId)
+    ).resolves.toEqual([]);
+    await expect(
+      harness.repositories.runs.listByOutcome(createdOutcomeId)
+    ).resolves.toEqual([]);
+  });
+
   it("continues an existing thread with a new trigger message, plan snapshot, and run while keeping prior turns intact", async () => {
     const harness = createTurnServiceHarness();
 
@@ -142,6 +199,12 @@ describe("OutcomeTurnService", () => {
         source: "web"
       })
     );
+
+    await harness.repositories.runs.updateStatus({
+      runId: firstTurn.run?.id ?? "",
+      status: "completed",
+      updatedAt: "2026-03-24T12:15:00.000Z"
+    });
 
     harness.events.length = 0;
 
@@ -223,5 +286,110 @@ describe("OutcomeTurnService", () => {
       secondTurn.run?.id
     );
     expect(harness.simulatedExecutionService.startRun).not.toHaveBeenCalled();
+  });
+
+  it("rejects a follow-up turn while the latest run is still active", async () => {
+    const harness = createTurnServiceHarness();
+
+    const firstTurn = OutcomeTurnResponseSchema.parse(
+      await harness.service.startThread({
+        workspaceId: "ws_123",
+        userId: "user_123",
+        prompt: "Prepare the first draft.",
+        source: "web"
+      })
+    );
+
+    await expect(
+      harness.service.continueThread({
+        outcomeId: firstTurn.outcome.id,
+        content: "Incorporate the customer feedback."
+      })
+    ).rejects.toBeInstanceOf(OutcomeTurnConflictError);
+
+    await expect(
+      harness.repositories.outcomes.listMessages(firstTurn.outcome.id)
+    ).resolves.toEqual([firstTurn.triggerMessage]);
+    await expect(
+      harness.repositories.plans.listByOutcome(firstTurn.outcome.id)
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: firstTurn.plan?.id,
+        triggerMessageId: firstTurn.triggerMessage.id
+      })
+    ]);
+    await expect(
+      harness.repositories.runs.listByOutcome(firstTurn.outcome.id)
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: firstTurn.run?.id,
+        triggerMessageId: firstTurn.triggerMessage.id
+      })
+    ]);
+  });
+
+  it("rolls back a failed follow-up turn without publishing partial turn records", async () => {
+    const harness = createTurnServiceHarness();
+
+    const firstTurn = OutcomeTurnResponseSchema.parse(
+      await harness.service.startThread({
+        workspaceId: "ws_123",
+        userId: "user_123",
+        prompt: "Prepare the first draft.",
+        source: "web"
+      })
+    );
+
+    await harness.repositories.runs.updateStatus({
+      runId: firstTurn.run?.id ?? "",
+      status: "completed",
+      updatedAt: "2026-03-24T12:15:00.000Z"
+    });
+
+    harness.events.length = 0;
+
+    const originalListSteps = harness.repositories.runs.listSteps.bind(
+      harness.repositories.runs
+    );
+    let listStepsCalls = 0;
+    vi.spyOn(harness.repositories.runs, "listSteps").mockImplementation(
+      async (runId) => {
+        listStepsCalls += 1;
+
+        if (listStepsCalls === 2) {
+          throw new Error("simulated follow-up failure");
+        }
+
+        return originalListSteps(runId);
+      }
+    );
+
+    await expect(
+      harness.service.continueThread({
+        outcomeId: firstTurn.outcome.id,
+        content: "Incorporate the customer feedback."
+      })
+    ).rejects.toThrow("simulated follow-up failure");
+
+    expect(harness.events).toEqual([]);
+    await expect(
+      harness.repositories.outcomes.listMessages(firstTurn.outcome.id)
+    ).resolves.toEqual([firstTurn.triggerMessage]);
+    await expect(
+      harness.repositories.plans.listByOutcome(firstTurn.outcome.id)
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: firstTurn.plan?.id,
+        triggerMessageId: firstTurn.triggerMessage.id
+      })
+    ]);
+    await expect(
+      harness.repositories.runs.listByOutcome(firstTurn.outcome.id)
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: firstTurn.run?.id,
+        triggerMessageId: firstTurn.triggerMessage.id
+      })
+    ]);
   });
 });

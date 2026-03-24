@@ -1,6 +1,25 @@
 import { asc, eq } from "drizzle-orm";
 import type { DatabaseClient } from "../client";
-import { outcomeMessages, outcomes, users, workspaces } from "../schema";
+import {
+  artifactLineageEdges,
+  approvals,
+  artifacts,
+  messagingConversationBindings,
+  outcomeMessages,
+  outcomePlans,
+  outcomeRuns,
+  outcomes,
+  planEdges,
+  planNodes,
+  runAuditEvents,
+  runCheckpoints,
+  runEvents,
+  runSteps,
+  scheduleFires,
+  workspaceLeases,
+  users,
+  workspaces
+} from "../schema";
 
 type OutcomeRow = typeof outcomes.$inferSelect;
 type OutcomeMessageRow = typeof outcomeMessages.$inferSelect;
@@ -167,6 +186,139 @@ export class OutcomeRepository {
       role: input.role,
       content: input.content,
       createdAt: new Date(input.createdAt)
+    });
+  }
+
+  async deleteMessage(id: string): Promise<boolean> {
+    const [deleted] = await this.db
+      .delete(outcomeMessages)
+      .where(eq(outcomeMessages.id, id))
+      .returning();
+
+    return Boolean(deleted);
+  }
+
+  async delete(id: string): Promise<boolean> {
+    return this.db.transaction(async (transaction) => {
+      const [existing] = await transaction
+        .select()
+        .from(outcomes)
+        .where(eq(outcomes.id, id));
+
+      if (!existing) {
+        return false;
+      }
+
+      const runRows = await transaction
+        .select()
+        .from(outcomeRuns)
+        .where(eq(outcomeRuns.outcomeId, id));
+
+      for (const run of runRows) {
+        const runStepRows = await transaction
+          .select()
+          .from(runSteps)
+          .where(eq(runSteps.runId, run.id));
+        const stepIds = runStepRows.map((step) => step.id);
+
+        const approvalRows = await transaction.select().from(approvals);
+        for (const approval of approvalRows.filter((row) => row.runId === run.id)) {
+          await transaction.delete(approvals).where(eq(approvals.id, approval.id));
+        }
+
+        const artifactRows = await transaction.select().from(artifacts);
+        for (const artifact of artifactRows.filter((row) => row.runId === run.id)) {
+          await transaction.delete(artifacts).where(eq(artifacts.id, artifact.id));
+        }
+
+        const lineageRows = await transaction.select().from(artifactLineageEdges);
+        for (const edge of lineageRows.filter((row) => row.runId === run.id)) {
+          await transaction
+            .delete(artifactLineageEdges)
+            .where(eq(artifactLineageEdges.id, edge.id));
+        }
+
+        const auditRows = await transaction.select().from(runAuditEvents);
+        for (const event of auditRows.filter((row) => row.runId === run.id)) {
+          await transaction.delete(runAuditEvents).where(eq(runAuditEvents.id, event.id));
+        }
+
+        const checkpointRows = await transaction.select().from(runCheckpoints);
+        for (const checkpoint of checkpointRows.filter((row) => row.runId === run.id)) {
+          await transaction
+            .delete(runCheckpoints)
+            .where(eq(runCheckpoints.id, checkpoint.id));
+        }
+
+        const leaseRows = await transaction.select().from(workspaceLeases);
+        for (const lease of leaseRows.filter((row) => row.runId === run.id)) {
+          await transaction.delete(workspaceLeases).where(eq(workspaceLeases.runId, lease.runId));
+        }
+
+        const fireRows = await transaction.select().from(scheduleFires);
+        for (const fire of fireRows.filter((row) => row.runId === run.id)) {
+          await transaction.delete(scheduleFires).where(eq(scheduleFires.id, fire.id));
+        }
+
+        const eventRows = await transaction.select().from(runEvents);
+        for (const event of eventRows.filter((row) => row.runId === run.id)) {
+          await transaction.delete(runEvents).where(eq(runEvents.id, event.id));
+        }
+
+        for (const stepId of stepIds) {
+          await transaction.delete(runSteps).where(eq(runSteps.id, stepId));
+        }
+
+        await transaction.delete(outcomeRuns).where(eq(outcomeRuns.id, run.id));
+      }
+
+      const planRows = await transaction
+        .select()
+        .from(outcomePlans)
+        .where(eq(outcomePlans.outcomeId, id));
+
+      for (const plan of planRows) {
+        const edgeRows = await transaction.select().from(planEdges);
+        for (const edge of edgeRows.filter((row) => row.planId === plan.id)) {
+          await transaction.delete(planEdges).where(eq(planEdges.id, edge.id));
+        }
+
+        const nodeRows = await transaction.select().from(planNodes);
+        for (const node of nodeRows.filter((row) => row.planId === plan.id)) {
+          await transaction.delete(planNodes).where(eq(planNodes.id, node.id));
+        }
+
+        await transaction.delete(outcomePlans).where(eq(outcomePlans.id, plan.id));
+      }
+
+      const messageRows = await transaction
+        .select()
+        .from(outcomeMessages)
+        .where(eq(outcomeMessages.outcomeId, id));
+
+      for (const message of messageRows) {
+        await transaction.delete(outcomeMessages).where(eq(outcomeMessages.id, message.id));
+      }
+
+      const bindingRows = await transaction
+        .select()
+        .from(messagingConversationBindings)
+        .where(eq(messagingConversationBindings.outcomeId, id));
+
+      for (const binding of bindingRows) {
+        await transaction
+          .delete(messagingConversationBindings)
+          .where(eq(messagingConversationBindings.id, binding.id));
+      }
+
+      const fireRows = await transaction.select().from(scheduleFires);
+      for (const fire of fireRows.filter((row) => row.outcomeId === id)) {
+        await transaction.delete(scheduleFires).where(eq(scheduleFires.id, fire.id));
+      }
+
+      await transaction.delete(outcomes).where(eq(outcomes.id, id));
+
+      return true;
     });
   }
 }

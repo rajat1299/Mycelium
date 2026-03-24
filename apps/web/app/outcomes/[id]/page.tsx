@@ -21,6 +21,19 @@ import { deriveOutcomeTitle } from "../../../lib/outcome-title";
 
 export const dynamic = "force-dynamic";
 
+const ACTIVE_RUN_STATUSES = new Set([
+  "draft",
+  "planning",
+  "queued",
+  "waiting_for_worker",
+  "running",
+  "blocked"
+]);
+
+function isActiveRunStatus(status?: string) {
+  return status ? ACTIVE_RUN_STATUSES.has(status) : false;
+}
+
 async function resolveRunForOutcome(outcomeId: string, requestedRunId?: string) {
   if (!requestedRunId) {
     return getLatestRun(outcomeId);
@@ -184,7 +197,11 @@ export default async function OutcomeDetailPage({
         </div>
 
         {/* ── Sticky follow-up input with gradient fade ───────────── */}
-        <FollowUpInput action={appendMessageAction} hasConversation={Boolean(run)} />
+        <FollowUpInput
+          action={appendMessageAction}
+          hasConversation={Boolean(run)}
+          disabled={isActiveRunStatus(run?.status)}
+        />
       </section>
     </main>
   );

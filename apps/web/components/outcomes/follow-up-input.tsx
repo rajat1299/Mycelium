@@ -6,15 +6,17 @@ import { BarsSpinner } from "../ui/bars-spinner";
 type FollowUpInputProps = {
   action: (formData: FormData) => Promise<void>;
   hasConversation?: boolean;
+  disabled?: boolean;
 };
 
-function SubmitButton() {
+function SubmitButton({ disabled }: { disabled?: boolean }) {
   const { pending } = useFormStatus();
+  const isDisabled = pending || disabled;
 
   return (
     <button
       type="submit"
-      disabled={pending}
+      disabled={isDisabled}
       aria-label="Send"
       className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-white transition-all duration-150 hover:bg-accent-hover active:scale-95 disabled:opacity-40"
     >
@@ -38,11 +40,12 @@ function SubmitButton() {
   );
 }
 
-function FeedbackActions() {
+function FeedbackActions({ disabled }: { disabled?: boolean }) {
   return (
     <div className="flex items-center gap-0.5">
       <button
         type="button"
+        disabled={disabled}
         className="rounded-lg p-1.5 text-muted/50 transition-colors hover:bg-surface-elevated hover:text-muted"
         aria-label="Helpful"
       >
@@ -52,6 +55,7 @@ function FeedbackActions() {
       </button>
       <button
         type="button"
+        disabled={disabled}
         className="rounded-lg p-1.5 text-muted/50 transition-colors hover:bg-surface-elevated hover:text-muted"
         aria-label="Not helpful"
       >
@@ -61,6 +65,7 @@ function FeedbackActions() {
       </button>
       <button
         type="button"
+        disabled={disabled}
         className="rounded-lg p-1.5 text-muted/50 transition-colors hover:bg-surface-elevated hover:text-muted"
         aria-label="Copy"
       >
@@ -70,6 +75,7 @@ function FeedbackActions() {
       </button>
       <button
         type="button"
+        disabled={disabled}
         className="rounded-lg p-1.5 text-muted/50 transition-colors hover:bg-surface-elevated hover:text-muted"
         aria-label="Share"
       >
@@ -81,66 +87,77 @@ function FeedbackActions() {
   );
 }
 
-export function FollowUpInput({ action, hasConversation = false }: FollowUpInputProps) {
+export function FollowUpInput({
+  action,
+  hasConversation = false,
+  disabled = false
+}: FollowUpInputProps) {
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-shell via-shell/95 to-transparent px-4 pb-4 pt-16">
       <div className="pointer-events-auto mx-auto max-w-3xl space-y-2">
         {/* Feedback icons row — visible when conversation has content */}
         {hasConversation && (
           <div className="flex justify-end px-1">
-            <FeedbackActions />
+            <FeedbackActions disabled={disabled} />
           </div>
         )}
 
         {/* Input container */}
         <form action={action}>
-          <div className="rounded-2xl bg-panel shadow-card transition-shadow duration-200 focus-within:shadow-card-hover">
+          <div
+            className={[
+              "rounded-2xl bg-panel shadow-card transition-shadow duration-200 focus-within:shadow-card-hover",
+              disabled ? "opacity-60" : ""
+            ].join(" ")}
+          >
             {/* Textarea */}
-            <textarea
-              name="content"
-              rows={1}
-              placeholder="Type a command..."
-              className="block w-full resize-none rounded-t-2xl bg-transparent px-5 pb-2 pt-3.5 text-[15px] leading-relaxed text-ink outline-none placeholder:text-muted/50"
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                  event.currentTarget.form?.requestSubmit();
-                }
-              }}
-              onInput={(event) => {
-                const target = event.currentTarget;
-                target.style.height = "auto";
-                target.style.height = `${Math.min(target.scrollHeight, 120)}px`;
-              }}
-            />
+            <fieldset disabled={disabled}>
+              <textarea
+                name="content"
+                rows={1}
+                placeholder="Type a command..."
+                className="block w-full resize-none rounded-t-2xl bg-transparent px-5 pb-2 pt-3.5 text-[15px] leading-relaxed text-ink outline-none placeholder:text-muted/50"
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                    event.currentTarget.form?.requestSubmit();
+                  }
+                }}
+                onInput={(event) => {
+                  const target = event.currentTarget;
+                  target.style.height = "auto";
+                  target.style.height = `${Math.min(target.scrollHeight, 120)}px`;
+                }}
+              />
 
-            {/* Bottom toolbar */}
-            <div className="flex items-center justify-between px-3.5 pb-3">
-              {/* Left: attachment */}
-              <button
-                type="button"
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-muted/50 transition-colors hover:bg-surface-elevated hover:text-muted"
-                aria-label="Attach file"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-              </button>
-
-              {/* Right: mic + submit */}
-              <div className="flex items-center gap-2">
+              {/* Bottom toolbar */}
+              <div className="flex items-center justify-between px-3.5 pb-3">
+                {/* Left: attachment */}
                 <button
                   type="button"
                   className="flex h-8 w-8 items-center justify-center rounded-lg text-muted/50 transition-colors hover:bg-surface-elevated hover:text-muted"
-                  aria-label="Voice input"
+                  aria-label="Attach file"
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" x2="12" y1="19" y2="22" />
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 5v14M5 12h14" />
                   </svg>
                 </button>
-                <SubmitButton />
+
+                {/* Right: mic + submit */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-muted/50 transition-colors hover:bg-surface-elevated hover:text-muted"
+                    aria-label="Voice input"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                      <path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" x2="12" y1="19" y2="22" />
+                    </svg>
+                  </button>
+                  <SubmitButton disabled={disabled} />
+                </div>
               </div>
-            </div>
+            </fieldset>
           </div>
         </form>
       </div>
