@@ -134,6 +134,12 @@ describe("control plane", () => {
       expect(start.statusCode).toBe(201);
       const started = OutcomeTurnResponseSchema.parse(start.json());
 
+      await harness.services.repositories.runs.updateStatus({
+        runId: started.run?.id ?? "",
+        status: "completed",
+        updatedAt: "2026-03-24T12:15:00.000Z"
+      });
+
       const cont = await app.inject({
         method: "POST",
         url: `/api/outcomes/${started.outcome.id}/continue`,

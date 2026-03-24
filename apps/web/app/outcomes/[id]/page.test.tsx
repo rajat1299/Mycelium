@@ -37,6 +37,15 @@ const mocks = vi.hoisted(() => ({
   revalidatePath: vi.fn()
 }));
 
+const hoistedErrors = vi.hoisted(() => ({
+  OutcomeContinueConflictError: class MockOutcomeContinueConflictError extends Error {
+    constructor(message = "Mycelium is still working on the current run.") {
+      super(message);
+      this.name = "OutcomeContinueConflictError";
+    }
+  }
+}));
+
 let observedTaskOutcomes: Array<{ id: string; prompt: string; status: string }> = [];
 let observedSelectedOutcomeId: string | null = null;
 let observedConversationPlan: Plan | null = null;
@@ -150,6 +159,7 @@ vi.mock("../../../components/outcomes/execution-console", () => ({
 }));
 
 vi.mock("../../../lib/api", () => ({
+  OutcomeContinueConflictError: hoistedErrors.OutcomeContinueConflictError,
   continueOutcome: mocks.continueOutcome,
   getOutcome: mocks.getOutcome,
   getPlan: mocks.getPlan,
@@ -583,6 +593,16 @@ describe("OutcomeDetailPage", () => {
 
   it("hydrates persisted follow-up messages even when the outcome has no run yet", async () => {
     mocks.getLatestRun.mockResolvedValue(null);
+    mocks.getOutcome.mockResolvedValue({
+      id: "outcome_123",
+      workspaceId: "ws_default",
+      userId: "user_default",
+      prompt: "Resume the queued run from storage.",
+      source: "web",
+      status: "completed",
+      createdAt: "2026-03-11T00:00:00.000Z",
+      updatedAt: "2026-03-11T00:10:00.000Z"
+    });
 
     render(
       await OutcomeDetailPage({
@@ -689,6 +709,73 @@ describe("OutcomeDetailPage", () => {
       "/outcomes/outcome_123?runId=run_followup"
     );
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("keeps the follow-up composer disabled when viewing an older run while the outcome is still active", async () => {
+    mocks.getOutcome.mockResolvedValue({
+      id: "outcome_123",
+      workspaceId: "ws_default",
+      userId: "user_default",
+      prompt: "Resume the queued run from storage.",
+      source: "web",
+      status: "running",
+      createdAt: "2026-03-11T00:00:00.000Z",
+      updatedAt: "2026-03-11T00:12:00.000Z"
+    });
+    mocks.getRun.mockResolvedValue({
+      id: "run_historical",
+      outcomeId: "outcome_123",
+      planId: "plan_historical",
+      triggerMessageId: "msg_historical",
+      status: "completed",
+      createdAt: "2026-03-11T00:08:00.000Z",
+      updatedAt: "2026-03-11T00:09:00.000Z",
+      steps: []
+    });
+    mocks.getRunPlan.mockResolvedValue({
+      id: "plan_historical",
+      outcomeId: "outcome_123",
+      triggerMessageId: "msg_historical",
+      status: "draft",
+      createdAt: "2026-03-11T00:08:00.000Z",
+      updatedAt: "2026-03-11T00:08:00.000Z",
+      nodes: [],
+      edges: []
+    });
+
+    render(
+      await OutcomeDetailPage({
+        params: Promise.resolve({ id: "outcome_123" }),
+        searchParams: Promise.resolve({ runId: "run_historical" })
+      })
+    );
+
+    expect(observedConversationRun?.id).toBe("run_historical");
+    expect(observedFollowUpDisabled).toBe(true);
+  });
+
+  it("redirects back to the outcome page with a conflict banner when a stale follow-up hits an active run", async () => {
+    mocks.continueOutcome.mockRejectedValue(
+      new hoistedErrors.OutcomeContinueConflictError(
+        "Outcome outcome_123 already has an active run run_live with status running."
+      )
+    );
+
+    render(
+      await OutcomeDetailPage({
+        params: Promise.resolve({ id: "outcome_123" }),
+        searchParams: Promise.resolve({ runId: "run_latest" })
+      })
+    );
+
+    const formData = new FormData();
+    formData.set("content", "Make it shorter.");
+
+    await observedFollowUpAction?.(formData);
+
+    expect(mocks.redirect).toHaveBeenCalledWith(
+      "/outcomes/outcome_123?runId=run_latest&conflict=active-run"
+    );
   });
 
   it("removes operator controls from the outcomes page", async () => {

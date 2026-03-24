@@ -58,6 +58,13 @@ const DEFAULT_CONTROL_PLANE_URL = "http://127.0.0.1:4000";
 const DEFAULT_WORKSPACE_ID = "ws_default";
 const DEFAULT_USER_ID = "user_default";
 
+export class OutcomeContinueConflictError extends Error {
+  constructor(message = "Mycelium is still working on the current run.") {
+    super(message);
+    this.name = "OutcomeContinueConflictError";
+  }
+}
+
 export function getControlPlaneBaseUrl() {
   return process.env.CONTROL_PLANE_URL ?? DEFAULT_CONTROL_PLANE_URL;
 }
@@ -213,6 +220,27 @@ export async function continueOutcome(
       cache: "no-store"
     }
   );
+
+  if (response.status === 409) {
+    let message = "Mycelium is still working on the current run.";
+
+    try {
+      const parsed = await response.json();
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        "error" in parsed &&
+        typeof parsed.error === "string" &&
+        parsed.error.length > 0
+      ) {
+        message = parsed.error;
+      }
+    } catch {
+      // Fall back to the generic conflict message.
+    }
+
+    throw new OutcomeContinueConflictError(message);
+  }
 
   if (!response.ok) {
     throw new Error("Failed to continue outcome thread.");

@@ -8,6 +8,7 @@ import {
   getLatestRun,
   listOutcomes,
   listApprovals,
+  OutcomeContinueConflictError,
   getOutcome,
   getOutcomeMessages,
   getPlan,
@@ -21,17 +22,15 @@ import { deriveOutcomeTitle } from "../../../lib/outcome-title";
 
 export const dynamic = "force-dynamic";
 
-const ACTIVE_RUN_STATUSES = new Set([
-  "draft",
+const ACTIVE_OUTCOME_STATUSES = new Set([
   "planning",
   "queued",
-  "waiting_for_worker",
   "running",
-  "blocked"
+  "blocked_on_approval"
 ]);
 
-function isActiveRunStatus(status?: string) {
-  return status ? ACTIVE_RUN_STATUSES.has(status) : false;
+function isActiveOutcomeStatus(status?: string) {
+  return status ? ACTIVE_OUTCOME_STATUSES.has(status) : false;
 }
 
 async function resolveRunForOutcome(outcomeId: string, requestedRunId?: string) {
@@ -61,15 +60,22 @@ export default async function OutcomeDetailPage({
   searchParams
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ runId?: string | string[]; bootstrap?: string | string[] }>;
+  searchParams: Promise<{
+    runId?: string | string[];
+    bootstrap?: string | string[];
+    conflict?: string | string[];
+  }>;
 }) {
   const [{ id }, resolvedSearchParams] = await Promise.all([params, searchParams]);
   const runIdParam = resolvedSearchParams.runId;
   const bootstrapParam = resolvedSearchParams.bootstrap;
+  const conflictParam = resolvedSearchParams.conflict;
   const selectedRunId =
     typeof runIdParam === "string" ? runIdParam : runIdParam?.[0];
   const bootstrapState =
     typeof bootstrapParam === "string" ? bootstrapParam : bootstrapParam?.[0] ?? null;
+  const conflictState =
+    typeof conflictParam === "string" ? conflictParam : conflictParam?.[0] ?? null;
   const [outcome, run] = await Promise.all([
     getOutcome(id),
     resolveRunForOutcome(id, selectedRunId)
@@ -120,16 +126,28 @@ export default async function OutcomeDetailPage({
       return;
     }
 
-    const response = await continueOutcome(id, {
-      content
-    });
+    try {
+      const response = await continueOutcome(id, {
+        content
+      });
 
-    if (response.run?.id) {
-      redirect(`/outcomes/${id}?runId=${response.run.id}`);
-      return;
+      if (response.run?.id) {
+        redirect(`/outcomes/${id}?runId=${response.run.id}`);
+        return;
+      }
+
+      revalidatePath(`/outcomes/${id}`);
+    } catch (error) {
+      if (error instanceof OutcomeContinueConflictError) {
+        const targetPath = selectedRunId
+          ? `/outcomes/${id}?runId=${selectedRunId}&conflict=active-run`
+          : `/outcomes/${id}?conflict=active-run`;
+        redirect(targetPath);
+        return;
+      }
+
+      throw error;
     }
-
-    revalidatePath(`/outcomes/${id}`);
   }
 
   return (
@@ -181,6 +199,13 @@ export default async function OutcomeDetailPage({
               </p>
             ) : null}
 
+            {conflictState === "active-run" ? (
+              <p className="rounded-xl border border-amber-300/40 bg-amber-50/40 px-4 py-3 text-sm text-amber-800">
+                Mycelium is still working on the current run. Wait for it to
+                finish before sending a follow-up.
+              </p>
+            ) : null}
+
             <OutcomeConversation
               outcomeId={outcome.id}
               outcomePrompt={outcome.prompt}
@@ -200,7 +225,7 @@ export default async function OutcomeDetailPage({
         <FollowUpInput
           action={appendMessageAction}
           hasConversation={Boolean(run)}
-          disabled={isActiveRunStatus(run?.status)}
+          disabled={isActiveOutcomeStatus(outcome.status)}
         />
       </section>
     </main>
