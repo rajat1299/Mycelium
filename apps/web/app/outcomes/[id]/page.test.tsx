@@ -541,6 +541,26 @@ describe("OutcomeDetailPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("hydrates persisted follow-up messages even when the outcome has no run yet", async () => {
+    mocks.getLatestRun.mockResolvedValue(null);
+
+    render(
+      await OutcomeDetailPage({
+        params: Promise.resolve({ id: "outcome_123" }),
+        searchParams: Promise.resolve({})
+      })
+    );
+
+    expect(mocks.getOutcomeMessages).toHaveBeenCalledWith("outcome_123");
+    expect(observedConversationRun).toBeNull();
+    expect(observedConversationMessages).toEqual([
+      expect.objectContaining({
+        role: "user",
+        content: "Refine the final report for principals."
+      })
+    ]);
+  });
+
   it("removes operator controls from the outcomes page", async () => {
     render(
       await OutcomeDetailPage({

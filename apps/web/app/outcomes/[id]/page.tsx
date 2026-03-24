@@ -60,12 +60,13 @@ export default async function OutcomeDetailPage({
 
   const outcomesPromise = listOutcomes(outcome.workspaceId);
   const approvalsPromise = listApprovals(outcome.workspaceId);
-  const [artifacts, logs, messages, assistantMessages, approvals, outcomes] = run
+  const messagesPromise = getOutcomeMessages(id);
+  const [artifacts, logs, assistantMessages, messages, approvals, outcomes] = run
     ? await Promise.all([
         getRunArtifacts(run.id),
         getRunLogs(run.id),
-        getOutcomeMessages(id),
         getRunAssistantMessages(run.id),
+        messagesPromise,
         approvalsPromise,
         outcomesPromise
       ])
@@ -73,7 +74,7 @@ export default async function OutcomeDetailPage({
         [],
         [],
         [],
-        [],
+        await messagesPromise,
         await approvalsPromise,
         await outcomesPromise
       ];
