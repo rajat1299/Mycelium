@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryRepositories } from "../src/lib/repositories";
+import {
+  createPlanForOutcomeTurn,
+  createRunForExistingPlan
+} from "./turn-test-helpers";
 
 function buildPlanInput(outcomeId: string) {
   return {
@@ -129,11 +133,14 @@ describe("in-memory schedule repositories", () => {
       prompt: "Create another workspace brief.",
       source: "schedule"
     });
-    await repositories.plans.create(buildPlanInput("outcome_other"));
-    await repositories.runs.createFromPlan({
+    const plan = await createPlanForOutcomeTurn(
+      repositories,
+      buildPlanInput("outcome_other")
+    );
+    await createRunForExistingPlan(repositories, {
       id: "run_other",
       outcomeId: "outcome_other",
-      planId: "plan_outcome_other",
+      planId: plan.id,
       createdAt: "2026-03-17T12:05:00.000Z",
       updatedAt: "2026-03-17T12:05:00.000Z"
     });

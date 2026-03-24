@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createExecutionHarness, createOutcomeAndPlan } from "./execution-test-helpers";
+import {
+  createPlanForOutcomeTurn,
+  createRunForExistingPlan
+} from "./turn-test-helpers";
 
 describe("checkpoint service", () => {
   it("persists semantic checkpoint manifests and matching audit events", async () => {
@@ -8,7 +12,7 @@ describe("checkpoint service", () => {
     try {
       const { app, services, events } = harness;
       const { outcome, plan } = await createOutcomeAndPlan(app);
-      const run = await services.repositories.runs.createFromPlan({
+      const run = await createRunForExistingPlan(services.repositories, {
         id: `run_${outcome.id}_checkpoint`,
         outcomeId: outcome.id,
         planId: plan.id,
@@ -126,7 +130,7 @@ describe("checkpoint service", () => {
         }
       });
       const outcome = createOutcome.json();
-      const plan = await services.repositories.plans.create({
+      const plan = await createPlanForOutcomeTurn(services.repositories, {
         id: `plan_${outcome.id}_parallel`,
         outcomeId: outcome.id,
         status: "draft",
@@ -177,7 +181,7 @@ describe("checkpoint service", () => {
           }
         ]
       });
-      const run = await services.repositories.runs.createFromPlan({
+      const run = await createRunForExistingPlan(services.repositories, {
         id: `run_${outcome.id}_parallel`,
         outcomeId: outcome.id,
         planId: plan.id,

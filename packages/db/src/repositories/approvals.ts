@@ -331,6 +331,7 @@ export class ApprovalRepository {
           id: updatedRun.id,
           outcomeId: updatedRun.outcomeId,
           planId: updatedRun.planId,
+          triggerMessageId: updatedRun.triggerMessageId,
           status: updatedRun.status,
           createdAt: updatedRun.createdAt.toISOString(),
           updatedAt: updatedRun.updatedAt.toISOString()

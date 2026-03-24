@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryRepositories } from "../src/lib/repositories";
+import {
+  createPlanForOutcomeTurn,
+  createRunForExistingPlan
+} from "./turn-test-helpers";
 
 describe("in-memory remote worker repositories", () => {
   it("stores worker state, refreshes heartbeats, and cleans up stale sessions", async () => {
@@ -150,7 +154,15 @@ describe("in-memory remote worker repositories", () => {
   it("enforces assignment conflicts and delete parity for assigned workers", async () => {
     const repositories = createInMemoryRepositories();
 
-    await repositories.plans.create({
+    await repositories.outcomes.create({
+      id: "outcome_123",
+      workspaceId: "ws_default",
+      userId: "user_123",
+      prompt: "Seed worker assignment run",
+      source: "web"
+    });
+
+    const plan = await createPlanForOutcomeTurn(repositories, {
       id: "plan_outcome_123",
       outcomeId: "outcome_123",
       status: "draft",
@@ -166,10 +178,10 @@ describe("in-memory remote worker repositories", () => {
       ],
       edges: []
     });
-    await repositories.runs.createFromPlan({
+    await createRunForExistingPlan(repositories, {
       id: "run_123",
       outcomeId: "outcome_123",
-      planId: "plan_outcome_123",
+      planId: plan.id,
       createdAt: "2026-03-16T10:00:00.000Z",
       updatedAt: "2026-03-16T10:00:00.000Z"
     });

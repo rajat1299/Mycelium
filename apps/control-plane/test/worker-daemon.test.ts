@@ -6,6 +6,10 @@ import {
   createInMemoryRepositories,
   type Repositories
 } from "../src/lib/repositories";
+import {
+  createPlanForOutcomeTurn,
+  createRunForExistingPlan
+} from "./turn-test-helpers";
 
 const appsToClose = new Set<ReturnType<typeof buildApp>>();
 
@@ -34,7 +38,7 @@ async function seedAssignedRun(repositories: Repositories) {
     source: "web"
   });
 
-  await repositories.plans.create({
+  const plan = await createPlanForOutcomeTurn(repositories, {
     id: "plan_outcome_123",
     outcomeId: outcome.id,
     status: "draft",
@@ -51,10 +55,10 @@ async function seedAssignedRun(repositories: Repositories) {
     edges: []
   });
 
-  await repositories.runs.createFromPlan({
+  await createRunForExistingPlan(repositories, {
     id: "run_123",
     outcomeId: outcome.id,
-    planId: "plan_outcome_123",
+    planId: plan.id,
     createdAt: "2026-03-16T10:00:00.000Z",
     updatedAt: "2026-03-16T10:00:00.000Z"
   });

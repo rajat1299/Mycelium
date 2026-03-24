@@ -4,6 +4,7 @@ import {
   type ServiceContainer
 } from "../src/lib/service-container";
 import { buildApp } from "../src/app";
+import { createPlanForOutcomeTurn } from "./turn-test-helpers";
 
 const appsToClose = new Set<ReturnType<typeof buildApp>>();
 
@@ -62,7 +63,7 @@ async function seedOutcomePlanAndWorker(services: ServiceContainer) {
     source: "web"
   });
 
-  await services.repositories.plans.create({
+  await createPlanForOutcomeTurn(services.repositories, {
     id: "plan_outcome_123",
     outcomeId: outcome.id,
     status: "draft",
@@ -486,7 +487,7 @@ describe("remote execution", () => {
       source: "web"
     });
 
-    await services.repositories.plans.create({
+    await createPlanForOutcomeTurn(services.repositories, {
       id: "plan_outcome_124",
       outcomeId: outcome.id,
       status: "draft",

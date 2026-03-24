@@ -5,6 +5,10 @@ import {
   CheckpointListResponseSchema
 } from "@computer-oss/protocol";
 import { createExecutionHarness } from "./execution-test-helpers";
+import {
+  createPlanForOutcomeTurn,
+  createRunForExistingPlan
+} from "./turn-test-helpers";
 
 describe("checkpoint routes", () => {
   it("lists checkpoints, reads checkpoint detail, and lists audit events for a run", async () => {
@@ -23,7 +27,7 @@ describe("checkpoint routes", () => {
         }
       });
       const outcome = createOutcome.json();
-      const plan = await services.repositories.plans.create({
+      const plan = await createPlanForOutcomeTurn(services.repositories, {
         id: `plan_${outcome.id}_resume`,
         outcomeId: outcome.id,
         status: "draft",
@@ -59,7 +63,7 @@ describe("checkpoint routes", () => {
           }
         ]
       });
-      const run = await services.repositories.runs.createFromPlan({
+      const run = await createRunForExistingPlan(services.repositories, {
         id: `run_${outcome.id}_resume`,
         outcomeId: outcome.id,
         planId: plan.id,
@@ -183,7 +187,7 @@ describe("checkpoint routes", () => {
         }
       });
       const outcome = createOutcome.json();
-      const plan = await services.repositories.plans.create({
+      const plan = await createPlanForOutcomeTurn(services.repositories, {
         id: `plan_${outcome.id}_stream_resume`,
         outcomeId: outcome.id,
         status: "draft",
@@ -203,7 +207,7 @@ describe("checkpoint routes", () => {
         ],
         edges: []
       });
-      const run = await services.repositories.runs.createFromPlan({
+      const run = await createRunForExistingPlan(services.repositories, {
         id: `run_${outcome.id}_stream_resume`,
         outcomeId: outcome.id,
         planId: plan.id,

@@ -9,6 +9,10 @@ import {
   createExecutionHarness,
   createOutcomeAndPlan
 } from "./execution-test-helpers";
+import {
+  createPlanForOutcomeTurn,
+  createRunForExistingPlan
+} from "./turn-test-helpers";
 
 const ROUTING_TIMESTAMP = "2026-03-14T00:00:00.000Z";
 
@@ -119,7 +123,7 @@ async function createNonReviewPlan(
 ) {
   const createdAt = "2026-03-12T00:00:00.000Z";
 
-  return repositories.plans.create({
+  return createPlanForOutcomeTurn(repositories, {
     id: `plan_${outcomeId}_no_review`,
     outcomeId,
     status: "draft",
@@ -163,7 +167,7 @@ async function createReviewBlockedParentPlan(
 ) {
   const createdAt = "2026-03-12T00:00:00.000Z";
 
-  return repositories.plans.create({
+  return createPlanForOutcomeTurn(repositories, {
     id: `plan_${outcomeId}_review_parent`,
     outcomeId,
     status: "draft",
@@ -213,7 +217,7 @@ async function createMixedBlockedSiblingsPlan(
 ) {
   const createdAt = "2026-03-12T00:00:00.000Z";
 
-  return repositories.plans.create({
+  return createPlanForOutcomeTurn(repositories, {
     id: `plan_${outcomeId}_mixed_block`,
     outcomeId,
     status: "draft",
@@ -820,7 +824,7 @@ describe("execution service", () => {
       });
       const outcome = createOutcome.json();
       const plan = await createNonReviewPlan(services.repositories, outcome.id);
-      const run = await services.repositories.runs.createFromPlan({
+      const run = await createRunForExistingPlan(services.repositories, {
         id: `run_${outcome.id}_recover`,
         outcomeId: outcome.id,
         planId: plan.id,
@@ -971,7 +975,7 @@ describe("execution service", () => {
       });
       const outcome = createOutcome.json();
       const plan = await createNonReviewPlan(services.repositories, outcome.id);
-      const run = await services.repositories.runs.createFromPlan({
+      const run = await createRunForExistingPlan(services.repositories, {
         id: `run_${outcome.id}_resume`,
         outcomeId: outcome.id,
         planId: plan.id,

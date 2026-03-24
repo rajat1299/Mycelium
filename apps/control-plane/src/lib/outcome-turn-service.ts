@@ -54,8 +54,12 @@ type CreateOutcomeTurnServiceOptions = {
   idFactory?: () => string;
 };
 
-type TurnRunStartOptions = Omit<CreateOutcomeTurnServiceOptions, "idFactory"> & {
+type TurnRunStartOptions = Omit<
+  CreateOutcomeTurnServiceOptions,
+  "idFactory" | "now"
+> & {
   idFactory: () => string;
+  now: () => Date;
 };
 
 type TurnPlanInput = {

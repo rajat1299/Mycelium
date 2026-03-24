@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryRepositories } from "../src/lib/repositories";
+import {
+  createPlanForOutcomeTurn,
+  createRunForExistingPlan
+} from "./turn-test-helpers";
 
 function buildPlanInput() {
   return {
@@ -38,11 +42,11 @@ describe("in-memory repositories", () => {
       prompt: "Draft the operator escalation note.",
       source: "web"
     });
-    await repositories.plans.create(buildPlanInput());
-    await repositories.runs.createFromPlan({
+    const plan = await createPlanForOutcomeTurn(repositories, buildPlanInput());
+    await createRunForExistingPlan(repositories, {
       id: "run_123",
       outcomeId: "outcome_123",
-      planId: "plan_outcome_123",
+      planId: plan.id,
       createdAt: "2026-03-12T00:05:00.000Z",
       updatedAt: "2026-03-12T00:05:00.000Z"
     });
@@ -88,7 +92,7 @@ describe("in-memory repositories", () => {
       prompt: "Ship the launch brief and summary.",
       source: "web"
     });
-    await repositories.plans.create({
+    const plan = await createPlanForOutcomeTurn(repositories, {
       ...buildPlanInput(),
       nodes: [
         {
@@ -107,10 +111,10 @@ describe("in-memory repositories", () => {
         }
       ]
     });
-    await repositories.runs.createFromPlan({
+    await createRunForExistingPlan(repositories, {
       id: "run_123",
       outcomeId: "outcome_123",
-      planId: "plan_outcome_123",
+      planId: plan.id,
       createdAt: "2026-03-12T00:05:00.000Z",
       updatedAt: "2026-03-12T00:05:00.000Z"
     });
