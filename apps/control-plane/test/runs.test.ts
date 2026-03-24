@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   OutcomeSchema,
+  PlanSchema,
   ResumeRunResponseSchema,
   RunDetailSchema,
   RunLogListResponseSchema
@@ -455,6 +456,43 @@ describe("run routes", () => {
         })
       );
     } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("returns the selected run's plan snapshot", async () => {
+    const harness = await createExecutionHarness();
+    let createdRunId: string | null = null;
+
+    try {
+      const { app } = harness;
+      const { outcome, plan } = await createOutcomeAndPlan(
+        app,
+        "Read the plan that belongs to this specific run."
+      );
+
+      const createRun = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome.id}/runs`,
+        payload: {
+          planId: plan.id
+        }
+      });
+
+      const run = RunDetailSchema.parse(createRun.json());
+      createdRunId = run.id;
+      const readRunPlan = await app.inject({
+        method: "GET",
+        url: `/api/runs/${run.id}/plan`
+      });
+
+      expect(readRunPlan.statusCode).toBe(200);
+      expect(PlanSchema.parse(readRunPlan.json())).toEqual(plan);
+    } finally {
+      if (createdRunId) {
+        await harness.services.executionService.waitForRun(createdRunId);
+      }
+
       await harness.cleanup();
     }
   });

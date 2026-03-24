@@ -106,4 +106,59 @@ describe("plan routes", () => {
       ])
     );
   });
+
+  it("returns the latest persisted plan snapshot for an outcome", async () => {
+    const app = buildApp();
+
+    const createOutcome = await app.inject({
+      method: "POST",
+      url: "/api/outcomes",
+      payload: {
+        workspaceId: "ws_123",
+        userId: "user_123",
+        prompt: "Draft the first plan.",
+        source: "web"
+      }
+    });
+    const outcome = createOutcome.json();
+
+    await app.inject({
+      method: "POST",
+      url: `/api/outcomes/${outcome.id}/messages`,
+      payload: {
+        role: "user",
+        content: "First turn"
+      }
+    });
+    const firstPlanResponse = await app.inject({
+      method: "POST",
+      url: `/api/outcomes/${outcome.id}/plan`
+    });
+    const firstPlan = PlanSchema.parse(firstPlanResponse.json());
+
+    await app.inject({
+      method: "POST",
+      url: `/api/outcomes/${outcome.id}/messages`,
+      payload: {
+        role: "user",
+        content: "Second turn"
+      }
+    });
+    const secondPlanResponse = await app.inject({
+      method: "POST",
+      url: `/api/outcomes/${outcome.id}/plan`
+    });
+    const secondPlan = PlanSchema.parse(secondPlanResponse.json());
+
+    expect(secondPlan.id).not.toBe(firstPlan.id);
+    expect(secondPlan.triggerMessageId).not.toBe(firstPlan.triggerMessageId);
+
+    const latestPlan = await app.inject({
+      method: "GET",
+      url: `/api/outcomes/${outcome.id}/plan`
+    });
+
+    expect(latestPlan.statusCode).toBe(200);
+    expect(PlanSchema.parse(latestPlan.json())).toEqual(secondPlan);
+  });
 });

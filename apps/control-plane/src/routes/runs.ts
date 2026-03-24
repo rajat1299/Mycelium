@@ -5,6 +5,7 @@ import {
   AssistantMessageListResponseSchema,
   AssistantMessageSnapshotSchema,
   AssistantMessageStartedDataSchema,
+  PlanSchema,
   ResumeRunRequestSchema,
   ResumeRunResponseSchema,
   CreateRunRequestSchema,
@@ -139,6 +140,28 @@ async function buildRunDetail(
   });
 }
 
+async function buildPlanDetail(
+  repositories: Repositories,
+  planId: string
+): Promise<ReturnType<typeof PlanSchema.parse> | null> {
+  const plan = await repositories.plans.getById(planId);
+
+  if (!plan) {
+    return null;
+  }
+
+  const [nodes, edges] = await Promise.all([
+    repositories.plans.listNodes(plan.id),
+    repositories.plans.listEdges(plan.id)
+  ]);
+
+  return PlanSchema.parse({
+    ...plan,
+    nodes,
+    edges
+  });
+}
+
 export function registerRunRoutes(
   app: FastifyInstance,
   options: RunRouteOptions
@@ -237,6 +260,28 @@ export function registerRunRoutes(
 
     if (!response) {
       return reply.code(404).send(badRequest("Run not found."));
+    }
+
+    return reply.code(200).send(response);
+  });
+
+  app.get("/api/runs/:runId/plan", async (request, reply) => {
+    const params = request.params as { runId?: string };
+
+    if (!params.runId) {
+      return reply.code(400).send(badRequest("Run id is required."));
+    }
+
+    const run = await options.repositories.runs.getById(params.runId);
+
+    if (!run) {
+      return reply.code(404).send(badRequest("Run not found."));
+    }
+
+    const response = await buildPlanDetail(options.repositories, run.planId);
+
+    if (!response) {
+      return reply.code(404).send(badRequest("Plan not found."));
     }
 
     return reply.code(200).send(response);

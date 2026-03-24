@@ -1,18 +1,23 @@
 import type { FastifyInstance } from "fastify";
 import {
+  ContinueOutcomeRequestSchema,
   CreateOutcomeMessageRequestSchema,
   CreateOutcomeRequestSchema,
   MessageCreatedDataSchema,
   OutcomeMessageListResponseSchema,
   OutcomeListResponseSchema,
-  OutcomeSchema
+  OutcomeSchema,
+  OutcomeTurnResponseSchema,
+  StartOutcomeRequestSchema
 } from "@computer-oss/protocol";
 import type { EventBus } from "../lib/event-bus";
+import type { OutcomeTurnService } from "../lib/outcome-turn-service";
 import type { Repositories } from "../lib/repositories";
 
 type OutcomeRouteOptions = {
   repositories: Repositories;
   eventBus: EventBus;
+  outcomeTurnService: OutcomeTurnService;
 };
 
 function badRequest(message: string) {
@@ -25,6 +30,28 @@ export function registerOutcomeRoutes(
   app: FastifyInstance,
   options: OutcomeRouteOptions
 ): void {
+  app.post("/api/outcomes/start", async (request, reply) => {
+    const parsed = StartOutcomeRequestSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      return reply.code(400).send(badRequest("Invalid outcome turn payload."));
+    }
+
+    try {
+      const response = await options.outcomeTurnService.startThread(parsed.data);
+
+      return reply.code(201).send(OutcomeTurnResponseSchema.parse(response));
+    } catch (error) {
+      if (error instanceof Error) {
+        if (error.message.includes("does not exist")) {
+          return reply.code(404).send(badRequest(error.message));
+        }
+      }
+
+      throw error;
+    }
+  });
+
   app.post("/api/outcomes", async (request, reply) => {
     const parsed = CreateOutcomeRequestSchema.safeParse(request.body);
 
@@ -44,6 +71,36 @@ export function registerOutcomeRoutes(
     });
 
     return reply.code(201).send(OutcomeSchema.parse(created));
+  });
+
+  app.post("/api/outcomes/:id/continue", async (request, reply) => {
+    const params = request.params as { id?: string };
+    const parsed = ContinueOutcomeRequestSchema.safeParse(request.body);
+
+    if (!params.id) {
+      return reply.code(400).send(badRequest("Outcome id is required."));
+    }
+
+    if (!parsed.success) {
+      return reply.code(400).send(badRequest("Invalid outcome turn payload."));
+    }
+
+    try {
+      const response = await options.outcomeTurnService.continueThread({
+        outcomeId: params.id,
+        ...parsed.data
+      });
+
+      return reply.code(201).send(OutcomeTurnResponseSchema.parse(response));
+    } catch (error) {
+      if (error instanceof Error) {
+        if (error.message.includes("not found")) {
+          return reply.code(404).send(badRequest(error.message));
+        }
+      }
+
+      throw error;
+    }
   });
 
   app.get("/api/outcomes/:id", async (request, reply) => {

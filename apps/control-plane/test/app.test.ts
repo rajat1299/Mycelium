@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { OutcomeTurnResponseSchema } from "@computer-oss/protocol";
 import { buildApp } from "../src/app";
+import { createExecutionHarness } from "./execution-test-helpers";
 
 describe("control plane", () => {
   it("returns a health response", async () => {
@@ -108,5 +110,48 @@ describe("control plane", () => {
 
     expect(response.statusCode).toBe(202);
     expect(response.json()).toEqual({ accepted: true });
+  });
+
+  it("starts and continues an outcome turn", async () => {
+    const harness = await createExecutionHarness({
+      simulationMode: true
+    });
+
+    try {
+      const { app } = harness;
+
+      const start = await app.inject({
+        method: "POST",
+        url: "/api/outcomes/start",
+        payload: {
+          workspaceId: "ws_123",
+          userId: "user_123",
+          prompt: "Draft a project kickoff brief",
+          source: "web"
+        }
+      });
+
+      expect(start.statusCode).toBe(201);
+      const started = OutcomeTurnResponseSchema.parse(start.json());
+
+      const cont = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${started.outcome.id}/continue`,
+        payload: {
+          content: "Add the rollout notes."
+        }
+      });
+
+      expect(cont.statusCode).toBe(201);
+      expect(OutcomeTurnResponseSchema.parse(cont.json())).toEqual(
+        expect.objectContaining({
+          outcome: expect.objectContaining({
+            id: started.outcome.id
+          })
+        })
+      );
+    } finally {
+      await harness.cleanup();
+    }
   });
 });

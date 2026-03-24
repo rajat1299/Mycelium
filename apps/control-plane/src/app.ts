@@ -111,7 +111,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   registerSlackRoutes(app, { slackService });
   registerTelegramRoutes(app, { telegramService });
   registerMessageRoutes(app, { messagingService });
-  registerOutcomeRoutes(app, { repositories, eventBus });
+  registerOutcomeRoutes(app, { repositories, eventBus, outcomeTurnService });
   registerPlanRoutes(app, { repositories, eventBus, simulationMode });
   registerCheckpointRoutes(app, { repositories, checkpointService });
   registerRunRoutes(app, {
