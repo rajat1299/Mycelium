@@ -696,12 +696,34 @@ describe("OutcomeConversation", () => {
       for (const handler of eventStream.handlers) {
         handler({
           outcomeId: "outcome_123",
+          type: "plan.created",
+          data: {
+            id: "plan_outcome_456",
+            outcomeId: "outcome_123",
+            triggerMessageId: "msg_456",
+            status: "draft",
+            createdAt: "2026-03-22T00:05:00.000Z",
+            updatedAt: "2026-03-22T00:05:00.000Z",
+            nodes: [
+              {
+                id: "node_collect",
+                kind: "root",
+                title: "Collect fresh research",
+                capability: "reasoning",
+                position: 0
+              }
+            ],
+            edges: []
+          }
+        });
+        handler({
+          outcomeId: "outcome_123",
           type: "run.created",
           data: {
             id: "run_456",
             outcomeId: "outcome_123",
-            planId: "plan_outcome_123",
-            triggerMessageId: "msg_123",
+            planId: "plan_outcome_456",
+            triggerMessageId: "msg_456",
             status: "running",
             createdAt: "2026-03-22T00:05:00.000Z",
             updatedAt: "2026-03-22T00:05:00.000Z",
@@ -750,6 +772,7 @@ describe("OutcomeConversation", () => {
       screen.getByText("I archived the previous run and preserved the research trail.")
     ).toBeInTheDocument();
     expect(screen.getAllByText("Archive current findings").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Collect fresh research")).not.toBeInTheDocument();
     expect(
       screen.queryByText("I’m starting a new live run and collecting fresh research.")
     ).not.toBeInTheDocument();

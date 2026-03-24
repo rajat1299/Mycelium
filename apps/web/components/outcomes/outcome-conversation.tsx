@@ -183,6 +183,9 @@ export function OutcomeConversation({
 
           switch (event.type) {
             case "plan.created":
+              if (conversation.run && event.data.id !== conversation.run.planId) {
+                return current;
+              }
               return {
                 ...current,
                 conversation: { ...conversation, plan: event.data }
