@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import type { DatabaseClient } from "../client";
 import { outcomeMessages, outcomes, users, workspaces } from "../schema";
 
@@ -65,19 +65,6 @@ function mapOutcomeMessageRow(row: OutcomeMessageRow): StoredOutcomeMessage {
   };
 }
 
-function compareOutcomeMessageRows(
-  left: OutcomeMessageRow,
-  right: OutcomeMessageRow
-) {
-  const createdDelta = left.createdAt.getTime() - right.createdAt.getTime();
-
-  if (createdDelta !== 0) {
-    return createdDelta;
-  }
-
-  return left.id.localeCompare(right.id);
-}
-
 function workspaceName(id: string) {
   return `Workspace ${id}`;
 }
@@ -127,8 +114,10 @@ export class OutcomeRepository {
   }
 
   async getMessageById(id: string): Promise<StoredOutcomeMessage | null> {
-    const rows = await this.db.select().from(outcomeMessages);
-    const found = rows.find((row) => row.id === id);
+    const [found] = await this.db
+      .select()
+      .from(outcomeMessages)
+      .where(eq(outcomeMessages.id, id));
 
     if (!found) {
       return null;
@@ -138,12 +127,13 @@ export class OutcomeRepository {
   }
 
   async listMessages(outcomeId: string): Promise<StoredOutcomeMessage[]> {
-    const rows = await this.db.select().from(outcomeMessages);
+    const rows = await this.db
+      .select()
+      .from(outcomeMessages)
+      .where(eq(outcomeMessages.outcomeId, outcomeId))
+      .orderBy(asc(outcomeMessages.createdAt), asc(outcomeMessages.id));
 
-    return rows
-      .filter((row) => row.outcomeId === outcomeId)
-      .sort(compareOutcomeMessageRows)
-      .map(mapOutcomeMessageRow);
+    return rows.map(mapOutcomeMessageRow);
   }
 
   async listByWorkspace(workspaceId: string): Promise<StoredOutcome[]> {

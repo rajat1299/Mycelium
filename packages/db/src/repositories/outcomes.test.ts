@@ -154,6 +154,36 @@ describe("OutcomeRepository", () => {
     const state = {
       outcomeMessages: [] as Array<Record<string, unknown>>
     };
+    const readState = {
+      whereCalls: 0,
+      orderByCalls: 0
+    };
+
+    function parseEqExpression(expression: {
+      queryChunks?: Array<{ name?: string; value?: unknown }>;
+    }) {
+      const column = expression.queryChunks?.[1]?.name;
+      const value = expression.queryChunks?.[3]?.value;
+
+      if (typeof column !== "string") {
+        throw new Error("Expected an eq() expression with a column name.");
+      }
+
+      return { column, value };
+    }
+
+    function readColumnValue(row: Record<string, unknown>, column: string) {
+      if (column in row) {
+        return row[column];
+      }
+
+      const camelColumn = column.replace(/_([a-z])/g, (_match, letter: string) =>
+        letter.toUpperCase()
+      );
+
+      return row[camelColumn];
+    }
+
     const db = {
       insert(table: typeof outcomeMessages) {
         expect(table).toBe(outcomeMessages);
@@ -169,7 +199,38 @@ describe("OutcomeRepository", () => {
         return {
           from(table: typeof outcomeMessages) {
             expect(table).toBe(outcomeMessages);
-            return Promise.resolve(state.outcomeMessages);
+            let rows = [...state.outcomeMessages];
+
+            const builder = {
+              where(expression: {
+                queryChunks?: Array<{ name?: string; value?: unknown }>;
+              }) {
+                readState.whereCalls += 1;
+                const { column, value } = parseEqExpression(expression);
+                rows = rows.filter((row) => readColumnValue(row, column) === value);
+                return builder;
+              },
+              orderBy() {
+                readState.orderByCalls += 1;
+                rows = [...rows].sort((left, right) => {
+                  const createdDelta =
+                    (left.createdAt as Date).getTime() -
+                    (right.createdAt as Date).getTime();
+
+                  if (createdDelta !== 0) {
+                    return createdDelta;
+                  }
+
+                  return String(left.id).localeCompare(String(right.id));
+                });
+                return builder;
+              },
+              then(resolve: (value: Array<Record<string, unknown>>) => unknown) {
+                return Promise.resolve(rows).then(resolve);
+              }
+            };
+
+            return builder;
           }
         };
       }
@@ -215,5 +276,8 @@ describe("OutcomeRepository", () => {
         createdAt: "2026-03-11T00:02:00.000Z"
       }
     ]);
+
+    expect(readState.whereCalls).toBe(2);
+    expect(readState.orderByCalls).toBe(1);
   });
 });

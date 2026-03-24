@@ -1,5 +1,6 @@
 import {
   boolean,
+  index,
   integer,
   jsonb,
   pgEnum,
@@ -393,18 +394,22 @@ export const routerPolicyCandidates = pgTable("router_policy_candidates", {
   enabled: boolean("enabled").notNull().default(true)
 });
 
-export const outcomePlans = pgTable("outcome_plans", {
-  id: text("id").primaryKey(),
-  outcomeId: text("outcome_id")
-    .notNull()
-    .references(() => outcomes.id),
-  triggerMessageId: text("trigger_message_id")
-    .notNull()
-    .references(() => outcomeMessages.id),
-  status: planStatusEnum("status").notNull().default("draft"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
-});
+export const outcomePlans = pgTable(
+  "outcome_plans",
+  {
+    id: text("id").primaryKey(),
+    outcomeId: text("outcome_id")
+      .notNull()
+      .references(() => outcomes.id),
+    triggerMessageId: text("trigger_message_id")
+      .notNull()
+      .references(() => outcomeMessages.id),
+    status: planStatusEnum("status").notNull().default("draft"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [index("outcome_plans_outcome_id_idx").on(table.outcomeId)]
+);
 
 export const planNodes = pgTable("plan_nodes", {
   id: text("id").primaryKey(),
