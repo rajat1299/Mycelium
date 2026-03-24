@@ -82,6 +82,7 @@ describe("remote worker protocol contracts", () => {
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_123",
+      triggerMessageId: "msg_123",
       status: "waiting_for_worker",
       createdAt: "2026-03-16T12:00:00.000Z",
       updatedAt: "2026-03-16T12:00:00.000Z",

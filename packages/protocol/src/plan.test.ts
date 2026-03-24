@@ -3,6 +3,7 @@ import {
   EventTypeSchema,
   OutcomeStreamEventSchema,
   PlanSchema,
+  RunSchema,
   RunDetailSchema
 } from "./index";
 
@@ -11,6 +12,7 @@ describe("plan and run protocols", () => {
     const parsed = PlanSchema.safeParse({
       id: "plan_outcome_123",
       outcomeId: "outcome_123",
+      triggerMessageId: "msg_123",
       status: "draft",
       createdAt: "2026-03-11T00:00:00.000Z",
       updatedAt: "2026-03-11T00:00:00.000Z",
@@ -56,6 +58,7 @@ describe("plan and run protocols", () => {
     expect(parsed).toEqual({
       success: true,
       data: expect.objectContaining({
+        triggerMessageId: "msg_123",
         nodes: [
           expect.objectContaining({
             approvalRequirement: {
@@ -85,6 +88,7 @@ describe("plan and run protocols", () => {
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
+      triggerMessageId: "msg_123",
       status: "queued",
       createdAt: "2026-03-11T00:05:00.000Z",
       updatedAt: "2026-03-11T00:05:00.000Z",
@@ -141,6 +145,7 @@ describe("plan and run protocols", () => {
         data: {
           id: "plan_outcome_123",
           outcomeId: "outcome_123",
+          triggerMessageId: "msg_123",
           status: "draft",
           createdAt: "2026-03-11T00:00:00.000Z",
           updatedAt: "2026-03-11T00:00:00.000Z",
@@ -162,6 +167,7 @@ describe("plan and run protocols", () => {
           id: "run_123",
           outcomeId: "outcome_123",
           planId: "plan_outcome_123",
+          triggerMessageId: "msg_123",
           status: "queued",
           createdAt: "2026-03-11T00:05:00.000Z",
           updatedAt: "2026-03-11T00:05:00.000Z"
@@ -186,39 +192,44 @@ describe("plan and run protocols", () => {
     );
   });
 
-  it("accepts trigger message ids on turn-scoped plan and run payloads", () => {
+  it("requires trigger message linkage on plans and runs", () => {
+    expect(PlanSchema.shape.triggerMessageId.isOptional()).toBe(false);
+    expect(RunSchema.shape.triggerMessageId.isOptional()).toBe(false);
+    expect(RunDetailSchema.shape.triggerMessageId.isOptional()).toBe(false);
+
     expect(
-      PlanSchema.parse({
+      PlanSchema.safeParse({
         id: "plan_outcome_123",
         outcomeId: "outcome_123",
-        triggerMessageId: "msg_123",
         status: "draft",
         createdAt: "2026-03-11T00:00:00.000Z",
         updatedAt: "2026-03-11T00:00:00.000Z",
         nodes: [],
         edges: []
-      })
-    ).toEqual(
-      expect.objectContaining({
-        triggerMessageId: "msg_123"
-      })
-    );
+      }).success
+    ).toBe(false);
 
     expect(
-      RunDetailSchema.parse({
+      RunSchema.safeParse({
         id: "run_123",
         outcomeId: "outcome_123",
         planId: "plan_outcome_123",
-        triggerMessageId: "msg_123",
+        status: "queued",
+        createdAt: "2026-03-11T00:05:00.000Z",
+        updatedAt: "2026-03-11T00:05:00.000Z"
+      }).success
+    ).toBe(false);
+
+    expect(
+      RunDetailSchema.safeParse({
+        id: "run_123",
+        outcomeId: "outcome_123",
+        planId: "plan_outcome_123",
         status: "queued",
         createdAt: "2026-03-11T00:05:00.000Z",
         updatedAt: "2026-03-11T00:05:00.000Z",
         steps: []
-      })
-    ).toEqual(
-      expect.objectContaining({
-        triggerMessageId: "msg_123"
-      })
-    );
+      }).success
+    ).toBe(false);
   });
 });

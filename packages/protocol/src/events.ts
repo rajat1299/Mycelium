@@ -10,6 +10,7 @@ import {
   MessagingConnectionSchema,
   MessagingDeliverySchema
 } from "./messaging";
+import { MessageCreatedDataSchema } from "./outcome-message";
 import { OutcomeSchema } from "./outcome";
 import { PlanSchema, RunSchema, RunStepSchema } from "./plan";
 import {
@@ -44,14 +45,6 @@ export const EventTypeSchema = z.enum([
   "messaging.connection.updated",
   "messaging.delivery.updated"
 ]);
-
-export const MessageCreatedDataSchema = z.object({
-  id: z.string(),
-  outcomeId: z.string(),
-  role: z.enum(["user", "assistant", "system"]),
-  content: z.string(),
-  createdAt: z.string().datetime()
-});
 
 export const AssistantMessageKindSchema = z.enum([
   "acknowledgment",
@@ -289,7 +282,7 @@ export const OutcomeStreamEventSchema = z.discriminatedUnion("type", [
 
 export type EventType = z.infer<typeof EventTypeSchema>;
 export type EventEnvelope = z.infer<typeof EventEnvelopeSchema>;
-export type MessageCreatedData = z.infer<typeof MessageCreatedDataSchema>;
+export type { MessageCreatedData } from "./outcome-message";
 export type AssistantMessageKind = z.infer<typeof AssistantMessageKindSchema>;
 export type AssistantMessageStartedData = z.infer<
   typeof AssistantMessageStartedDataSchema

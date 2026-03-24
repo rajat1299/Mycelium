@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MessageCreatedDataSchema } from "./outcome-message";
 import { PlanSchema, RunDetailSchema } from "./plan";
 
 export const OutcomeStatusSchema = z.enum([
@@ -38,12 +39,10 @@ export const CreateOutcomeRequestSchema = z.object({
   source: OutcomeSourceSchema
 });
 
-export const StartOutcomeRequestSchema = CreateOutcomeRequestSchema.extend({
-  triggerMessageId: z.string().min(1).optional()
-});
+export const StartOutcomeRequestSchema = CreateOutcomeRequestSchema;
 
-export const ContinueOutcomeRequestSchema = StartOutcomeRequestSchema.extend({
-  outcomeId: z.string().min(1).optional()
+export const ContinueOutcomeRequestSchema = z.object({
+  content: z.string().min(1)
 });
 
 export const OutcomeListResponseSchema = z.object({
@@ -57,7 +56,7 @@ export const CreateOutcomeMessageRequestSchema = z.object({
 
 export const OutcomeTurnResponseSchema = z.object({
   outcome: OutcomeSchema,
-  triggerMessageId: z.string().min(1).optional(),
+  triggerMessage: MessageCreatedDataSchema,
   plan: PlanSchema.nullable().optional(),
   run: RunDetailSchema.nullable().optional()
 });

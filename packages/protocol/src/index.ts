@@ -7,6 +7,7 @@ export * from "./daemon";
 export * from "./events";
 export * from "./local-companion";
 export * from "./messaging";
+export * from "./outcome-message";
 export * from "./plan";
 export * from "./outcome";
 export * from "./remote-worker";

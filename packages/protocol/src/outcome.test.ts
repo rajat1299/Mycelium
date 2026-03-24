@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ContinueOutcomeRequestSchema,
+  CreateOutcomeRequestSchema,
   OutcomeSchema,
   OutcomeStatusSchema,
   OutcomeTurnResponseSchema,
@@ -30,30 +31,39 @@ describe("OutcomeSchema", () => {
         workspaceId: "ws_123",
         userId: "user_123",
         prompt: "Summarize the latest incident report",
-        source: "web",
-        triggerMessageId: "msg_123"
+        source: "web"
       })
     ).toEqual(
       expect.objectContaining({
-        triggerMessageId: "msg_123"
+        workspaceId: "ws_123",
+        userId: "user_123",
+        prompt: "Summarize the latest incident report",
+        source: "web"
       })
     );
 
     expect(
       ContinueOutcomeRequestSchema.parse({
-        outcomeId: "outcome_123",
-        workspaceId: "ws_123",
-        userId: "user_123",
-        prompt: "Continue the incident follow-up",
-        source: "slack",
-        triggerMessageId: "msg_456"
+        content: "Continue the incident follow-up"
       })
     ).toEqual(
       expect.objectContaining({
-        outcomeId: "outcome_123",
-        triggerMessageId: "msg_456"
+        content: "Continue the incident follow-up"
       })
     );
+
+    expect(Object.keys(StartOutcomeRequestSchema.shape).sort()).toEqual(
+      Object.keys(CreateOutcomeRequestSchema.shape).sort()
+    );
+    expect(Object.keys(ContinueOutcomeRequestSchema.shape).sort()).toEqual([
+      "content"
+    ]);
+    expect(Object.keys(OutcomeTurnResponseSchema.shape).sort()).toEqual([
+      "outcome",
+      "plan",
+      "run",
+      "triggerMessage"
+    ]);
 
     expect(
       OutcomeTurnResponseSchema.parse({
@@ -67,11 +77,22 @@ describe("OutcomeSchema", () => {
           createdAt: "2026-03-11T00:00:00.000Z",
           updatedAt: "2026-03-11T00:00:00.000Z"
         },
-        triggerMessageId: "msg_123"
+        triggerMessage: {
+          id: "msg_123",
+          outcomeId: "outcome_123",
+          role: "user",
+          content: "Summarize the latest incident report",
+          createdAt: "2026-03-11T00:00:00.000Z"
+        }
       })
     ).toEqual(
       expect.objectContaining({
-        triggerMessageId: "msg_123"
+        triggerMessage: expect.objectContaining({
+          id: "msg_123",
+          outcomeId: "outcome_123",
+          role: "user",
+          content: "Summarize the latest incident report"
+        })
       })
     );
   });
