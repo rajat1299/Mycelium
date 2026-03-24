@@ -10,6 +10,7 @@ import {
 function buildForkJoinPlan() {
   return createDeterministicDraftPlan({
     outcomeId: "outcome_123",
+    triggerMessageId: "msg_turn_123",
     prompt: "Draft a brief and operator summary in parallel.",
     createdAt: "2026-03-12T00:00:00.000Z",
     updatedAt: "2026-03-12T00:00:00.000Z"
@@ -20,22 +21,22 @@ function buildStepStates(): SchedulerStepState[] {
   return [
     {
       id: "step_analyze",
-      planNodeId: "plan_outcome_123:analyze-outcome",
+      planNodeId: "plan_outcome_123_msg_turn_123:analyze-outcome",
       status: "ready"
     },
     {
       id: "step_brief",
-      planNodeId: "plan_outcome_123:draft-brief",
+      planNodeId: "plan_outcome_123_msg_turn_123:draft-brief",
       status: "pending"
     },
     {
       id: "step_summary",
-      planNodeId: "plan_outcome_123:draft-operator-summary",
+      planNodeId: "plan_outcome_123_msg_turn_123:draft-operator-summary",
       status: "pending"
     },
     {
       id: "step_synthesize",
-      planNodeId: "plan_outcome_123:synthesize-result",
+      planNodeId: "plan_outcome_123_msg_turn_123:synthesize-result",
       status: "pending"
     }
   ];
@@ -79,7 +80,7 @@ describe("scheduler", () => {
       ...buildStepStates(),
       {
         id: "step_unknown",
-        planNodeId: "plan_outcome_123:unknown-node",
+        planNodeId: "plan_outcome_123_msg_turn_123:unknown-node",
         status: "ready" as const
       }
     ];
@@ -100,7 +101,7 @@ describe("scheduler", () => {
     expect(listNewlyReadySteps(plan, readyForJoin, "step_summary")).toEqual([
       expect.objectContaining({
         id: "step_synthesize",
-        planNodeId: "plan_outcome_123:synthesize-result"
+        planNodeId: "plan_outcome_123_msg_turn_123:synthesize-result"
       })
     ]);
 

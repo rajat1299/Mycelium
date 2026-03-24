@@ -2,16 +2,21 @@ import type { PlanGraph } from "./plan-graph";
 
 export type CreateDeterministicDraftPlanInput = {
   outcomeId: string;
+  triggerMessageId: string;
   prompt: string;
   createdAt: string;
   updatedAt: string;
 };
 
+export type DeterministicDraftPlan = PlanGraph & {
+  triggerMessageId: string;
+};
+
 export function createDeterministicDraftPlan(
   input: CreateDeterministicDraftPlanInput
-): PlanGraph {
+): DeterministicDraftPlan {
   void input.prompt;
-  const planId = `plan_${input.outcomeId}`;
+  const planId = `plan_${input.outcomeId}_${input.triggerMessageId}`;
   const analyzeNodeId = `${planId}:analyze-outcome`;
   const draftBriefNodeId = `${planId}:draft-brief`;
   const draftOperatorSummaryNodeId = `${planId}:draft-operator-summary`;
@@ -20,6 +25,7 @@ export function createDeterministicDraftPlan(
   return {
     id: planId,
     outcomeId: input.outcomeId,
+    triggerMessageId: input.triggerMessageId,
     status: "draft",
     createdAt: input.createdAt,
     updatedAt: input.updatedAt,

@@ -79,6 +79,36 @@ function deterministicId(prefix: string, seed: string) {
   return `${prefix}_${suffix}`;
 }
 
+async function resolveTriggerMessageId(
+  repositories: Repositories,
+  input: {
+    outcomeId: string;
+    prompt: string;
+    createdAt: string;
+  }
+) {
+  const existingMessages = await repositories.outcomes.listMessages(input.outcomeId);
+  const latestUserMessage = [...existingMessages]
+    .reverse()
+    .find((message) => message.role === "user");
+
+  if (latestUserMessage) {
+    return latestUserMessage.id;
+  }
+
+  const triggerMessageId = `msg_${randomUUID()}`;
+
+  await repositories.outcomes.appendMessage({
+    id: triggerMessageId,
+    outcomeId: input.outcomeId,
+    role: "user",
+    content: input.prompt,
+    createdAt: input.createdAt
+  });
+
+  return triggerMessageId;
+}
+
 function compareSchedulesByFireTime(left: Schedule, right: Schedule) {
   const leftTime = left.nextFireAt ? new Date(left.nextFireAt).getTime() : Number.MAX_SAFE_INTEGER;
   const rightTime = right.nextFireAt ? new Date(right.nextFireAt).getTime() : Number.MAX_SAFE_INTEGER;
@@ -327,8 +357,14 @@ export function createScheduleService(
       return { plan: existing, created: false };
     }
 
+    const triggerMessageId = await resolveTriggerMessageId(options.repositories, {
+      outcomeId,
+      prompt,
+      createdAt
+    });
     const draftPlan = createDeterministicDraftPlan({
       outcomeId,
+      triggerMessageId,
       prompt,
       createdAt,
       updatedAt: createdAt
@@ -343,6 +379,7 @@ export function createScheduleService(
       const created = await options.repositories.plans.create({
         id: draftPlan.id,
         outcomeId: draftPlan.outcomeId,
+        triggerMessageId: draftPlan.triggerMessageId,
         status: draftPlan.status,
         createdAt: draftPlan.createdAt,
         updatedAt: draftPlan.updatedAt,
@@ -394,6 +431,7 @@ export function createScheduleService(
     outcomeId: string;
     workspaceId: string;
     planId: string;
+    triggerMessageId: string;
     createdAt: string;
   }) {
     const runId = deterministicId("run", input.occurrenceKey);
@@ -403,6 +441,7 @@ export function createScheduleService(
         id: runId,
         outcomeId: input.outcomeId,
         planId: input.planId,
+        triggerMessageId: input.triggerMessageId,
         createdAt: input.createdAt,
         updatedAt: input.createdAt
       });
@@ -539,6 +578,7 @@ export function createScheduleService(
             outcomeId: outcome.id,
             workspaceId: outcome.workspaceId,
             planId: plan.id,
+            triggerMessageId: plan.triggerMessageId,
             createdAt: firedAt
           });
 

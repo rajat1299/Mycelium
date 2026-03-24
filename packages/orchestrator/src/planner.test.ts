@@ -6,16 +6,18 @@ describe("deterministic draft planner", () => {
   it("turns an outcome into a stable executable fork-join draft plan", () => {
     const plan = createDeterministicDraftPlan({
       outcomeId: "outcome_123",
+      triggerMessageId: "msg_turn_456",
       prompt: "Draft launch notes and prepare the operator summary.",
       createdAt: "2026-03-11T00:00:00.000Z",
       updatedAt: "2026-03-11T00:00:00.000Z"
     });
 
-    expect(plan.id).toBe("plan_outcome_123");
+    expect(plan.id).toBe("plan_outcome_123_msg_turn_456");
+    expect(plan.triggerMessageId).toBe("msg_turn_456");
     expect(plan.status).toBe("draft");
     expect(plan.nodes).toEqual([
       {
-        id: "plan_outcome_123:analyze-outcome",
+        id: "plan_outcome_123_msg_turn_456:analyze-outcome",
         kind: "root",
         title: "Analyze outcome",
         capability: "reasoning",
@@ -25,7 +27,7 @@ describe("deterministic draft planner", () => {
         expectedArtifactKind: "analysis"
       },
       {
-        id: "plan_outcome_123:draft-brief",
+        id: "plan_outcome_123_msg_turn_456:draft-brief",
         kind: "task",
         title: "Draft brief",
         capability: "document",
@@ -35,7 +37,7 @@ describe("deterministic draft planner", () => {
         expectedArtifactKind: "brief"
       },
       {
-        id: "plan_outcome_123:draft-operator-summary",
+        id: "plan_outcome_123_msg_turn_456:draft-operator-summary",
         kind: "task",
         title: "Draft operator summary",
         capability: "document",
@@ -45,7 +47,7 @@ describe("deterministic draft planner", () => {
         expectedArtifactKind: "operator_summary"
       },
       {
-        id: "plan_outcome_123:synthesize-result",
+        id: "plan_outcome_123_msg_turn_456:synthesize-result",
         kind: "synthesis",
         title: "Synthesize result",
         capability: "document",
@@ -63,43 +65,47 @@ describe("deterministic draft planner", () => {
     ]);
     expect(plan.edges).toEqual([
       {
-        id: "plan_outcome_123:edge-analyze-brief",
-        from: "plan_outcome_123:analyze-outcome",
-        to: "plan_outcome_123:draft-brief"
+        id: "plan_outcome_123_msg_turn_456:edge-analyze-brief",
+        from: "plan_outcome_123_msg_turn_456:analyze-outcome",
+        to: "plan_outcome_123_msg_turn_456:draft-brief"
       },
       {
-        id: "plan_outcome_123:edge-analyze-operator-summary",
-        from: "plan_outcome_123:analyze-outcome",
-        to: "plan_outcome_123:draft-operator-summary"
+        id: "plan_outcome_123_msg_turn_456:edge-analyze-operator-summary",
+        from: "plan_outcome_123_msg_turn_456:analyze-outcome",
+        to: "plan_outcome_123_msg_turn_456:draft-operator-summary"
       },
       {
-        id: "plan_outcome_123:edge-brief-synthesize",
-        from: "plan_outcome_123:draft-brief",
-        to: "plan_outcome_123:synthesize-result"
+        id: "plan_outcome_123_msg_turn_456:edge-brief-synthesize",
+        from: "plan_outcome_123_msg_turn_456:draft-brief",
+        to: "plan_outcome_123_msg_turn_456:synthesize-result"
       },
       {
-        id: "plan_outcome_123:edge-operator-summary-synthesize",
-        from: "plan_outcome_123:draft-operator-summary",
-        to: "plan_outcome_123:synthesize-result"
+        id: "plan_outcome_123_msg_turn_456:edge-operator-summary-synthesize",
+        from: "plan_outcome_123_msg_turn_456:draft-operator-summary",
+        to: "plan_outcome_123_msg_turn_456:synthesize-result"
       }
     ]);
     expect(validatePlanGraph(plan)).toEqual({ ok: true });
   });
 
-  it("namespaces node and edge ids so different outcomes do not collide", () => {
+  it("namespaces node and edge ids so different turns on the same outcome do not collide", () => {
     const firstPlan = createDeterministicDraftPlan({
       outcomeId: "outcome_123",
+      triggerMessageId: "msg_turn_001",
       prompt: "First outcome",
       createdAt: "2026-03-11T00:00:00.000Z",
       updatedAt: "2026-03-11T00:00:00.000Z"
     });
     const secondPlan = createDeterministicDraftPlan({
-      outcomeId: "outcome_456",
-      prompt: "Second outcome",
+      outcomeId: "outcome_123",
+      triggerMessageId: "msg_turn_002",
+      prompt: "Second turn",
       createdAt: "2026-03-11T00:00:00.000Z",
       updatedAt: "2026-03-11T00:00:00.000Z"
     });
 
+    expect(firstPlan.outcomeId).toBe(secondPlan.outcomeId);
+    expect(firstPlan.id).not.toBe(secondPlan.id);
     expect(new Set(firstPlan.nodes.map((node) => node.id))).not.toEqual(
       new Set(secondPlan.nodes.map((node) => node.id))
     );

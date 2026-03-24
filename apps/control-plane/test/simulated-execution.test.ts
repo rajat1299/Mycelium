@@ -6,6 +6,7 @@ import {
   RunDetailSchema,
   RunLogListResponseSchema
 } from "@computer-oss/protocol";
+import { createSimulatedDraftPlan } from "../src/lib/simulated-execution";
 import { createExecutionHarness } from "./execution-test-helpers";
 
 const FAST_SIMULATION_TIMELINE = {
@@ -41,6 +42,23 @@ describe("development simulation mode", () => {
       });
       const outcome = createOutcome.json();
 
+      const appendTurnMessage = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome.id}/messages`,
+        payload: {
+          role: "user",
+          content: "Focus this turn on the latest classroom adoption signals."
+        }
+      });
+
+      expect(appendTurnMessage.statusCode).toBe(202);
+
+      const readMessages = await app.inject({
+        method: "GET",
+        url: `/api/outcomes/${outcome.id}/messages`
+      });
+      const triggerMessageId = readMessages.json().messages.at(-1)?.id;
+
       const createPlan = await app.inject({
         method: "POST",
         url: `/api/outcomes/${outcome.id}/plan`
@@ -49,6 +67,14 @@ describe("development simulation mode", () => {
       expect(createPlan.statusCode).toBe(201);
       const plan = PlanSchema.parse(createPlan.json());
 
+      expect(plan.id).toBe(`plan_${outcome.id}_${triggerMessageId}`);
+      expect(plan.triggerMessageId).toBe(triggerMessageId);
+      expect(plan.nodes[0]?.id).toBe(
+        `plan_${outcome.id}_${triggerMessageId}:context-and-preferences`
+      );
+      expect(plan.edges[0]?.id).toBe(
+        `plan_${outcome.id}_${triggerMessageId}:edge-context-tools`
+      );
       expect(plan.nodes.map((node) => node.title)).toEqual([
         "Load context and working preferences",
         "Research AI tools used in K-12 classrooms",
@@ -71,6 +97,23 @@ describe("development simulation mode", () => {
       });
       const slackOutcome = createSlackOutcome.json();
 
+      const appendSlackTurnMessage = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${slackOutcome.id}/messages`,
+        payload: {
+          role: "user",
+          content: "Use this turn to summarize the Slack thread."
+        }
+      });
+
+      expect(appendSlackTurnMessage.statusCode).toBe(202);
+
+      const readSlackMessages = await app.inject({
+        method: "GET",
+        url: `/api/outcomes/${slackOutcome.id}/messages`
+      });
+      const slackTriggerMessageId = readSlackMessages.json().messages.at(-1)?.id;
+
       const createSlackPlan = await app.inject({
         method: "POST",
         url: `/api/outcomes/${slackOutcome.id}/plan`
@@ -79,12 +122,102 @@ describe("development simulation mode", () => {
       expect(createSlackPlan.statusCode).toBe(201);
       const slackPlan = PlanSchema.parse(createSlackPlan.json());
 
+      expect(slackPlan.id).toBe(
+        `plan_${slackOutcome.id}_${slackTriggerMessageId}`
+      );
+      expect(slackPlan.triggerMessageId).toBe(slackTriggerMessageId);
       expect(slackPlan.nodes.map((node) => node.title)).toEqual([
         "Analyze outcome",
         "Draft brief",
         "Draft operator summary",
         "Synthesize result"
       ]);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("generates distinct simulated plan ids for different turns on the same outcome", async () => {
+    const harness = await createExecutionHarness({
+      simulationMode: true,
+      simulationTimeline: FAST_SIMULATION_TIMELINE
+    });
+
+    try {
+      const { app } = harness;
+      const createOutcome = await app.inject({
+        method: "POST",
+        url: "/api/outcomes",
+        payload: {
+          workspaceId: "ws_simulation",
+          userId: "user_simulation",
+          prompt: "Produce a polished research briefing.",
+          source: "web"
+        }
+      });
+      const outcome = createOutcome.json();
+
+      const firstMessage = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome.id}/messages`,
+        payload: {
+          role: "user",
+          content: "Turn one"
+        }
+      });
+
+      expect(firstMessage.statusCode).toBe(202);
+
+      const firstMessagesResponse = await app.inject({
+        method: "GET",
+        url: `/api/outcomes/${outcome.id}/messages`
+      });
+      const firstTriggerMessageId = firstMessagesResponse.json().messages.at(-1)?.id;
+
+      const firstPlan = PlanSchema.parse(
+        createSimulatedDraftPlan({
+          outcomeId: outcome.id,
+          triggerMessageId: firstTriggerMessageId,
+          prompt: outcome.prompt,
+          createdAt: "2026-03-24T00:00:00.000Z",
+          updatedAt: "2026-03-24T00:00:00.000Z"
+        })
+      );
+
+      const secondMessage = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome.id}/messages`,
+        payload: {
+          role: "user",
+          content: "Turn two"
+        }
+      });
+
+      expect(secondMessage.statusCode).toBe(202);
+
+      const secondMessagesResponse = await app.inject({
+        method: "GET",
+        url: `/api/outcomes/${outcome.id}/messages`
+      });
+      const secondTriggerMessageId = secondMessagesResponse.json().messages.at(-1)?.id;
+
+      const secondPlan = PlanSchema.parse(
+        createSimulatedDraftPlan({
+          outcomeId: outcome.id,
+          triggerMessageId: secondTriggerMessageId,
+          prompt: outcome.prompt,
+          createdAt: "2026-03-24T00:00:00.000Z",
+          updatedAt: "2026-03-24T00:00:00.000Z"
+        })
+      );
+
+      expect(firstPlan.id).not.toBe(secondPlan.id);
+      expect(new Set(firstPlan.nodes.map((node) => node.id))).not.toEqual(
+        new Set(secondPlan.nodes.map((node) => node.id))
+      );
+      expect(new Set(firstPlan.edges.map((edge) => edge.id))).not.toEqual(
+        new Set(secondPlan.edges.map((edge) => edge.id))
+      );
     } finally {
       await harness.cleanup();
     }

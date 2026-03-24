@@ -151,12 +151,14 @@ export function isDevelopmentSimulationEnabled(input: {
 
 export function createSimulatedDraftPlan(input: {
   outcomeId: string;
+  triggerMessageId: string;
   prompt: string;
   createdAt: string;
   updatedAt: string;
 }) {
+  const planId = `plan_${input.outcomeId}_${input.triggerMessageId}`;
   const nodes = MOCK_PLAN_BLUEPRINT.map((node) => ({
-    id: `${input.outcomeId}:${node.idSuffix}`,
+    id: `${planId}:${node.idSuffix}`,
     kind: node.kind,
     title: node.title,
     capability: node.capability,
@@ -165,55 +167,56 @@ export function createSimulatedDraftPlan(input: {
     expectedArtifactKind: node.expectedArtifactKind,
     position: node.position
   }));
-  const rootNodeId = `${input.outcomeId}:${MOCK_PLAN_BLUEPRINT[0].idSuffix}`;
-  const synthesisNodeId = `${input.outcomeId}:${MOCK_PLAN_BLUEPRINT[5].idSuffix}`;
+  const rootNodeId = `${planId}:${MOCK_PLAN_BLUEPRINT[0].idSuffix}`;
+  const synthesisNodeId = `${planId}:${MOCK_PLAN_BLUEPRINT[5].idSuffix}`;
 
   return PlanSchema.parse({
-    id: `plan_${input.outcomeId}`,
+    id: planId,
     outcomeId: input.outcomeId,
+    triggerMessageId: input.triggerMessageId,
     status: "draft",
     createdAt: input.createdAt,
     updatedAt: input.updatedAt,
     nodes,
     edges: [
       {
-        id: `${input.outcomeId}:edge-context-tools`,
+        id: `${planId}:edge-context-tools`,
         from: rootNodeId,
-        to: `${input.outcomeId}:${MOCK_PLAN_BLUEPRINT[1].idSuffix}`
+        to: `${planId}:${MOCK_PLAN_BLUEPRINT[1].idSuffix}`
       },
       {
-        id: `${input.outcomeId}:edge-context-effectiveness`,
+        id: `${planId}:edge-context-effectiveness`,
         from: rootNodeId,
-        to: `${input.outcomeId}:${MOCK_PLAN_BLUEPRINT[2].idSuffix}`
+        to: `${planId}:${MOCK_PLAN_BLUEPRINT[2].idSuffix}`
       },
       {
-        id: `${input.outcomeId}:edge-context-concerns`,
+        id: `${planId}:edge-context-concerns`,
         from: rootNodeId,
-        to: `${input.outcomeId}:${MOCK_PLAN_BLUEPRINT[3].idSuffix}`
+        to: `${planId}:${MOCK_PLAN_BLUEPRINT[3].idSuffix}`
       },
       {
-        id: `${input.outcomeId}:edge-context-trends`,
+        id: `${planId}:edge-context-trends`,
         from: rootNodeId,
-        to: `${input.outcomeId}:${MOCK_PLAN_BLUEPRINT[4].idSuffix}`
+        to: `${planId}:${MOCK_PLAN_BLUEPRINT[4].idSuffix}`
       },
       {
-        id: `${input.outcomeId}:edge-tools-report`,
-        from: `${input.outcomeId}:${MOCK_PLAN_BLUEPRINT[1].idSuffix}`,
+        id: `${planId}:edge-tools-report`,
+        from: `${planId}:${MOCK_PLAN_BLUEPRINT[1].idSuffix}`,
         to: synthesisNodeId
       },
       {
-        id: `${input.outcomeId}:edge-effectiveness-report`,
-        from: `${input.outcomeId}:${MOCK_PLAN_BLUEPRINT[2].idSuffix}`,
+        id: `${planId}:edge-effectiveness-report`,
+        from: `${planId}:${MOCK_PLAN_BLUEPRINT[2].idSuffix}`,
         to: synthesisNodeId
       },
       {
-        id: `${input.outcomeId}:edge-concerns-report`,
-        from: `${input.outcomeId}:${MOCK_PLAN_BLUEPRINT[3].idSuffix}`,
+        id: `${planId}:edge-concerns-report`,
+        from: `${planId}:${MOCK_PLAN_BLUEPRINT[3].idSuffix}`,
         to: synthesisNodeId
       },
       {
-        id: `${input.outcomeId}:edge-trends-report`,
-        from: `${input.outcomeId}:${MOCK_PLAN_BLUEPRINT[4].idSuffix}`,
+        id: `${planId}:edge-trends-report`,
+        from: `${planId}:${MOCK_PLAN_BLUEPRINT[4].idSuffix}`,
         to: synthesisNodeId
       }
     ]

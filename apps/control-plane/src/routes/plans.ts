@@ -20,6 +20,32 @@ function badRequest(message: string) {
   };
 }
 
+async function resolveTriggerMessageId(
+  repositories: Repositories,
+  outcome: Awaited<ReturnType<Repositories["outcomes"]["getById"]>> & {}
+) {
+  const existingMessages = await repositories.outcomes.listMessages(outcome.id);
+  const latestUserMessage = [...existingMessages]
+    .reverse()
+    .find((message) => message.role === "user");
+
+  if (latestUserMessage) {
+    return latestUserMessage.id;
+  }
+
+  const triggerMessageId = `msg_${crypto.randomUUID()}`;
+
+  await repositories.outcomes.appendMessage({
+    id: triggerMessageId,
+    outcomeId: outcome.id,
+    role: "user",
+    content: outcome.prompt,
+    createdAt: new Date().toISOString()
+  });
+
+  return triggerMessageId;
+}
+
 async function buildPlanResponse(
   repositories: Repositories,
   outcomeId: string
@@ -60,18 +86,24 @@ export function registerPlanRoutes(
     }
 
     const now = new Date().toISOString();
+    const triggerMessageId = await resolveTriggerMessageId(
+      options.repositories,
+      outcome
+    );
     const draftPlan = isDevelopmentSimulationEnabled({
       simulationMode: options.simulationMode ?? false,
       outcomeSource: outcome.source
     })
       ? createSimulatedDraftPlan({
           outcomeId: outcome.id,
+          triggerMessageId,
           prompt: outcome.prompt,
           createdAt: now,
           updatedAt: now
         })
       : createDeterministicDraftPlan({
           outcomeId: outcome.id,
+          triggerMessageId,
           prompt: outcome.prompt,
           createdAt: now,
           updatedAt: now
@@ -90,6 +122,7 @@ export function registerPlanRoutes(
       await options.repositories.plans.create({
         id: draftPlan.id,
         outcomeId: draftPlan.outcomeId,
+        triggerMessageId: draftPlan.triggerMessageId,
         status: draftPlan.status,
         createdAt: draftPlan.createdAt,
         updatedAt: draftPlan.updatedAt,

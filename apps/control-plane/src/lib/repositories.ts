@@ -664,6 +664,23 @@ function createInMemoryRepositoriesState() {
         throw new Error(`Plan already exists for outcome ${input.outcomeId}.`);
       }
 
+      const existingTriggerMessage = Array.from(outcomeMessagesById.values())
+        .filter((message) => message.outcomeId === input.outcomeId && message.role === "user")
+        .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+        .at(-1);
+      const triggerMessageId =
+        input.triggerMessageId ?? existingTriggerMessage?.id ?? `msg_${input.id}`;
+
+      if (!outcomeMessagesById.has(triggerMessageId)) {
+        outcomeMessagesById.set(triggerMessageId, {
+          id: triggerMessageId,
+          outcomeId: input.outcomeId,
+          role: "user",
+          content: `Trigger message for ${input.id}`,
+          createdAt: input.createdAt
+        });
+      }
+
       const inputNodeIds = new Set(input.nodes.map((node) => node.id));
 
       if (
@@ -677,6 +694,7 @@ function createInMemoryRepositoriesState() {
       const plan: StoredPlan = {
         id: input.id,
         outcomeId: input.outcomeId,
+        triggerMessageId,
         status: input.status,
         createdAt: input.createdAt,
         updatedAt: input.updatedAt
@@ -743,10 +761,35 @@ function createInMemoryRepositoriesState() {
         );
       }
 
+      const triggerMessageId = input.triggerMessageId ?? plan.triggerMessageId;
+
+      if (plan.triggerMessageId !== triggerMessageId) {
+        throw new Error(
+          `Run trigger message ${triggerMessageId} does not match plan ${input.planId} trigger message ${plan.triggerMessageId}.`
+        );
+      }
+
+      const triggerMessage = outcomeMessagesById.get(triggerMessageId);
+
+      if (!triggerMessage) {
+        throw new Error(`Trigger message ${triggerMessageId} does not exist.`);
+      }
+
+      if (triggerMessage.outcomeId !== input.outcomeId) {
+        throw new Error(
+          `Trigger message ${triggerMessageId} belongs to ${triggerMessage.outcomeId}, not ${input.outcomeId}.`
+        );
+      }
+
+      if (triggerMessage.role !== "user") {
+        throw new Error(`Trigger message ${triggerMessageId} must have role user.`);
+      }
+
       const run: StoredRun = {
         id: input.id,
         outcomeId: plan.outcomeId,
         planId: plan.id,
+        triggerMessageId,
         status: "queued",
         latestCheckpointId: null,
         resumable: false,

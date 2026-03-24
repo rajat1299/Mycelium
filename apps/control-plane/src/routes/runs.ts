@@ -205,6 +205,7 @@ export function registerRunRoutes(
 
     const now = new Date().toISOString();
     let run;
+    const plan = await options.repositories.plans.getByOutcome(outcome.id);
     const useSimulatedRoutes = isDevelopmentSimulationEnabled({
       simulationMode: options.simulationMode ?? false,
       outcomeSource: outcome.source
@@ -215,6 +216,7 @@ export function registerRunRoutes(
         id: `run_${crypto.randomUUID()}`,
         outcomeId: outcome.id,
         planId: parsed.data.planId,
+        triggerMessageId: plan?.triggerMessageId ?? "",
         createdAt: now,
         updatedAt: now
       });
@@ -265,6 +267,7 @@ export function registerRunRoutes(
       id: response.id,
       outcomeId: response.outcomeId,
       planId: response.planId,
+      triggerMessageId: response.triggerMessageId,
       status: response.status,
       createdAt: response.createdAt,
       updatedAt: response.updatedAt
