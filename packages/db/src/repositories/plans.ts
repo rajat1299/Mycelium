@@ -1,8 +1,9 @@
 import type { ApprovalRequirement } from "@computer-oss/protocol";
 import type { DatabaseClient } from "../client";
-import { outcomePlans, planEdges, planNodes } from "../schema";
+import { outcomeMessages, outcomePlans, planEdges, planNodes } from "../schema";
 
 type PlanRow = typeof outcomePlans.$inferSelect;
+type OutcomeMessageRow = typeof outcomeMessages.$inferSelect;
 type PlanNodeRow = typeof planNodes.$inferSelect;
 type PlanEdgeRow = typeof planEdges.$inferSelect;
 
@@ -105,6 +106,28 @@ function comparePlanRows(left: PlanRow, right: PlanRow) {
   return left.id.localeCompare(right.id);
 }
 
+function assertValidTriggerMessage(
+  messages: OutcomeMessageRow[],
+  triggerMessageId: string,
+  outcomeId: string
+) {
+  const message = messages.find((row) => row.id === triggerMessageId);
+
+  if (!message) {
+    throw new Error(`Trigger message ${triggerMessageId} does not exist.`);
+  }
+
+  if (message.outcomeId !== outcomeId) {
+    throw new Error(
+      `Trigger message ${triggerMessageId} belongs to ${message.outcomeId}, not ${outcomeId}.`
+    );
+  }
+
+  if (message.role !== "user") {
+    throw new Error(`Trigger message ${triggerMessageId} must have role user.`);
+  }
+}
+
 function mapPlanNodeRow(row: PlanNodeRow): StoredPlanNode {
   const approvalRequirement = mapApprovalRequirement(row);
 
@@ -141,6 +164,13 @@ export class PlanRepository {
 
   async create(input: CreatePlanInput): Promise<StoredPlan> {
     return this.db.transaction(async (transaction) => {
+      const outcomeMessageRows = await transaction.select().from(outcomeMessages);
+      assertValidTriggerMessage(
+        outcomeMessageRows,
+        input.triggerMessageId,
+        input.outcomeId
+      );
+
       const inputNodeIds = new Set(input.nodes.map((node) => node.id));
 
       if (

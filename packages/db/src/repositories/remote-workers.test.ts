@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PlanRepository } from "./plans";
 import { RemoteWorkerRepository } from "./remote-workers";
 import { RunRepository } from "./runs";
-import { createRepositoryTestDatabase } from "./test-database";
+import { createRepositoryTestDatabase, type TableRecord } from "./test-database";
 import { WorkspaceLeaseRepository } from "./workspace-leases";
 
 function buildExecutablePlanInput() {
@@ -24,6 +24,23 @@ function buildExecutablePlanInput() {
     ],
     edges: []
   };
+}
+
+function seedTriggerMessage(
+  state: { [key: string]: unknown },
+  id: string,
+  outcomeId = "outcome_123"
+) {
+  const messages = ((state as { outcomeMessages?: TableRecord[] }).outcomeMessages ??=
+    []);
+
+  messages.push({
+    id,
+    outcomeId,
+    role: "user",
+    content: `${id} content`,
+    createdAt: new Date("2026-03-16T00:00:00.000Z")
+  });
 }
 
 describe("RemoteWorkerRepository", () => {
@@ -267,18 +284,20 @@ describe("RemoteWorkerRepository", () => {
   });
 
   it("persists step assignment and worker-owned workspace leases, and rejects conflicting assignment", async () => {
-    const { db } = createRepositoryTestDatabase();
+    const { db, state } = createRepositoryTestDatabase();
     const plans = new PlanRepository(db as never);
     const runs = new RunRepository(db as never);
     const remoteWorkers = new RemoteWorkerRepository(db as never);
     const workspaceLeases = new WorkspaceLeaseRepository(db as never);
 
+    seedTriggerMessage(state, "msg_plan_outcome_123");
+    seedTriggerMessage(state, "msg_run_123");
     await plans.create(buildExecutablePlanInput());
     await runs.createFromPlan({
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
-      triggerMessageId: "msg_run_123",
+      triggerMessageId: "msg_plan_outcome_123",
       createdAt: "2026-03-16T10:00:00.000Z",
       updatedAt: "2026-03-16T10:00:00.000Z"
     });
@@ -386,12 +405,14 @@ describe("RemoteWorkerRepository", () => {
     const runs = new RunRepository(db as never);
     const remoteWorkers = new RemoteWorkerRepository(db as never);
 
+    seedTriggerMessage(state, "msg_plan_outcome_123");
+    seedTriggerMessage(state, "msg_run_123");
     await plans.create(buildExecutablePlanInput());
     await runs.createFromPlan({
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
-      triggerMessageId: "msg_run_123",
+      triggerMessageId: "msg_plan_outcome_123",
       createdAt: "2026-03-16T10:00:00.000Z",
       updatedAt: "2026-03-16T10:00:00.000Z"
     });
@@ -497,12 +518,14 @@ describe("RemoteWorkerRepository", () => {
     const runs = new RunRepository(db as never);
     const remoteWorkers = new RemoteWorkerRepository(db as never);
 
+    seedTriggerMessage(state, "msg_plan_outcome_123");
+    seedTriggerMessage(state, "msg_run_123");
     await plans.create(buildExecutablePlanInput());
     await runs.createFromPlan({
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
-      triggerMessageId: "msg_run_123",
+      triggerMessageId: "msg_plan_outcome_123",
       createdAt: "2026-03-16T10:00:00.000Z",
       updatedAt: "2026-03-16T10:00:00.000Z"
     });

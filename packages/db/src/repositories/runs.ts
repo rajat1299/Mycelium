@@ -9,6 +9,7 @@ import {
 import type { DatabaseClient } from "../client";
 import {
   outcomes,
+  outcomeMessages,
   outcomePlans,
   outcomeRuns,
   planEdges,
@@ -23,6 +24,7 @@ import type { StoredOutcome } from "./outcomes";
 type RunRow = typeof outcomeRuns.$inferSelect;
 type RunStepRow = typeof runSteps.$inferSelect;
 type OutcomeRow = typeof outcomes.$inferSelect;
+type OutcomeMessageRow = typeof outcomeMessages.$inferSelect;
 type RunEventRow = typeof runEvents.$inferSelect;
 
 function mapApprovalRequirement(
@@ -284,12 +286,37 @@ function compareRunRows(left: RunRow, right: RunRow) {
   return left.id.localeCompare(right.id);
 }
 
+function assertValidTriggerMessage(
+  messages: OutcomeMessageRow[],
+  triggerMessageId: string,
+  outcomeId: string
+) {
+  const message = messages.find((row) => row.id === triggerMessageId);
+
+  if (!message) {
+    throw new Error(`Trigger message ${triggerMessageId} does not exist.`);
+  }
+
+  if (message.outcomeId !== outcomeId) {
+    throw new Error(
+      `Trigger message ${triggerMessageId} belongs to ${message.outcomeId}, not ${outcomeId}.`
+    );
+  }
+
+  if (message.role !== "user") {
+    throw new Error(`Trigger message ${triggerMessageId} must have role user.`);
+  }
+}
+
 export class RunRepository {
   constructor(private readonly db: DatabaseClient) {}
 
   async createFromPlan(input: CreateRunFromPlanInput): Promise<StoredRun> {
     return this.db.transaction(async (transaction) => {
-      const plans = await transaction.select().from(outcomePlans);
+      const [plans, outcomeMessageRows] = await Promise.all([
+        transaction.select().from(outcomePlans),
+        transaction.select().from(outcomeMessages)
+      ]);
       const plan = plans.find((row) => row.id === input.planId);
 
       if (!plan) {
@@ -301,6 +328,18 @@ export class RunRepository {
           `Plan ${input.planId} belongs to ${plan.outcomeId}, not ${input.outcomeId}.`
         );
       }
+
+      if (plan.triggerMessageId !== input.triggerMessageId) {
+        throw new Error(
+          `Run trigger message ${input.triggerMessageId} does not match plan ${input.planId} trigger message ${plan.triggerMessageId}.`
+        );
+      }
+
+      assertValidTriggerMessage(
+        outcomeMessageRows,
+        input.triggerMessageId,
+        input.outcomeId
+      );
 
       const [created] = await transaction
         .insert(outcomeRuns)

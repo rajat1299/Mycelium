@@ -5,6 +5,7 @@ import {
   artifactLineageEdges,
   authProfiles,
   artifacts,
+  outcomeMessages,
   outcomes,
   outcomePlans,
   outcomeRuns,
@@ -27,6 +28,7 @@ export type TableRecord = Record<string, unknown>;
 
 type SupportedTable =
   | typeof outcomes
+  | typeof outcomeMessages
   | typeof outcomePlans
   | typeof planNodes
   | typeof planEdges
@@ -51,6 +53,7 @@ type SupportedTable =
 
 export type RepositoryTestState = {
   outcomes: TableRecord[];
+  outcomeMessages: TableRecord[];
   outcomePlans: TableRecord[];
   planNodes: TableRecord[];
   planEdges: TableRecord[];
@@ -130,6 +133,7 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
 
   const state: RepositoryTestState = {
     outcomes: [],
+    outcomeMessages: [],
     outcomePlans: [],
     planNodes: [],
     planEdges: [],
@@ -156,6 +160,10 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
   function getTableName(table: SupportedTable) {
     if (table === outcomes) {
       return "outcomes";
+    }
+
+    if (table === outcomeMessages) {
+      return "outcome_messages";
     }
 
     if (table === outcomePlans) {
@@ -245,6 +253,8 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
     switch (name) {
       case "outcomes":
         return state.outcomes;
+      case "outcome_messages":
+        return state.outcomeMessages;
       case "outcome_plans":
         return state.outcomePlans;
       case "plan_nodes":
@@ -1008,15 +1018,6 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
             }
 
             if (
-              tableName === "outcome_plans" &&
-              tableRows.some((existing) => existing.outcomeId === row.outcomeId)
-            ) {
-              throw new Error(
-                'duplicate key value violates unique constraint "outcome_plans_outcome_id_key"'
-              );
-            }
-
-            if (
               tableName === "run_checkpoints" &&
               tableRows.some(
                 (existing) =>
@@ -1191,6 +1192,7 @@ export function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) 
 
         state.outcomePlans = snapshot.state.outcomePlans;
         state.outcomes = snapshot.state.outcomes;
+        state.outcomeMessages = snapshot.state.outcomeMessages;
         state.planNodes = snapshot.state.planNodes;
         state.planEdges = snapshot.state.planEdges;
         state.outcomeRuns = snapshot.state.outcomeRuns;

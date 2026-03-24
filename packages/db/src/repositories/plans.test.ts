@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PlanRepository } from "./plans";
 import { RunRepository } from "./runs";
 import {
+  outcomeMessages,
   outcomePlans,
   outcomeRuns,
   planEdges,
@@ -16,6 +17,7 @@ type TestDb = {
   insert: (
     table:
       | typeof outcomePlans
+      | typeof outcomeMessages
       | typeof planNodes
       | typeof planEdges
       | typeof outcomeRuns
@@ -30,6 +32,7 @@ type TestDb = {
     from: (
       table:
         | typeof outcomePlans
+        | typeof outcomeMessages
         | typeof planNodes
         | typeof planEdges
         | typeof outcomeRuns
@@ -101,6 +104,7 @@ function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) {
 
   const state = {
     outcomePlans: [] as TableRecord[],
+    outcomeMessages: [] as TableRecord[],
     planNodes: [] as TableRecord[],
     planEdges: [] as TableRecord[],
     outcomeRuns: [] as TableRecord[],
@@ -111,6 +115,7 @@ function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) {
   function getTableName(
     table:
       | typeof outcomePlans
+      | typeof outcomeMessages
       | typeof planNodes
       | typeof planEdges
       | typeof outcomeRuns
@@ -119,6 +124,10 @@ function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) {
   ) {
     if (table === outcomePlans) {
       return "outcome_plans";
+    }
+
+    if (table === outcomeMessages) {
+      return "outcome_messages";
     }
 
     if (table === planNodes) {
@@ -144,6 +153,8 @@ function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) {
     switch (name) {
       case "outcome_plans":
         return state.outcomePlans;
+      case "outcome_messages":
+        return state.outcomeMessages;
       case "plan_nodes":
         return state.planNodes;
       case "plan_edges":
@@ -273,6 +284,7 @@ function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) {
         inserted.push(...snapshot.inserted);
 
         state.outcomePlans = snapshot.state.outcomePlans;
+        state.outcomeMessages = snapshot.state.outcomeMessages;
         state.planNodes = snapshot.state.planNodes;
         state.planEdges = snapshot.state.planEdges;
         state.outcomeRuns = snapshot.state.outcomeRuns;
@@ -286,10 +298,32 @@ function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) {
   return { db, inserted, state };
 }
 
+function seedTriggerMessage(
+  state: { outcomeMessages: TableRecord[] },
+  {
+    id,
+    outcomeId = "outcome_123",
+    role = "user"
+  }: {
+    id: string;
+    outcomeId?: string;
+    role?: "user" | "assistant" | "system";
+  }
+) {
+  state.outcomeMessages.push({
+    id,
+    outcomeId,
+    role,
+    content: `${id} content`,
+    createdAt: new Date("2026-03-11T00:00:00.000Z")
+  });
+}
+
 describe("plan and run repositories", () => {
   it("creates a plan with nodes and edges for an outcome", async () => {
-    const { db, inserted } = createRepositoryTestDatabase();
+    const { db, inserted, state } = createRepositoryTestDatabase();
     const repository = new PlanRepository(db as never);
+    seedTriggerMessage(state, { id: "msg_plan_123" });
 
     await repository.create(buildPlanInput({ id: "plan_123", outcomeId: "outcome_123" }));
 
@@ -345,8 +379,10 @@ describe("plan and run repositories", () => {
   });
 
   it("stores multiple plans for the same outcome and exposes coherent lookup APIs", async () => {
-    const { db } = createRepositoryTestDatabase();
+    const { db, state } = createRepositoryTestDatabase();
     const repository = new PlanRepository(db as never);
+    seedTriggerMessage(state, { id: "msg_turn_001" });
+    seedTriggerMessage(state, { id: "msg_turn_002" });
 
     await repository.create(
       buildPlanInput({
@@ -400,9 +436,15 @@ describe("plan and run repositories", () => {
       failOnInsertTables: ["plan_nodes"]
     });
     const repository = new PlanRepository(db as never);
+    seedTriggerMessage(state, { id: "msg_plan_rollback", outcomeId: "outcome_rollback" });
 
     await expect(
-      repository.create(buildPlanInput({ id: "plan_rollback", outcomeId: "outcome_rollback" }))
+      repository.create(
+        buildPlanInput({
+          id: "plan_rollback",
+          outcomeId: "outcome_rollback"
+        })
+      )
     ).rejects.toThrow("Simulated plan_nodes insert failure.");
 
     expect(state.outcomePlans).toEqual([]);
@@ -413,6 +455,7 @@ describe("plan and run repositories", () => {
   it("rejects edges whose endpoints are not part of the same plan input", async () => {
     const { db, state } = createRepositoryTestDatabase();
     const repository = new PlanRepository(db as never);
+    seedTriggerMessage(state, { id: "msg_plan_invalid", outcomeId: "outcome_invalid" });
     const malformedPlan = buildPlanInput({
       id: "plan_invalid",
       outcomeId: "outcome_invalid"
@@ -435,24 +478,78 @@ describe("plan and run repositories", () => {
     expect(state.planEdges).toEqual([]);
   });
 
+  it("rejects plans whose trigger message does not exist", async () => {
+    const { db } = createRepositoryTestDatabase();
+    const repository = new PlanRepository(db as never);
+
+    await expect(
+      repository.create(
+        buildPlanInput({
+          id: "plan_missing_message",
+          triggerMessageId: "msg_missing"
+        })
+      )
+    ).rejects.toThrow("Trigger message msg_missing does not exist.");
+  });
+
+  it("rejects plans whose trigger message belongs to a different outcome", async () => {
+    const { db, state } = createRepositoryTestDatabase();
+    const repository = new PlanRepository(db as never);
+    seedTriggerMessage(state, {
+      id: "msg_other_outcome",
+      outcomeId: "outcome_999"
+    });
+
+    await expect(
+      repository.create(
+        buildPlanInput({
+          id: "plan_wrong_outcome",
+          outcomeId: "outcome_123",
+          triggerMessageId: "msg_other_outcome"
+        })
+      )
+    ).rejects.toThrow(
+      "Trigger message msg_other_outcome belongs to outcome_999, not outcome_123."
+    );
+  });
+
+  it("rejects plans whose trigger message was not authored by the user", async () => {
+    const { db, state } = createRepositoryTestDatabase();
+    const repository = new PlanRepository(db as never);
+    seedTriggerMessage(state, {
+      id: "msg_assistant",
+      role: "assistant"
+    });
+
+    await expect(
+      repository.create(
+        buildPlanInput({
+          id: "plan_assistant_message",
+          triggerMessageId: "msg_assistant"
+        })
+      )
+    ).rejects.toThrow("Trigger message msg_assistant must have role user.");
+  });
+
   it("creates a run from a persisted plan, lists steps, updates step status, and records events", async () => {
     const { db, state } = createRepositoryTestDatabase();
     const planRepository = new PlanRepository(db as never);
     const runRepository = new RunRepository(db as never);
 
+    seedTriggerMessage(state, { id: "msg_plan_123" });
     await planRepository.create(buildPlanInput({ id: "plan_123", outcomeId: "outcome_123" }));
 
     const run = await runRepository.createFromPlan({
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_123",
-      triggerMessageId: "msg_run_123",
+      triggerMessageId: "msg_plan_123",
       createdAt: "2026-03-11T00:05:00.000Z",
       updatedAt: "2026-03-11T00:05:00.000Z"
     });
 
     expect(run.status).toBe("queued");
-    expect(run.triggerMessageId).toBe("msg_run_123");
+    expect(run.triggerMessageId).toBe("msg_plan_123");
 
     const steps = await runRepository.listSteps("run_123");
 
@@ -519,17 +616,18 @@ describe("plan and run repositories", () => {
   });
 
   it("returns the latest run for an outcome", async () => {
-    const { db } = createRepositoryTestDatabase();
+    const { db, state } = createRepositoryTestDatabase();
     const planRepository = new PlanRepository(db as never);
     const runRepository = new RunRepository(db as never);
 
+    seedTriggerMessage(state, { id: "msg_plan_123" });
     await planRepository.create(buildPlanInput({ id: "plan_123", outcomeId: "outcome_123" }));
 
     await runRepository.createFromPlan({
       id: "run_older",
       outcomeId: "outcome_123",
       planId: "plan_123",
-      triggerMessageId: "msg_run_older",
+      triggerMessageId: "msg_plan_123",
       createdAt: "2026-03-11T00:05:00.000Z",
       updatedAt: "2026-03-11T00:05:00.000Z"
     });
@@ -538,7 +636,7 @@ describe("plan and run repositories", () => {
       id: "run_newer",
       outcomeId: "outcome_123",
       planId: "plan_123",
-      triggerMessageId: "msg_run_newer",
+      triggerMessageId: "msg_plan_123",
       createdAt: "2026-03-11T00:06:00.000Z",
       updatedAt: "2026-03-11T00:06:00.000Z"
     });
@@ -558,6 +656,7 @@ describe("plan and run repositories", () => {
     const planRepository = new PlanRepository(db as never);
     const runRepository = new RunRepository(db as never);
 
+    seedTriggerMessage(state, { id: "msg_plan_123" });
     await planRepository.create(buildPlanInput({ id: "plan_123", outcomeId: "outcome_123" }));
 
     await expect(
@@ -565,7 +664,7 @@ describe("plan and run repositories", () => {
         id: "run_rollback",
         outcomeId: "outcome_123",
         planId: "plan_123",
-        triggerMessageId: "msg_run_rollback",
+        triggerMessageId: "msg_plan_123",
         createdAt: "2026-03-11T00:05:00.000Z",
         updatedAt: "2026-03-11T00:05:00.000Z"
       })
@@ -580,6 +679,7 @@ describe("plan and run repositories", () => {
     const planRepository = new PlanRepository(db as never);
     const runRepository = new RunRepository(db as never);
 
+    seedTriggerMessage(state, { id: "msg_plan_B", outcomeId: "outcome_B" });
     await planRepository.create(buildPlanInput({ id: "plan_B", outcomeId: "outcome_B" }));
 
     await expect(
@@ -587,7 +687,7 @@ describe("plan and run repositories", () => {
         id: "run_mismatch",
         outcomeId: "outcome_A",
         planId: "plan_B",
-        triggerMessageId: "msg_run_mismatch",
+        triggerMessageId: "msg_plan_B",
         createdAt: "2026-03-11T00:05:00.000Z",
         updatedAt: "2026-03-11T00:05:00.000Z"
       })
@@ -595,5 +695,30 @@ describe("plan and run repositories", () => {
 
     expect(state.outcomeRuns).toEqual([]);
     expect(state.runSteps).toEqual([]);
+  });
+
+  it("rejects a run when its trigger message does not match the persisted plan trigger message", async () => {
+    const { db, state } = createRepositoryTestDatabase();
+    const planRepository = new PlanRepository(db as never);
+    const runRepository = new RunRepository(db as never);
+
+    seedTriggerMessage(state, { id: "msg_plan_123" });
+    seedTriggerMessage(state, { id: "msg_run_other" });
+    await planRepository.create(buildPlanInput({ id: "plan_123", outcomeId: "outcome_123" }));
+
+    await expect(
+      runRepository.createFromPlan({
+        id: "run_mismatched_trigger",
+        outcomeId: "outcome_123",
+        planId: "plan_123",
+        triggerMessageId: "msg_run_other",
+        createdAt: "2026-03-11T00:05:00.000Z",
+        updatedAt: "2026-03-11T00:05:00.000Z"
+      })
+    ).rejects.toThrow(
+      "Run trigger message msg_run_other does not match plan plan_123 trigger message msg_plan_123."
+    );
+
+    expect(state.outcomeRuns).toEqual([]);
   });
 });

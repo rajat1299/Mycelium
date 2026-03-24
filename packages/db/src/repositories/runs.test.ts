@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PlanRepository } from "./plans";
 import { RunRepository } from "./runs";
-import { createRepositoryTestDatabase } from "./test-database";
+import { createRepositoryTestDatabase, type TableRecord } from "./test-database";
 
 function buildExecutablePlanInput() {
   return {
@@ -78,18 +78,44 @@ function buildExecutablePlanInput() {
   };
 }
 
+function seedTriggerMessage(
+  state: { [key: string]: unknown },
+  {
+    id,
+    outcomeId = "outcome_123",
+    role = "user"
+  }: {
+    id: string;
+    outcomeId?: string;
+    role?: "user" | "assistant" | "system";
+  }
+) {
+  const messages = ((state as { outcomeMessages?: TableRecord[] }).outcomeMessages ??=
+    []);
+
+  messages.push({
+    id,
+    outcomeId,
+    role,
+    content: `${id} content`,
+    createdAt: new Date("2026-03-12T00:00:00.000Z")
+  });
+}
+
 describe("RunRepository", () => {
   it("persists executable step metadata and lists only dependency-ready steps", async () => {
-    const { db } = createRepositoryTestDatabase();
+    const { db, state } = createRepositoryTestDatabase();
     const plans = new PlanRepository(db as never);
     const runs = new RunRepository(db as never);
 
+    seedTriggerMessage(state, { id: "msg_plan_outcome_123" });
+    seedTriggerMessage(state, { id: "msg_run_123" });
     await plans.create(buildExecutablePlanInput());
     await runs.createFromPlan({
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
-      triggerMessageId: "msg_run_123",
+      triggerMessageId: "msg_plan_outcome_123",
       createdAt: "2026-03-12T00:05:00.000Z",
       updatedAt: "2026-03-12T00:05:00.000Z"
     });
@@ -108,23 +134,26 @@ describe("RunRepository", () => {
     await expect(runs.getById("run_123")).resolves.toEqual(
       expect.objectContaining({
         id: "run_123",
-        triggerMessageId: "msg_run_123"
+        triggerMessageId: "msg_plan_outcome_123"
       })
     );
   });
 
   it("updates run status and lists outcome runs in chronological order", async () => {
-    const { db } = createRepositoryTestDatabase();
+    const { db, state } = createRepositoryTestDatabase();
     const plans = new PlanRepository(db as never);
     const runs = new RunRepository(db as never);
 
+    seedTriggerMessage(state, { id: "msg_plan_outcome_123" });
+    seedTriggerMessage(state, { id: "msg_run_001" });
+    seedTriggerMessage(state, { id: "msg_run_002" });
     await plans.create(buildExecutablePlanInput());
 
     await runs.createFromPlan({
       id: "run_001",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
-      triggerMessageId: "msg_run_001",
+      triggerMessageId: "msg_plan_outcome_123",
       createdAt: "2026-03-12T00:05:00.000Z",
       updatedAt: "2026-03-12T00:05:00.000Z"
     });
@@ -132,7 +161,7 @@ describe("RunRepository", () => {
       id: "run_002",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
-      triggerMessageId: "msg_run_002",
+      triggerMessageId: "msg_plan_outcome_123",
       createdAt: "2026-03-12T00:10:00.000Z",
       updatedAt: "2026-03-12T00:10:00.000Z"
     });
@@ -173,12 +202,14 @@ describe("RunRepository", () => {
       updatedAt: new Date("2026-03-12T00:00:00.000Z")
     });
 
+    seedTriggerMessage(state, { id: "msg_plan_outcome_123" });
+    seedTriggerMessage(state, { id: "msg_run_123" });
     await plans.create(buildExecutablePlanInput());
     await runs.createFromPlan({
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
-      triggerMessageId: "msg_run_123",
+      triggerMessageId: "msg_plan_outcome_123",
       createdAt: "2026-03-12T00:05:00.000Z",
       updatedAt: "2026-03-12T00:05:00.000Z"
     });
@@ -223,12 +254,14 @@ describe("RunRepository", () => {
       updatedAt: new Date("2026-03-12T00:00:00.000Z")
     });
 
+    seedTriggerMessage(state, { id: "msg_plan_outcome_123" });
+    seedTriggerMessage(state, { id: "msg_run_123" });
     await plans.create(buildExecutablePlanInput());
     await runs.createFromPlan({
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
-      triggerMessageId: "msg_run_123",
+      triggerMessageId: "msg_plan_outcome_123",
       createdAt: "2026-03-12T00:05:00.000Z",
       updatedAt: "2026-03-12T00:05:00.000Z"
     });
@@ -285,12 +318,14 @@ describe("RunRepository", () => {
       }
     );
 
+    seedTriggerMessage(state, { id: "msg_plan_outcome_123" });
+    seedTriggerMessage(state, { id: "msg_run_123" });
     await plans.create(buildExecutablePlanInput());
     await runs.createFromPlan({
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
-      triggerMessageId: "msg_run_123",
+      triggerMessageId: "msg_plan_outcome_123",
       createdAt: "2026-03-12T00:05:00.000Z",
       updatedAt: "2026-03-12T00:05:00.000Z"
     });
@@ -331,12 +366,14 @@ describe("RunRepository", () => {
     const plans = new PlanRepository(db as never);
     const runs = new RunRepository(db as never);
 
+    seedTriggerMessage(state, { id: "msg_plan_outcome_123" });
+    seedTriggerMessage(state, { id: "msg_run_123" });
     await plans.create(buildExecutablePlanInput());
     await runs.createFromPlan({
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
-      triggerMessageId: "msg_run_123",
+      triggerMessageId: "msg_plan_outcome_123",
       createdAt: "2026-03-12T00:05:00.000Z",
       updatedAt: "2026-03-12T00:05:00.000Z"
     });
@@ -424,12 +461,14 @@ describe("RunRepository", () => {
     const plans = new PlanRepository(db as never);
     const runs = new RunRepository(db as never);
 
+    seedTriggerMessage(state, { id: "msg_plan_outcome_123" });
+    seedTriggerMessage(state, { id: "msg_run_123" });
     await plans.create(buildExecutablePlanInput());
     await runs.createFromPlan({
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
-      triggerMessageId: "msg_run_123",
+      triggerMessageId: "msg_plan_outcome_123",
       createdAt: "2026-03-12T00:05:00.000Z",
       updatedAt: "2026-03-12T00:05:00.000Z"
     });
@@ -523,12 +562,14 @@ describe("RunRepository", () => {
     const plans = new PlanRepository(db as never);
     const runs = new RunRepository(db as never);
 
+    seedTriggerMessage(state, { id: "msg_plan_outcome_123" });
+    seedTriggerMessage(state, { id: "msg_run_123" });
     await plans.create(buildExecutablePlanInput());
     await runs.createFromPlan({
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
-      triggerMessageId: "msg_run_123",
+      triggerMessageId: "msg_plan_outcome_123",
       createdAt: "2026-03-12T00:05:00.000Z",
       updatedAt: "2026-03-12T00:05:00.000Z"
     });
@@ -583,16 +624,18 @@ describe("RunRepository", () => {
   });
 
   it("preserves unresolved route diagnostics when no auth profile is available", async () => {
-    const { db } = createRepositoryTestDatabase();
+    const { db, state } = createRepositoryTestDatabase();
     const plans = new PlanRepository(db as never);
     const runs = new RunRepository(db as never);
 
+    seedTriggerMessage(state, { id: "msg_plan_outcome_123" });
+    seedTriggerMessage(state, { id: "msg_run_123" });
     await plans.create(buildExecutablePlanInput());
     await runs.createFromPlan({
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
-      triggerMessageId: "msg_run_123",
+      triggerMessageId: "msg_plan_outcome_123",
       createdAt: "2026-03-12T00:05:00.000Z",
       updatedAt: "2026-03-12T00:05:00.000Z"
     });
@@ -631,5 +674,76 @@ describe("RunRepository", () => {
         })
       ])
     );
+  });
+
+  it("rejects run creation when the provided trigger message does not match the plan trigger message", async () => {
+    const { db, state } = createRepositoryTestDatabase();
+    const plans = new PlanRepository(db as never);
+    const runs = new RunRepository(db as never);
+
+    seedTriggerMessage(state, { id: "msg_plan_outcome_123" });
+    seedTriggerMessage(state, { id: "msg_run_other" });
+    await plans.create(buildExecutablePlanInput());
+
+    await expect(
+      runs.createFromPlan({
+        id: "run_123",
+        outcomeId: "outcome_123",
+        planId: "plan_outcome_123",
+        triggerMessageId: "msg_run_other",
+        createdAt: "2026-03-12T00:05:00.000Z",
+        updatedAt: "2026-03-12T00:05:00.000Z"
+      })
+    ).rejects.toThrow(
+      "Run trigger message msg_run_other does not match plan plan_outcome_123 trigger message msg_plan_outcome_123."
+    );
+  });
+
+  it("shared test database allows multiple plans for the same outcome", async () => {
+    const { db, state } = createRepositoryTestDatabase();
+    const plans = new PlanRepository(db as never);
+
+    seedTriggerMessage(state, { id: "msg_turn_001" });
+    seedTriggerMessage(state, { id: "msg_turn_002" });
+
+    await plans.create({
+      id: "plan_outcome_123_a",
+      outcomeId: "outcome_123",
+      triggerMessageId: "msg_turn_001",
+      status: "draft",
+      createdAt: "2026-03-12T00:00:00.000Z",
+      updatedAt: "2026-03-12T00:00:00.000Z",
+      nodes: [
+        {
+          id: "plan_outcome_123_a:root",
+          kind: "root",
+          title: "Analyze outcome",
+          capability: "reasoning"
+        }
+      ],
+      edges: []
+    });
+    await plans.create({
+      id: "plan_outcome_123_b",
+      outcomeId: "outcome_123",
+      triggerMessageId: "msg_turn_002",
+      status: "draft",
+      createdAt: "2026-03-12T00:10:00.000Z",
+      updatedAt: "2026-03-12T00:10:00.000Z",
+      nodes: [
+        {
+          id: "plan_outcome_123_b:root",
+          kind: "root",
+          title: "Analyze outcome",
+          capability: "reasoning"
+        }
+      ],
+      edges: []
+    });
+
+    await expect(plans.listByOutcome("outcome_123")).resolves.toEqual([
+      expect.objectContaining({ id: "plan_outcome_123_a" }),
+      expect.objectContaining({ id: "plan_outcome_123_b" })
+    ]);
   });
 });
