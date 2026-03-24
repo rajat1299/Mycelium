@@ -114,6 +114,10 @@ export type RunStore = {
   listReadySteps(runId: string): Promise<StoredRunStep[]>;
   appendEvent(input: AppendRunEventInput): Promise<void>;
   listEvents(runId: string, eventType?: string): Promise<StoredRunEvent[]>;
+  listEventsByOutcome(
+    outcomeId: string,
+    eventType?: string
+  ): Promise<StoredRunEvent[]>;
   updateLifecycleStatus(
     input: UpdateRunLifecycleStatusInput
   ): Promise<{ run: StoredRun; outcome: Outcome } | null>;
@@ -968,6 +972,34 @@ function createInMemoryRepositoriesState() {
         .filter(
           (event) =>
             event.runId === runId &&
+            (eventType ? event.eventType === eventType : true)
+        )
+        .sort((left, right) => {
+          const createdDelta =
+            new Date(left.createdAt).getTime() -
+            new Date(right.createdAt).getTime();
+
+          if (createdDelta !== 0) {
+            return createdDelta;
+          }
+
+          return left.id.localeCompare(right.id);
+        })
+        .map((event) => ({
+          ...event
+        }));
+    },
+    async listEventsByOutcome(outcomeId, eventType) {
+      const runIds = new Set(
+        Array.from(runsById.values())
+          .filter((run) => run.outcomeId === outcomeId)
+          .map((run) => run.id)
+      );
+
+      return runEvents
+        .filter(
+          (event) =>
+            runIds.has(event.runId) &&
             (eventType ? event.eventType === eventType : true)
         )
         .sort((left, right) => {

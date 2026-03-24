@@ -186,6 +186,118 @@ describe("RunRepository", () => {
     ]);
   });
 
+  it("lists run events across all runs in an outcome chronologically", async () => {
+    const { db, state } = createRepositoryTestDatabase();
+    const plans = new PlanRepository(db as never);
+    const runs = new RunRepository(db as never);
+
+    seedTriggerMessage(state, { id: "msg_plan_outcome_123" });
+    seedTriggerMessage(state, { id: "msg_plan_outcome_456", outcomeId: "outcome_456" });
+
+    await plans.create(buildExecutablePlanInput());
+    await plans.create({
+      ...buildExecutablePlanInput(),
+      id: "plan_outcome_456",
+      outcomeId: "outcome_456",
+      triggerMessageId: "msg_plan_outcome_456",
+      nodes: buildExecutablePlanInput().nodes.map((node) => ({
+        ...node,
+        id: String(node.id).replaceAll("outcome_123", "outcome_456")
+      })),
+      edges: buildExecutablePlanInput().edges.map((edge) => ({
+        ...edge,
+        id: String(edge.id).replaceAll("outcome_123", "outcome_456"),
+        from: String(edge.from).replaceAll("outcome_123", "outcome_456"),
+        to: String(edge.to).replaceAll("outcome_123", "outcome_456")
+      }))
+    });
+
+    await runs.createFromPlan({
+      id: "run_001",
+      outcomeId: "outcome_123",
+      planId: "plan_outcome_123",
+      triggerMessageId: "msg_plan_outcome_123",
+      createdAt: "2026-03-12T00:05:00.000Z",
+      updatedAt: "2026-03-12T00:05:00.000Z"
+    });
+    await runs.createFromPlan({
+      id: "run_002",
+      outcomeId: "outcome_123",
+      planId: "plan_outcome_123",
+      triggerMessageId: "msg_plan_outcome_123",
+      createdAt: "2026-03-12T00:10:00.000Z",
+      updatedAt: "2026-03-12T00:10:00.000Z"
+    });
+    await runs.createFromPlan({
+      id: "run_003",
+      outcomeId: "outcome_456",
+      planId: "plan_outcome_456",
+      triggerMessageId: "msg_plan_outcome_456",
+      createdAt: "2026-03-12T00:15:00.000Z",
+      updatedAt: "2026-03-12T00:15:00.000Z"
+    });
+
+    await runs.appendEvent({
+      id: "evt_002",
+      runId: "run_002",
+      eventType: "assistant.message.started",
+      payload: { messageId: "assistant_2" },
+      createdAt: "2026-03-12T00:12:00.000Z"
+    });
+    await runs.appendEvent({
+      id: "evt_001",
+      runId: "run_001",
+      eventType: "run.log",
+      payload: { message: "first run log" },
+      createdAt: "2026-03-12T00:11:00.000Z"
+    });
+    await runs.appendEvent({
+      id: "evt_004",
+      runId: "run_002",
+      eventType: "assistant.message.completed",
+      payload: { messageId: "assistant_2" },
+      createdAt: "2026-03-12T00:13:00.000Z"
+    });
+    await runs.appendEvent({
+      id: "evt_003",
+      runId: "run_003",
+      eventType: "run.log",
+      payload: { message: "other outcome" },
+      createdAt: "2026-03-12T00:12:30.000Z"
+    });
+
+    await expect(runs.listEventsByOutcome("outcome_123")).resolves.toEqual([
+      expect.objectContaining({
+        id: "evt_001",
+        runId: "run_001",
+        eventType: "run.log",
+        payload: { message: "first run log" }
+      }),
+      expect.objectContaining({
+        id: "evt_002",
+        runId: "run_002",
+        eventType: "assistant.message.started",
+        payload: { messageId: "assistant_2" }
+      }),
+      expect.objectContaining({
+        id: "evt_004",
+        runId: "run_002",
+        eventType: "assistant.message.completed",
+        payload: { messageId: "assistant_2" }
+      })
+    ]);
+
+    await expect(
+      runs.listEventsByOutcome("outcome_123", "assistant.message.started")
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: "evt_002",
+        runId: "run_002",
+        eventType: "assistant.message.started"
+      })
+    ]);
+  });
+
   it("updates run and outcome lifecycle state atomically", async () => {
     const { db, state } = createRepositoryTestDatabase();
     const plans = new PlanRepository(db as never);

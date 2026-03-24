@@ -501,6 +501,29 @@ export class RunRepository {
       .map(mapRunEventRow);
   }
 
+  async listEventsByOutcome(
+    outcomeId: string,
+    eventType?: string
+  ): Promise<StoredRunEvent[]> {
+    const [runRows, eventRows] = await Promise.all([
+      this.db.select().from(outcomeRuns),
+      this.db.select().from(runEvents)
+    ]);
+
+    const runIds = new Set(
+      runRows.filter((row) => row.outcomeId === outcomeId).map((row) => row.id)
+    );
+
+    return eventRows
+      .filter(
+        (row) =>
+          runIds.has(row.runId) &&
+          (eventType ? row.eventType === eventType : true)
+      )
+      .sort(compareRunEvents)
+      .map(mapRunEventRow);
+  }
+
   async updateLifecycleStatus(
     input: UpdateRunLifecycleStatusInput
   ): Promise<{ run: StoredRun; outcome: StoredOutcome } | null> {
