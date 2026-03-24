@@ -96,10 +96,16 @@ async function createNonReviewPlan(
   outcomeId: string
 ) {
   const createdAt = "2026-03-12T00:00:00.000Z";
+  const triggerMessage = await appendUserTurnMessage(repositories, {
+    outcomeId,
+    content: `Seed trigger for ${outcomeId}`,
+    createdAt
+  });
 
   return repositories.plans.create({
     id: `plan_${outcomeId}_no_review`,
     outcomeId,
+    triggerMessageId: triggerMessage.id,
     status: "draft",
     createdAt,
     updatedAt: createdAt,
@@ -132,6 +138,58 @@ async function createNonReviewPlan(
         to: `plan_${outcomeId}_no_review:synthesize-result`
       }
     ]
+  });
+}
+
+async function appendUserTurnMessage(
+  repositories: Repositories,
+  input: {
+    outcomeId: string;
+    content: string;
+    createdAt: string;
+  }
+) {
+  const message = {
+    id: `msg_${input.content.replaceAll(/\W+/g, "_").toLowerCase()}`,
+    outcomeId: input.outcomeId,
+    role: "user" as const,
+    content: input.content,
+    createdAt: input.createdAt
+  };
+
+  await repositories.outcomes.appendMessage(message);
+  return message;
+}
+
+async function createTurnScopedPlan(
+  repositories: Repositories,
+  input: {
+    outcomeId: string;
+    triggerMessageId: string;
+    suffix: string;
+    createdAt: string;
+  }
+) {
+  return repositories.plans.create({
+    id: `plan_${input.outcomeId}_${input.suffix}`,
+    outcomeId: input.outcomeId,
+    triggerMessageId: input.triggerMessageId,
+    status: "draft",
+    createdAt: input.createdAt,
+    updatedAt: input.createdAt,
+    nodes: [
+      {
+        id: `plan_${input.outcomeId}_${input.suffix}:analyze-outcome`,
+        kind: "root",
+        title: "Analyze outcome",
+        capability: "reasoning",
+        instruction: "Inspect the outcome prompt and capture execution notes.",
+        template: "analyze_outcome",
+        expectedArtifactPath: "artifacts/analyze-outcome.md",
+        expectedArtifactKind: "analysis"
+      }
+    ],
+    edges: []
   });
 }
 
@@ -401,6 +459,71 @@ describe("run routes", () => {
     }
   });
 
+  it("creates a legacy manual run from the requested plan instead of the latest plan", async () => {
+    const harness = await createExecutionHarness();
+    let createdRunId: string | null = null;
+
+    try {
+      const { app, services } = harness;
+      const createOutcome = await app.inject({
+        method: "POST",
+        url: "/api/outcomes",
+        payload: {
+          workspaceId: "ws_123",
+          userId: "user_123",
+          prompt: "Keep manual plan/run routes stable while multiple turns exist.",
+          source: "web"
+        }
+      });
+      const outcome = createOutcome.json();
+      const firstTurn = await appendUserTurnMessage(services.repositories, {
+        outcomeId: outcome.id,
+        content: "First turn",
+        createdAt: "2026-03-18T00:00:00.000Z"
+      });
+      const firstPlan = await createTurnScopedPlan(services.repositories, {
+        outcomeId: outcome.id,
+        triggerMessageId: firstTurn.id,
+        suffix: "first",
+        createdAt: "2026-03-18T00:00:01.000Z"
+      });
+      const secondTurn = await appendUserTurnMessage(services.repositories, {
+        outcomeId: outcome.id,
+        content: "Second turn",
+        createdAt: "2026-03-18T00:00:02.000Z"
+      });
+
+      await createTurnScopedPlan(services.repositories, {
+        outcomeId: outcome.id,
+        triggerMessageId: secondTurn.id,
+        suffix: "second",
+        createdAt: "2026-03-18T00:00:03.000Z"
+      });
+
+      const createRun = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${outcome.id}/runs`,
+        payload: {
+          planId: firstPlan.id
+        }
+      });
+
+      expect(createRun.statusCode).toBe(201);
+
+      const run = RunDetailSchema.parse(createRun.json());
+      createdRunId = run.id;
+
+      expect(run.planId).toBe(firstPlan.id);
+      expect(run.triggerMessageId).toBe(firstTurn.id);
+    } finally {
+      if (createdRunId) {
+        await harness.services.executionService.waitForRun(createdRunId);
+      }
+
+      await harness.cleanup();
+    }
+  });
+
   it("publishes queued, running, blocked, and approval events when a run is created", async () => {
     const harness = await createExecutionHarness();
 
@@ -575,6 +698,7 @@ describe("run routes", () => {
         id: `run_${outcome.id}_resume_api`,
         outcomeId: outcome.id,
         planId: plan.id,
+        triggerMessageId: plan.triggerMessageId,
         createdAt: "2026-03-16T15:00:00.000Z",
         updatedAt: "2026-03-16T15:00:00.000Z"
       });
@@ -663,6 +787,7 @@ describe("run routes", () => {
           id: `run_${outcome.id}_${label.replace(/\s+/g, "_")}`,
           outcomeId: outcome.id,
           planId: plan.id,
+          triggerMessageId: plan.triggerMessageId,
           createdAt: "2026-03-16T16:00:00.000Z",
           updatedAt: "2026-03-16T16:00:00.000Z"
         });
@@ -808,6 +933,7 @@ describe("run routes", () => {
         id: `run_${outcome3.id}_queued`,
         outcomeId: outcome3.id,
         planId: plan3.id,
+        triggerMessageId: plan3.triggerMessageId,
         createdAt: "2026-03-16T15:30:00.000Z",
         updatedAt: "2026-03-16T15:30:00.000Z"
       });

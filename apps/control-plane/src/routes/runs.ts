@@ -5,25 +5,19 @@ import {
   AssistantMessageListResponseSchema,
   AssistantMessageSnapshotSchema,
   AssistantMessageStartedDataSchema,
-  CapabilityFamilySchema,
   ResumeRunRequestSchema,
   ResumeRunResponseSchema,
   CreateRunRequestSchema,
   RunDetailSchema,
   RunLogDataSchema,
-  RunLogListResponseSchema,
-  RunSchema,
-  RunStepSchema
+  RunLogListResponseSchema
 } from "@computer-oss/protocol";
 import type { EventBus } from "../lib/event-bus";
 import type { ExecutionService } from "../lib/execution-service";
+import { createQueuedRunFromPlan } from "../lib/outcome-turn-service";
 import type { Repositories } from "../lib/repositories";
 import type { RouterService } from "../lib/router-service";
-import {
-  isDevelopmentSimulationEnabled,
-  resolveSimulatedRoute,
-  type SimulatedExecutionService
-} from "../lib/simulated-execution";
+import type { SimulatedExecutionService } from "../lib/simulated-execution";
 
 type RunRouteOptions = {
   repositories: Repositories;
@@ -145,42 +139,6 @@ async function buildRunDetail(
   });
 }
 
-async function resolveAndPersistStepRoutes(
-  options: RunRouteOptions,
-  input: {
-    workspaceId: string;
-    runId: string;
-    resolvedAt: string;
-    useSimulatedRoutes: boolean;
-  }
-) {
-  const steps = await options.repositories.runs.listSteps(input.runId);
-
-  await Promise.all(
-    steps.map(async (step) => {
-      const route = input.useSimulatedRoutes
-        ? resolveSimulatedRoute({
-            capability: CapabilityFamilySchema.parse(step.capability),
-            resolvedAt: input.resolvedAt
-          })
-        : await options.routerService.resolveRoute({
-            workspaceId: input.workspaceId,
-            capability: CapabilityFamilySchema.parse(step.capability),
-            resolvedAt: input.resolvedAt
-          });
-
-      const updated = await options.repositories.runs.updateStepRoute({
-        stepId: step.id,
-        route
-      });
-
-      if (!updated) {
-        throw new Error(`Step ${step.id} disappeared during route persistence.`);
-      }
-    })
-  );
-}
-
 export function registerRunRoutes(
   app: FastifyInstance,
   options: RunRouteOptions
@@ -204,25 +162,35 @@ export function registerRunRoutes(
     }
 
     const now = new Date().toISOString();
-    let run;
-    const plan = await options.repositories.plans.getByOutcome(outcome.id);
-    const useSimulatedRoutes = isDevelopmentSimulationEnabled({
-      simulationMode: options.simulationMode ?? false,
-      outcomeSource: outcome.source
-    });
+    const plan = await options.repositories.plans.getById(parsed.data.planId);
+
+    if (!plan) {
+      return reply.code(404).send(badRequest(`Plan ${parsed.data.planId} does not exist.`));
+    }
+
+    const runStartOptions = {
+      repositories: options.repositories,
+      eventBus: options.eventBus,
+      executionService: options.executionService,
+      simulatedExecutionService: options.simulatedExecutionService,
+      routerService: options.routerService,
+      simulationMode: options.simulationMode,
+      now: () => new Date(now),
+      idFactory: () => crypto.randomUUID()
+    };
 
     try {
-      run = await options.repositories.runs.createFromPlan({
-        id: `run_${crypto.randomUUID()}`,
-        outcomeId: outcome.id,
+      const startedRun = await createQueuedRunFromPlan(runStartOptions, {
+        outcome,
         planId: parsed.data.planId,
-        triggerMessageId: plan?.triggerMessageId ?? "",
-        createdAt: now,
-        updatedAt: now
+        triggerMessageId: plan.triggerMessageId,
+        createdAt: now
       });
+
+      return reply.code(201).send(startedRun.run);
     } catch (error) {
       if (error instanceof Error) {
-        if (error.message.includes("does not exist")) {
+        if (error.message.includes("does not exist") || error.message.includes("not found")) {
           return reply.code(404).send(badRequest(error.message));
         }
 
@@ -233,85 +201,6 @@ export function registerRunRoutes(
 
       throw error;
     }
-
-    await resolveAndPersistStepRoutes(options, {
-      workspaceId: outcome.workspaceId,
-      runId: run.id,
-      resolvedAt: now,
-      useSimulatedRoutes
-    });
-
-    const updatedOutcome = await options.repositories.outcomes.updateStatus({
-      id: outcome.id,
-      status: "queued",
-      updatedAt: now
-    });
-
-    if (!updatedOutcome) {
-      return reply.code(500).send(badRequest("Failed to update outcome status."));
-    }
-
-    const response = await buildRunResponse(options.repositories, run.id);
-
-    if (!response) {
-      return reply.code(500).send(badRequest("Failed to read persisted run."));
-    }
-
-    options.eventBus.publish({
-      outcomeId: outcome.id,
-      type: "outcome.updated",
-      data: updatedOutcome
-    });
-
-    const runEventData = RunSchema.parse({
-      id: response.id,
-      outcomeId: response.outcomeId,
-      planId: response.planId,
-      triggerMessageId: response.triggerMessageId,
-      status: response.status,
-      createdAt: response.createdAt,
-      updatedAt: response.updatedAt
-    });
-
-    await options.repositories.runs.appendEvent({
-      id: `event_${crypto.randomUUID()}`,
-      runId: response.id,
-      eventType: "run.created",
-      payload: runEventData,
-      createdAt: now
-    });
-
-    options.eventBus.publish({
-      outcomeId: outcome.id,
-      type: "run.created",
-      data: runEventData
-    });
-
-    for (const step of response.steps) {
-      const stepEventData = RunStepSchema.parse(step);
-
-      await options.repositories.runs.appendEvent({
-        id: `event_${crypto.randomUUID()}`,
-        runId: response.id,
-        eventType: "run.step.updated",
-        payload: stepEventData,
-        createdAt: step.updatedAt
-      });
-
-      options.eventBus.publish({
-        outcomeId: outcome.id,
-        type: "run.step.updated",
-        data: stepEventData
-      });
-    }
-
-    if (useSimulatedRoutes) {
-      options.simulatedExecutionService.startRun(response.id);
-    } else {
-      options.executionService.startRun(response.id);
-    }
-
-    return reply.code(201).send(response);
   });
 
   app.get("/api/outcomes/:id/runs/latest", async (request, reply) => {

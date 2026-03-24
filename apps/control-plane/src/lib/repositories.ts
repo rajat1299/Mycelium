@@ -93,7 +93,10 @@ export type OutcomeStore = {
 
 export type PlanStore = {
   create(input: CreatePlanInput): Promise<StoredPlan>;
+  getById(id: string): Promise<StoredPlan | null>;
   getByOutcome(outcomeId: string): Promise<StoredPlan | null>;
+  getLatestByOutcome(outcomeId: string): Promise<StoredPlan | null>;
+  listByOutcome(outcomeId: string): Promise<StoredPlan[]>;
   listNodes(planId: string): Promise<StoredPlanNode[]>;
   listEdges(planId: string): Promise<StoredPlanEdge[]>;
 };
@@ -288,6 +291,24 @@ type InMemoryDataState = {
 };
 
 function compareRuns(left: StoredRun, right: StoredRun) {
+  const createdDelta =
+    new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+
+  if (createdDelta !== 0) {
+    return createdDelta;
+  }
+
+  const updatedDelta =
+    new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime();
+
+  if (updatedDelta !== 0) {
+    return updatedDelta;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
+function comparePlans(left: StoredPlan, right: StoredPlan) {
   const createdDelta =
     new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
 
@@ -546,7 +567,7 @@ function getStoredRunStep(
 
 function createInMemoryRepositoriesState() {
   const outcomes = new Map<string, Outcome>();
-  const plansByOutcomeId = new Map<string, StoredPlan>();
+  const plansById = new Map<string, StoredPlan>();
   const planNodesByPlanId = new Map<string, StoredPlanNode[]>();
   const planEdgesByPlanId = new Map<string, StoredPlanEdge[]>();
   const runsById = new Map<string, StoredRun>();
@@ -573,7 +594,7 @@ function createInMemoryRepositoriesState() {
 
   const state = {
     outcomes,
-    plansByOutcomeId,
+    plansById,
     planNodesByPlanId,
     planEdgesByPlanId,
     runsById,
@@ -660,25 +681,26 @@ function createInMemoryRepositoriesState() {
 
   const plansStore: PlanStore = {
     async create(input) {
-      if (plansByOutcomeId.has(input.outcomeId)) {
-        throw new Error(`Plan already exists for outcome ${input.outcomeId}.`);
+      if (plansById.has(input.id)) {
+        throw new Error('duplicate key value violates unique constraint "outcome_plans_pkey"');
       }
 
-      const existingTriggerMessage = Array.from(outcomeMessagesById.values())
-        .filter((message) => message.outcomeId === input.outcomeId && message.role === "user")
-        .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
-        .at(-1);
-      const triggerMessageId =
-        input.triggerMessageId ?? existingTriggerMessage?.id ?? `msg_${input.id}`;
+      const triggerMessage = outcomeMessagesById.get(input.triggerMessageId);
 
-      if (!outcomeMessagesById.has(triggerMessageId)) {
-        outcomeMessagesById.set(triggerMessageId, {
-          id: triggerMessageId,
-          outcomeId: input.outcomeId,
-          role: "user",
-          content: `Trigger message for ${input.id}`,
-          createdAt: input.createdAt
-        });
+      if (!triggerMessage) {
+        throw new Error(`Trigger message ${input.triggerMessageId} does not exist.`);
+      }
+
+      if (triggerMessage.outcomeId !== input.outcomeId) {
+        throw new Error(
+          `Trigger message ${input.triggerMessageId} belongs to ${triggerMessage.outcomeId}, not ${input.outcomeId}.`
+        );
+      }
+
+      if (triggerMessage.role !== "user") {
+        throw new Error(
+          `Trigger message ${input.triggerMessageId} must have role user.`
+        );
       }
 
       const inputNodeIds = new Set(input.nodes.map((node) => node.id));
@@ -694,7 +716,7 @@ function createInMemoryRepositoriesState() {
       const plan: StoredPlan = {
         id: input.id,
         outcomeId: input.outcomeId,
-        triggerMessageId,
+        triggerMessageId: input.triggerMessageId,
         status: input.status,
         createdAt: input.createdAt,
         updatedAt: input.updatedAt
@@ -726,14 +748,30 @@ function createInMemoryRepositoriesState() {
         to: edge.to
       }));
 
-      plansByOutcomeId.set(plan.outcomeId, plan);
+      plansById.set(plan.id, plan);
       planNodesByPlanId.set(plan.id, nodes);
       planEdgesByPlanId.set(plan.id, edges);
 
       return plan;
     },
+    async getById(id) {
+      return plansById.get(id) ?? null;
+    },
     async getByOutcome(outcomeId) {
-      return plansByOutcomeId.get(outcomeId) ?? null;
+      return plansStore.getLatestByOutcome(outcomeId);
+    },
+    async getLatestByOutcome(outcomeId) {
+      return (
+        Array.from(plansById.values())
+          .filter((plan) => plan.outcomeId === outcomeId)
+          .sort(comparePlans)
+          .at(-1) ?? null
+      );
+    },
+    async listByOutcome(outcomeId) {
+      return Array.from(plansById.values())
+        .filter((plan) => plan.outcomeId === outcomeId)
+        .sort(comparePlans);
     },
     async listNodes(planId) {
       return [...(planNodesByPlanId.get(planId) ?? [])].sort(
@@ -747,9 +785,7 @@ function createInMemoryRepositoriesState() {
 
   const runsStore: RunStore = {
     async createFromPlan(input) {
-      const plan = Array.from(plansByOutcomeId.values()).find(
-        (candidate) => candidate.id === input.planId
-      );
+      const plan = plansById.get(input.planId);
 
       if (!plan) {
         throw new Error(`Plan ${input.planId} does not exist.`);

@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import type { EventBus } from "./lib/event-bus";
 import type { ExecutionService } from "./lib/execution-service";
 import { createMessagingService } from "./lib/messaging-service";
+import { createOutcomeTurnService } from "./lib/outcome-turn-service";
 import type { Repositories } from "./lib/repositories";
 import {
   createInMemoryServiceContainer,
@@ -83,6 +84,16 @@ export function buildApp(options: BuildAppOptions = {}) {
   const remoteProvider = services.remoteProvider;
   const simulatedExecutionService = services.simulatedExecutionService;
   const simulationMode = services.simulationMode;
+  const outcomeTurnService = createOutcomeTurnService({
+    repositories,
+    eventBus,
+    executionService,
+    routerService,
+    simulatedExecutionService,
+    simulationMode
+  });
+
+  app.decorate("outcomeTurnService", outcomeTurnService);
 
   registerHealthRoutes(app);
   registerProviderRoutes(app);
