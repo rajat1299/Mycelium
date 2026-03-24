@@ -17,6 +17,7 @@ import {
   OutcomeTurnResponseSchema,
   OutcomeListResponseSchema,
   OutcomeMessageListResponseSchema,
+  OutcomeThreadSnapshotSchema,
   OutcomeSchema,
   PlanSchema,
   ProviderCatalogSchema,
@@ -46,6 +47,7 @@ import {
   type MessagingDelivery,
   type MessageCreatedData,
   type Outcome,
+  type OutcomeThreadSnapshot,
   type OutcomeTurnResponse,
   type RemoteWorker,
   type Schedule,
@@ -137,6 +139,31 @@ export async function getOutcome(id: string): Promise<Outcome | null> {
     }
 
     return parseJson(response, (value) => OutcomeSchema.parse(value));
+  } catch {
+    return null;
+  }
+}
+
+export async function getOutcomeThreadSnapshot(
+  outcomeId: string
+): Promise<OutcomeThreadSnapshot | null> {
+  try {
+    const response = await fetch(
+      `${getControlPlaneBaseUrl()}/api/outcomes/${outcomeId}/thread`,
+      {
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const parsed = await parseJson(response, (value) =>
+      OutcomeThreadSnapshotSchema.parse(value)
+    );
+
+    return parsed;
   } catch {
     return null;
   }
