@@ -44,11 +44,9 @@ async function buildRunResponse(
   return buildRunDetail(repositories, run);
 }
 
-async function buildAssistantMessageSnapshots(
-  repositories: Repositories,
-  runId: string
+export function buildAssistantMessageSnapshotsFromEvents(
+  events: Awaited<ReturnType<Repositories["runs"]["listEvents"]>>
 ) {
-  const events = await repositories.runs.listEvents(runId);
   const messages = new Map<string, ReturnType<typeof AssistantMessageSnapshotSchema.parse>>();
 
   for (const event of events) {
@@ -120,6 +118,14 @@ async function buildAssistantMessageSnapshots(
 
     return left.id.localeCompare(right.id);
   });
+}
+
+async function buildAssistantMessageSnapshots(
+  repositories: Repositories,
+  runId: string
+) {
+  const events = await repositories.runs.listEvents(runId);
+  return buildAssistantMessageSnapshotsFromEvents(events);
 }
 
 async function buildRunDetail(

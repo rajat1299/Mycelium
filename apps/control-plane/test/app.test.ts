@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { OutcomeTurnResponseSchema } from "@computer-oss/protocol";
+import {
+  OutcomeThreadSnapshotSchema,
+  OutcomeTurnResponseSchema
+} from "@computer-oss/protocol";
 import { buildApp } from "../src/app";
 import { createExecutionHarness } from "./execution-test-helpers";
 
@@ -154,6 +157,64 @@ describe("control plane", () => {
           outcome: expect.objectContaining({
             id: started.outcome.id
           })
+        })
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("returns 404 for a missing outcome thread snapshot", async () => {
+    const app = buildApp();
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/outcomes/outcome_missing/thread"
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      error: "Outcome not found."
+    });
+  });
+
+  it("returns a schema-valid outcome thread snapshot", async () => {
+    const harness = await createExecutionHarness({
+      simulationMode: false
+    });
+
+    harness.services.executionService.startRun = async () => undefined;
+
+    try {
+      const start = await harness.app.inject({
+        method: "POST",
+        url: "/api/outcomes/start",
+        payload: {
+          workspaceId: "ws_123",
+          userId: "user_123",
+          prompt: "Draft a project kickoff brief",
+          source: "web"
+        }
+      });
+
+      const started = OutcomeTurnResponseSchema.parse(start.json());
+
+      const thread = await harness.app.inject({
+        method: "GET",
+        url: `/api/outcomes/${started.outcome.id}/thread`
+      });
+
+      expect(thread.statusCode).toBe(200);
+      expect(OutcomeThreadSnapshotSchema.parse(thread.json())).toEqual(
+        expect.objectContaining({
+          outcome: expect.objectContaining({
+            id: started.outcome.id
+          }),
+          messages: [
+            expect.objectContaining({
+              id: started.triggerMessage.id
+            })
+          ]
         })
       );
     } finally {

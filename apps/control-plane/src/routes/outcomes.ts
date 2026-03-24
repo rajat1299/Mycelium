@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import {
+  OutcomeThreadSnapshotSchema,
   ContinueOutcomeRequestSchema,
   CreateOutcomeMessageRequestSchema,
   CreateOutcomeRequestSchema,
@@ -8,6 +9,9 @@ import {
   OutcomeListResponseSchema,
   OutcomeSchema,
   OutcomeTurnResponseSchema,
+  PlanSchema,
+  RunDetailSchema,
+  RunLogDataSchema,
   StartOutcomeRequestSchema
 } from "@computer-oss/protocol";
 import type { EventBus } from "../lib/event-bus";
@@ -16,6 +20,7 @@ import {
   type OutcomeTurnService
 } from "../lib/outcome-turn-service";
 import type { Repositories } from "../lib/repositories";
+import { buildAssistantMessageSnapshotsFromEvents } from "./runs";
 
 type OutcomeRouteOptions = {
   repositories: Repositories;
@@ -27,6 +32,94 @@ function badRequest(message: string) {
   return {
     error: message
   };
+}
+
+async function buildThreadSnapshot(
+  repositories: Repositories,
+  outcomeId: string
+) {
+  const outcome = await repositories.outcomes.getById(outcomeId);
+
+  if (!outcome) {
+    return null;
+  }
+
+  const [messages, plans, runs, artifacts, events, workspaceApprovals] =
+    await Promise.all([
+      repositories.outcomes.listMessages(outcomeId),
+      repositories.plans.listByOutcome(outcomeId),
+      repositories.runs.listByOutcome(outcomeId),
+      repositories.artifacts.listByOutcome(outcomeId),
+      repositories.runs.listEventsByOutcome(outcomeId),
+      repositories.approvals.listByWorkspace({
+        workspaceId: outcome.workspaceId,
+        status: "pending"
+      })
+    ]);
+
+  const [planDetails, runDetails] = await Promise.all([
+    Promise.all(
+      plans.map(async (plan) =>
+        PlanSchema.parse({
+          ...plan,
+          nodes: await repositories.plans.listNodes(plan.id),
+          edges: await repositories.plans.listEdges(plan.id)
+        })
+      )
+    ),
+    Promise.all(
+      runs.map(async (run) =>
+        RunDetailSchema.parse({
+          ...run,
+          steps: await repositories.runs.listSteps(run.id)
+        })
+      )
+    )
+  ]);
+
+  const logs = events
+    .filter((event) => event.eventType === "run.log")
+    .map((event) => RunLogDataSchema.parse(event.payload))
+    .sort((left, right) => {
+      const createdDelta = left.createdAt.localeCompare(right.createdAt);
+
+      if (createdDelta !== 0) {
+        return createdDelta;
+      }
+
+      const runDelta = left.runId.localeCompare(right.runId);
+
+      if (runDelta !== 0) {
+        return runDelta;
+      }
+
+      const stepDelta = (left.stepId ?? "").localeCompare(right.stepId ?? "");
+
+      if (stepDelta !== 0) {
+        return stepDelta;
+      }
+
+      const levelDelta = left.level.localeCompare(right.level);
+
+      if (levelDelta !== 0) {
+        return levelDelta;
+      }
+
+      return left.message.localeCompare(right.message);
+    });
+
+  return OutcomeThreadSnapshotSchema.parse({
+    outcome: OutcomeSchema.parse(outcome),
+    messages: messages.map((message) => MessageCreatedDataSchema.parse(message)),
+    plans: planDetails,
+    runs: runDetails,
+    assistantMessages: buildAssistantMessageSnapshotsFromEvents(events),
+    artifacts,
+    logs,
+    pendingApprovals: workspaceApprovals.filter(
+      (approval) => approval.outcomeId === outcomeId
+    )
+  });
 }
 
 export function registerOutcomeRoutes(
@@ -124,6 +217,22 @@ export function registerOutcomeRoutes(
     }
 
     return reply.code(200).send(OutcomeSchema.parse(outcome));
+  });
+
+  app.get("/api/outcomes/:id/thread", async (request, reply) => {
+    const params = request.params as { id?: string };
+
+    if (!params.id) {
+      return reply.code(400).send(badRequest("Outcome id is required."));
+    }
+
+    const snapshot = await buildThreadSnapshot(options.repositories, params.id);
+
+    if (!snapshot) {
+      return reply.code(404).send(badRequest("Outcome not found."));
+    }
+
+    return reply.code(200).send(snapshot);
   });
 
   app.get("/api/outcomes/:id/messages", async (request, reply) => {
