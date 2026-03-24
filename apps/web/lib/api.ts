@@ -8,11 +8,13 @@ import {
   ArtifactLineageListResponseSchema,
   CheckpointDetailSchema,
   CheckpointListResponseSchema,
+  ContinueOutcomeRequestSchema,
   CreateRunRequestSchema,
   CreateOutcomeRequestSchema,
   ExternalConversationBindingSchema,
   MessagingConnectionSchema,
   MessagingDeliverySchema,
+  OutcomeTurnResponseSchema,
   OutcomeListResponseSchema,
   OutcomeMessageListResponseSchema,
   OutcomeSchema,
@@ -25,8 +27,10 @@ import {
   RouterPolicySchema,
   ScheduleListResponseSchema,
   ScheduleSchema,
+  StartOutcomeRequestSchema,
   WorkspaceCredentialMetadataSchema,
   CreateOutcomeMessageRequestSchema,
+  type ContinueOutcomeRequest,
   type CreateOutcomeRequest,
   type CreateOutcomeMessageRequest,
   type CreateRunRequest,
@@ -42,8 +46,10 @@ import {
   type MessagingDelivery,
   type MessageCreatedData,
   type Outcome,
+  type OutcomeTurnResponse,
   type RemoteWorker,
   type Schedule,
+  type StartOutcomeRequest,
   type RunLogData
 } from "@computer-oss/protocol";
 import { z } from "zod";
@@ -147,6 +153,26 @@ export async function createOutcome(input: CreateOutcomeRequest): Promise<Outcom
   return parseJson(response, (value) => OutcomeSchema.parse(value));
 }
 
+export async function startOutcome(
+  input: StartOutcomeRequest
+): Promise<OutcomeTurnResponse> {
+  const payload = StartOutcomeRequestSchema.parse(input);
+  const response = await fetch(`${getControlPlaneBaseUrl()}/api/outcomes/start`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to start outcome thread.");
+  }
+
+  return parseJson(response, (value) => OutcomeTurnResponseSchema.parse(value));
+}
+
 export async function createOutcomeMessage(
   outcomeId: string,
   input: CreateOutcomeMessageRequest
@@ -169,6 +195,30 @@ export async function createOutcomeMessage(
   }
 
   return response.json();
+}
+
+export async function continueOutcome(
+  outcomeId: string,
+  input: ContinueOutcomeRequest
+): Promise<OutcomeTurnResponse> {
+  const payload = ContinueOutcomeRequestSchema.parse(input);
+  const response = await fetch(
+    `${getControlPlaneBaseUrl()}/api/outcomes/${outcomeId}/continue`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      cache: "no-store"
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to continue outcome thread.");
+  }
+
+  return parseJson(response, (value) => OutcomeTurnResponseSchema.parse(value));
 }
 
 export async function getOutcomeMessages(
@@ -242,6 +292,25 @@ export async function getRun(runId: string) {
     }
 
     return parseJson(response, (value) => RunDetailSchema.parse(value));
+  } catch {
+    return null;
+  }
+}
+
+export async function getRunPlan(runId: string) {
+  try {
+    const response = await fetch(
+      `${getControlPlaneBaseUrl()}/api/runs/${runId}/plan`,
+      {
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return parseJson(response, (value) => PlanSchema.parse(value));
   } catch {
     return null;
   }

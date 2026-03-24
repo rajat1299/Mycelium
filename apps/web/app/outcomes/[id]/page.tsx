@@ -1,16 +1,17 @@
 import { revalidatePath } from "next/cache";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { FollowUpInput } from "../../../components/outcomes/follow-up-input";
 import { OutcomeConversation } from "../../../components/outcomes/outcome-conversation";
 import { TasksPane } from "../../../components/outcomes/tasks-pane";
 import {
-  createOutcomeMessage,
+  continueOutcome,
   getLatestRun,
   listOutcomes,
   listApprovals,
   getOutcome,
   getOutcomeMessages,
   getPlan,
+  getRunPlan,
   getRunArtifacts,
   getRunAssistantMessages,
   getRunLogs,
@@ -34,6 +35,14 @@ async function resolveRunForOutcome(outcomeId: string, requestedRunId?: string) 
   return getLatestRun(outcomeId);
 }
 
+async function resolvePlanForOutcome(outcomeId: string, runId?: string | null) {
+  if (runId) {
+    return getRunPlan(runId);
+  }
+
+  return getPlan(outcomeId);
+}
+
 export default async function OutcomeDetailPage({
   params,
   searchParams
@@ -48,15 +57,16 @@ export default async function OutcomeDetailPage({
     typeof runIdParam === "string" ? runIdParam : runIdParam?.[0];
   const bootstrapState =
     typeof bootstrapParam === "string" ? bootstrapParam : bootstrapParam?.[0] ?? null;
-  const [outcome, plan, run] = await Promise.all([
+  const [outcome, run] = await Promise.all([
     getOutcome(id),
-    getPlan(id),
     resolveRunForOutcome(id, selectedRunId)
   ]);
 
   if (!outcome) {
     notFound();
   }
+
+  const plan = await resolvePlanForOutcome(id, run?.id);
 
   const outcomesPromise = listOutcomes(outcome.workspaceId);
   const approvalsPromise = listApprovals(outcome.workspaceId);
@@ -97,10 +107,14 @@ export default async function OutcomeDetailPage({
       return;
     }
 
-    await createOutcomeMessage(id, {
-      role: "user",
+    const response = await continueOutcome(id, {
       content
     });
+
+    if (response.run?.id) {
+      redirect(`/outcomes/${id}?runId=${response.run.id}`);
+      return;
+    }
 
     revalidatePath(`/outcomes/${id}`);
   }

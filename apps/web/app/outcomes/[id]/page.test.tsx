@@ -4,6 +4,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import type {
   Approval,
   Artifact,
+  Plan,
   RunDetail
 } from "@computer-oss/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +13,7 @@ import OutcomeDetailPage from "./page";
 const mocks = vi.hoisted(() => ({
   getOutcome: vi.fn(),
   getPlan: vi.fn(),
+  getRunPlan: vi.fn(),
   getRun: vi.fn(),
   getLatestRun: vi.fn(),
   getRunArtifacts: vi.fn(),
@@ -27,9 +29,7 @@ const mocks = vi.hoisted(() => ({
   listWorkers: vi.fn(),
   listAuthProfiles: vi.fn(),
   listOutcomes: vi.fn(),
-  createOutcomeMessage: vi.fn(),
-  createPlan: vi.fn(),
-  createRun: vi.fn(),
+  continueOutcome: vi.fn(),
   notFound: vi.fn(() => {
     throw new Error("notFound");
   }),
@@ -39,6 +39,7 @@ const mocks = vi.hoisted(() => ({
 
 let observedTaskOutcomes: Array<{ id: string; prompt: string; status: string }> = [];
 let observedSelectedOutcomeId: string | null = null;
+let observedConversationPlan: Plan | null = null;
 let observedConversationRun: RunDetail | null = null;
 let observedConversationArtifacts: Artifact[] = [];
 let observedConversationLogs: Array<{ message: string; level: string }> = [];
@@ -46,6 +47,7 @@ let observedConversationAssistantMessages: Array<{ content: string; kind: string
 let observedConversationMessages: Array<{ content: string; role: string }> = [];
 let observedConversationPendingApprovals: Approval[] = [];
 let observedConversationSource: string | null = null;
+let observedFollowUpAction: ((formData: FormData) => Promise<void>) | null = null;
 
 vi.mock("next/cache", () => ({
   revalidatePath: mocks.revalidatePath
@@ -80,6 +82,7 @@ vi.mock("../../../components/outcomes/plan-graph", () => ({
 
 vi.mock("../../../components/outcomes/outcome-conversation", () => ({
   OutcomeConversation: ({
+    initialPlan,
     outcomeSource,
     initialRun,
     initialArtifacts,
@@ -88,6 +91,7 @@ vi.mock("../../../components/outcomes/outcome-conversation", () => ({
     initialMessages,
     initialPendingApprovals
   }: {
+    initialPlan: Plan | null;
     outcomeSource: string;
     initialRun: RunDetail | null;
     initialArtifacts: Artifact[];
@@ -96,6 +100,7 @@ vi.mock("../../../components/outcomes/outcome-conversation", () => ({
     initialMessages: Array<{ content: string; role: string }>;
     initialPendingApprovals: Approval[];
   }) => {
+    observedConversationPlan = initialPlan;
     observedConversationRun = initialRun;
     observedConversationArtifacts = initialArtifacts;
     observedConversationLogs = initialLogs;
@@ -126,7 +131,14 @@ vi.mock("../../../components/outcomes/tasks-pane", () => ({
 }));
 
 vi.mock("../../../components/outcomes/follow-up-input", () => ({
-  FollowUpInput: () => <div data-testid="follow-up-input" />
+  FollowUpInput: ({
+    action
+  }: {
+    action: (formData: FormData) => Promise<void>;
+  }) => {
+    observedFollowUpAction = action;
+    return <div data-testid="follow-up-input" />;
+  }
 }));
 
 vi.mock("../../../components/outcomes/execution-console", () => ({
@@ -134,11 +146,10 @@ vi.mock("../../../components/outcomes/execution-console", () => ({
 }));
 
 vi.mock("../../../lib/api", () => ({
-  createPlan: mocks.createPlan,
-  createRun: mocks.createRun,
-  createOutcomeMessage: mocks.createOutcomeMessage,
+  continueOutcome: mocks.continueOutcome,
   getOutcome: mocks.getOutcome,
   getPlan: mocks.getPlan,
+  getRunPlan: mocks.getRunPlan,
   getRun: mocks.getRun,
   getLatestRun: mocks.getLatestRun,
   getRunArtifacts: mocks.getRunArtifacts,
@@ -164,6 +175,7 @@ describe("OutcomeDetailPage", () => {
   beforeEach(() => {
     observedTaskOutcomes = [];
     observedSelectedOutcomeId = null;
+    observedConversationPlan = null;
     observedConversationRun = null;
     observedConversationArtifacts = [];
     observedConversationLogs = [];
@@ -171,6 +183,7 @@ describe("OutcomeDetailPage", () => {
     observedConversationMessages = [];
     observedConversationPendingApprovals = [];
     observedConversationSource = null;
+    observedFollowUpAction = null;
     vi.clearAllMocks();
 
     mocks.getOutcome.mockResolvedValue({
@@ -184,11 +197,22 @@ describe("OutcomeDetailPage", () => {
       updatedAt: "2026-03-11T00:10:00.000Z"
     });
     mocks.getPlan.mockResolvedValue(null);
+    mocks.getRunPlan.mockResolvedValue({
+      id: "plan_run_latest",
+      outcomeId: "outcome_123",
+      triggerMessageId: "msg_123",
+      status: "draft",
+      createdAt: "2026-03-11T00:09:05.000Z",
+      updatedAt: "2026-03-11T00:09:05.000Z",
+      nodes: [],
+      edges: []
+    });
     mocks.getRun.mockResolvedValue(null);
     mocks.getLatestRun.mockResolvedValue({
       id: "run_latest",
       outcomeId: "outcome_123",
-      planId: "plan_outcome_123",
+      planId: "plan_run_latest",
+      triggerMessageId: "msg_123",
       status: "queued",
       createdAt: "2026-03-11T00:09:00.000Z",
       updatedAt: "2026-03-11T00:09:00.000Z",
@@ -410,6 +434,8 @@ describe("OutcomeDetailPage", () => {
     expect(mocks.getLatestRun).toHaveBeenCalledWith("outcome_123");
     expect(mocks.getOutcomeMessageHistory).not.toHaveBeenCalled();
     expect(mocks.getRun).not.toHaveBeenCalled();
+    expect(mocks.getRunPlan).toHaveBeenCalledWith("run_latest");
+    expect(mocks.getPlan).not.toHaveBeenCalled();
     expect(mocks.listOutcomes).toHaveBeenCalledWith("ws_default");
     expect(mocks.listApprovals).toHaveBeenCalledWith("ws_default");
     expect(mocks.getRunArtifacts).toHaveBeenCalledWith("run_latest");
@@ -424,6 +450,12 @@ describe("OutcomeDetailPage", () => {
     expect(mocks.getRunAudit).not.toHaveBeenCalled();
     expect(observedConversationSource).toBe("web");
     expect(observedSelectedOutcomeId).toBe("outcome_123");
+    expect(observedConversationPlan).toEqual(
+      expect.objectContaining({
+        id: "plan_run_latest",
+        triggerMessageId: "msg_123"
+      })
+    );
     expect(observedTaskOutcomes).toEqual([
       expect.objectContaining({
         id: "outcome_123",
@@ -477,6 +509,7 @@ describe("OutcomeDetailPage", () => {
       id: "run_other",
       outcomeId: "outcome_other",
       planId: "plan_outcome_other",
+      triggerMessageId: "msg_other",
       status: "queued",
       createdAt: "2026-03-11T00:08:00.000Z",
       updatedAt: "2026-03-11T00:08:00.000Z",
@@ -492,6 +525,7 @@ describe("OutcomeDetailPage", () => {
 
     expect(mocks.getRun).toHaveBeenCalledWith("run_other");
     expect(mocks.getLatestRun).toHaveBeenCalledWith("outcome_123");
+    expect(mocks.getRunPlan).toHaveBeenCalledWith("run_latest");
     expect(mocks.listApprovals).toHaveBeenCalledWith("ws_default");
     expect(mocks.getRunArtifacts).toHaveBeenCalledWith("run_latest");
     expect(mocks.getRunLogs).toHaveBeenCalledWith("run_latest");
@@ -551,6 +585,8 @@ describe("OutcomeDetailPage", () => {
       })
     );
 
+    expect(mocks.getPlan).toHaveBeenCalledWith("outcome_123");
+    expect(mocks.getRunPlan).not.toHaveBeenCalled();
     expect(mocks.getOutcomeMessages).toHaveBeenCalledWith("outcome_123");
     expect(observedConversationRun).toBeNull();
     expect(observedConversationMessages).toEqual([
@@ -559,6 +595,93 @@ describe("OutcomeDetailPage", () => {
         content: "Refine the final report for principals."
       })
     ]);
+  });
+
+  it("does not fall back to the latest outcome plan when the selected run has no plan snapshot", async () => {
+    mocks.getRunPlan.mockResolvedValue(null);
+    mocks.getPlan.mockResolvedValue({
+      id: "plan_latest",
+      outcomeId: "outcome_123",
+      triggerMessageId: "msg_latest",
+      status: "draft",
+      createdAt: "2026-03-11T00:12:00.000Z",
+      updatedAt: "2026-03-11T00:12:00.000Z",
+      nodes: [],
+      edges: []
+    });
+
+    render(
+      await OutcomeDetailPage({
+        params: Promise.resolve({ id: "outcome_123" }),
+        searchParams: Promise.resolve({})
+      })
+    );
+
+    expect(mocks.getRunPlan).toHaveBeenCalledWith("run_latest");
+    expect(mocks.getPlan).not.toHaveBeenCalled();
+    expect(observedConversationPlan).toBeNull();
+  });
+
+  it("continues the thread and redirects to the returned run id", async () => {
+    mocks.continueOutcome.mockResolvedValue({
+      outcome: {
+        id: "outcome_123",
+        workspaceId: "ws_default",
+        userId: "user_default",
+        prompt: "Resume the queued run from storage.",
+        source: "web",
+        status: "queued",
+        createdAt: "2026-03-11T00:00:00.000Z",
+        updatedAt: "2026-03-11T00:10:00.000Z"
+      },
+      triggerMessage: {
+        id: "msg_followup",
+        outcomeId: "outcome_123",
+        role: "user",
+        content: "Make it shorter.",
+        createdAt: "2026-03-11T00:11:00.000Z"
+      },
+      plan: {
+        id: "plan_followup",
+        outcomeId: "outcome_123",
+        triggerMessageId: "msg_followup",
+        status: "draft",
+        createdAt: "2026-03-11T00:11:00.000Z",
+        updatedAt: "2026-03-11T00:11:00.000Z",
+        nodes: [],
+        edges: []
+      },
+      run: {
+        id: "run_followup",
+        outcomeId: "outcome_123",
+        planId: "plan_followup",
+        triggerMessageId: "msg_followup",
+        status: "queued",
+        createdAt: "2026-03-11T00:11:01.000Z",
+        updatedAt: "2026-03-11T00:11:01.000Z",
+        steps: []
+      }
+    });
+
+    render(
+      await OutcomeDetailPage({
+        params: Promise.resolve({ id: "outcome_123" }),
+        searchParams: Promise.resolve({})
+      })
+    );
+
+    const formData = new FormData();
+    formData.set("content", "Make it shorter.");
+
+    await observedFollowUpAction?.(formData);
+
+    expect(mocks.continueOutcome).toHaveBeenCalledWith("outcome_123", {
+      content: "Make it shorter."
+    });
+    expect(mocks.redirect).toHaveBeenCalledWith(
+      "/outcomes/outcome_123?runId=run_followup"
+    );
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
   it("removes operator controls from the outcomes page", async () => {

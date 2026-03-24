@@ -1,10 +1,8 @@
-import { createOutcome, createPlan, createRun } from "./api";
+import { startOutcome } from "./api";
 
 export type HomeBootstrapResult = {
   outcomeId: string;
-  planId: string | null;
   runId: string | null;
-  bootstrapError: "plan" | "run" | null;
 };
 
 export async function bootstrapOutcomeFromHome(input: {
@@ -12,41 +10,17 @@ export async function bootstrapOutcomeFromHome(input: {
   userId: string;
   prompt: string;
 }): Promise<HomeBootstrapResult> {
-  const outcome = await createOutcome({
+  const response = await startOutcome({
     workspaceId: input.workspaceId,
     userId: input.userId,
     prompt: input.prompt,
     source: "web"
   });
 
-  try {
-    const plan = await createPlan(outcome.id);
-
-    try {
-      const run = await createRun(outcome.id, { planId: plan.id });
-
-      return {
-        outcomeId: outcome.id,
-        planId: plan.id,
-        runId: run.id,
-        bootstrapError: null
-      };
-    } catch {
-      return {
-        outcomeId: outcome.id,
-        planId: plan.id,
-        runId: null,
-        bootstrapError: "run"
-      };
-    }
-  } catch {
-    return {
-      outcomeId: outcome.id,
-      planId: null,
-      runId: null,
-      bootstrapError: "plan"
-    };
-  }
+  return {
+    outcomeId: response.outcome.id,
+    runId: response.run?.id ?? null
+  };
 }
 
 export function buildOutcomeRedirectPath(result: HomeBootstrapResult) {
@@ -54,10 +28,6 @@ export function buildOutcomeRedirectPath(result: HomeBootstrapResult) {
 
   if (result.runId) {
     params.set("runId", result.runId);
-  }
-
-  if (result.bootstrapError) {
-    params.set("bootstrap", result.bootstrapError);
   }
 
   const query = params.toString();

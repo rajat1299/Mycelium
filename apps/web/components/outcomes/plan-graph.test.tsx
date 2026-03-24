@@ -31,6 +31,7 @@ describe("PlanGraph", () => {
         initialPlan={{
           id: "plan_outcome_123",
           outcomeId: "outcome_123",
+          triggerMessageId: "msg_123",
           status: "draft",
           createdAt: "2026-03-11T00:00:00.000Z",
           updatedAt: "2026-03-11T00:00:00.000Z",
@@ -97,6 +98,7 @@ describe("RunTimeline", () => {
           id: "run_123",
           outcomeId: "outcome_123",
           planId: "plan_outcome_123",
+          triggerMessageId: "msg_123",
           status: "queued",
           createdAt: "2026-03-11T00:05:00.000Z",
           updatedAt: "2026-03-11T00:05:00.000Z",
@@ -152,6 +154,7 @@ describe("RunTimeline", () => {
           id: "run_123",
           outcomeId: "outcome_123",
           planId: "plan_outcome_123",
+          triggerMessageId: "msg_123",
           status: "queued",
           createdAt: "2026-03-11T00:05:00.000Z",
           updatedAt: "2026-03-11T00:05:00.000Z",
@@ -193,6 +196,7 @@ describe("RunTimeline", () => {
           id: "run_999",
           outcomeId: "outcome_123",
           planId: "plan_outcome_123",
+          triggerMessageId: "msg_123",
           status: "queued",
           createdAt: "2026-03-11T00:06:00.000Z",
           updatedAt: "2026-03-11T00:06:00.000Z"
@@ -213,6 +217,7 @@ describe("RunTimeline", () => {
           id: "run_123",
           outcomeId: "outcome_123",
           planId: "plan_outcome_123",
+          triggerMessageId: "msg_123",
           status: "queued",
           createdAt: "2026-03-11T00:05:00.000Z",
           updatedAt: "2026-03-11T00:05:00.000Z",
@@ -242,6 +247,7 @@ describe("RunTimeline", () => {
           id: "run_123",
           outcomeId: "outcome_123",
           planId: "plan_outcome_123",
+          triggerMessageId: "msg_123",
           status: "running",
           createdAt: "2026-03-11T00:05:00.000Z",
           updatedAt: "2026-03-11T00:06:00.000Z"
