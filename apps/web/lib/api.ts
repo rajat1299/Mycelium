@@ -14,6 +14,7 @@ import {
   MessagingConnectionSchema,
   MessagingDeliverySchema,
   OutcomeListResponseSchema,
+  OutcomeMessageListResponseSchema,
   OutcomeSchema,
   PlanSchema,
   ProviderCatalogSchema,
@@ -39,6 +40,7 @@ import {
   type ExternalConversationBinding,
   type MessagingConnection,
   type MessagingDelivery,
+  type MessageCreatedData,
   type Outcome,
   type RemoteWorker,
   type Schedule,
@@ -167,6 +169,31 @@ export async function createOutcomeMessage(
   }
 
   return response.json();
+}
+
+export async function getOutcomeMessages(
+  outcomeId: string
+): Promise<MessageCreatedData[]> {
+  try {
+    const response = await fetch(
+      `${getControlPlaneBaseUrl()}/api/outcomes/${outcomeId}/messages`,
+      {
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const parsed = await parseJson(response, (value) =>
+      OutcomeMessageListResponseSchema.parse(value)
+    );
+
+    return parsed.messages;
+  } catch {
+    return [];
+  }
 }
 
 export async function getPlan(outcomeId: string) {

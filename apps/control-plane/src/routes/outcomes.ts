@@ -2,6 +2,8 @@ import type { FastifyInstance } from "fastify";
 import {
   CreateOutcomeMessageRequestSchema,
   CreateOutcomeRequestSchema,
+  MessageCreatedDataSchema,
+  OutcomeMessageListResponseSchema,
   OutcomeListResponseSchema,
   OutcomeSchema
 } from "@computer-oss/protocol";
@@ -58,6 +60,28 @@ export function registerOutcomeRoutes(
     }
 
     return reply.code(200).send(OutcomeSchema.parse(outcome));
+  });
+
+  app.get("/api/outcomes/:id/messages", async (request, reply) => {
+    const params = request.params as { id?: string };
+
+    if (!params.id) {
+      return reply.code(400).send(badRequest("Outcome id is required."));
+    }
+
+    const outcome = await options.repositories.outcomes.getById(params.id);
+
+    if (!outcome) {
+      return reply.code(404).send(badRequest("Outcome not found."));
+    }
+
+    const messages = await options.repositories.outcomes.listMessages(params.id);
+
+    return reply.code(200).send(
+      OutcomeMessageListResponseSchema.parse({
+        messages: messages.map((message) => MessageCreatedDataSchema.parse(message))
+      })
+    );
   });
 
   app.get("/api/outcomes", async (request, reply) => {

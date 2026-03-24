@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   getRun: vi.fn(),
   getLatestRun: vi.fn(),
   getRunArtifacts: vi.fn(),
+  getOutcomeMessages: vi.fn(),
   getRunAssistantMessages: vi.fn(),
   getRunCheckpoints: vi.fn(),
   getCheckpoint: vi.fn(),
@@ -42,6 +43,7 @@ let observedConversationRun: RunDetail | null = null;
 let observedConversationArtifacts: Artifact[] = [];
 let observedConversationLogs: Array<{ message: string; level: string }> = [];
 let observedConversationAssistantMessages: Array<{ content: string; kind: string }> = [];
+let observedConversationMessages: Array<{ content: string; role: string }> = [];
 let observedConversationPendingApprovals: Approval[] = [];
 let observedConversationSource: string | null = null;
 
@@ -83,6 +85,7 @@ vi.mock("../../../components/outcomes/outcome-conversation", () => ({
     initialArtifacts,
     initialLogs,
     initialAssistantMessages,
+    initialMessages,
     initialPendingApprovals
   }: {
     outcomeSource: string;
@@ -90,12 +93,14 @@ vi.mock("../../../components/outcomes/outcome-conversation", () => ({
     initialArtifacts: Artifact[];
     initialLogs: Array<{ message: string; level: string }>;
     initialAssistantMessages: Array<{ content: string; kind: string }>;
+    initialMessages: Array<{ content: string; role: string }>;
     initialPendingApprovals: Approval[];
   }) => {
     observedConversationRun = initialRun;
     observedConversationArtifacts = initialArtifacts;
     observedConversationLogs = initialLogs;
     observedConversationAssistantMessages = initialAssistantMessages;
+    observedConversationMessages = initialMessages;
     observedConversationPendingApprovals = initialPendingApprovals;
     observedConversationSource = outcomeSource;
     return <div data-testid="outcome-conversation" />;
@@ -137,6 +142,7 @@ vi.mock("../../../lib/api", () => ({
   getRun: mocks.getRun,
   getLatestRun: mocks.getLatestRun,
   getRunArtifacts: mocks.getRunArtifacts,
+  getOutcomeMessages: mocks.getOutcomeMessages,
   getRunAssistantMessages: mocks.getRunAssistantMessages,
   getRunCheckpoints: mocks.getRunCheckpoints,
   getCheckpoint: mocks.getCheckpoint,
@@ -162,6 +168,7 @@ describe("OutcomeDetailPage", () => {
     observedConversationArtifacts = [];
     observedConversationLogs = [];
     observedConversationAssistantMessages = [];
+    observedConversationMessages = [];
     observedConversationPendingApprovals = [];
     observedConversationSource = null;
     vi.clearAllMocks();
@@ -208,6 +215,15 @@ describe("OutcomeDetailPage", () => {
         level: "info",
         message: "Recovered persisted log output.",
         createdAt: "2026-03-11T00:09:20.000Z"
+      }
+    ]);
+    mocks.getOutcomeMessages.mockResolvedValue([
+      {
+        id: "msg_123",
+        outcomeId: "outcome_123",
+        role: "user",
+        content: "Refine the final report for principals.",
+        createdAt: "2026-03-11T00:09:25.000Z"
       }
     ]);
     mocks.getRunAssistantMessages.mockResolvedValue([
@@ -398,6 +414,7 @@ describe("OutcomeDetailPage", () => {
     expect(mocks.listApprovals).toHaveBeenCalledWith("ws_default");
     expect(mocks.getRunArtifacts).toHaveBeenCalledWith("run_latest");
     expect(mocks.getRunLogs).toHaveBeenCalledWith("run_latest");
+    expect(mocks.getOutcomeMessages).toHaveBeenCalledWith("outcome_123");
     expect(mocks.getRunAssistantMessages).toHaveBeenCalledWith("run_latest");
     expect(mocks.listAuthProfiles).not.toHaveBeenCalled();
     expect(mocks.listWorkers).not.toHaveBeenCalled();
@@ -434,6 +451,12 @@ describe("OutcomeDetailPage", () => {
       expect.objectContaining({
         kind: "acknowledgment",
         content: "I'll start by loading relevant skills."
+      })
+    ]);
+    expect(observedConversationMessages).toEqual([
+      expect.objectContaining({
+        role: "user",
+        content: "Refine the final report for principals."
       })
     ]);
     expect(observedConversationPendingApprovals).toEqual([

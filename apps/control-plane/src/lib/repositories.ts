@@ -85,6 +85,7 @@ export type OutcomeStore = {
   create(input: CreateStoredOutcomeInput): Promise<Outcome>;
   getById(id: string): Promise<Outcome | null>;
   getMessageById(id: string): Promise<StoredOutcomeMessage | null>;
+  listMessages(outcomeId: string): Promise<StoredOutcomeMessage[]>;
   listByWorkspace(workspaceId: string): Promise<Outcome[]>;
   updateStatus(input: UpdateOutcomeStatusInput): Promise<Outcome | null>;
   appendMessage(input: AppendOutcomeMessageInput): Promise<void>;
@@ -617,6 +618,11 @@ function createInMemoryRepositoriesState() {
     },
     async getMessageById(id) {
       return outcomeMessagesById.get(id) ?? null;
+    },
+    async listMessages(outcomeId) {
+      return Array.from(outcomeMessagesById.values())
+        .filter((message) => message.outcomeId === outcomeId)
+        .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
     },
     async listByWorkspace(workspaceId) {
       return Array.from(outcomes.values()).filter(

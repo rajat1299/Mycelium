@@ -261,6 +261,7 @@ export function buildInitialOutcomeConversationState(
   initialArtifacts: Artifact[],
   initialLogs: RunLogData[],
   initialAssistantMessages: AssistantNarrativeMessage[],
+  initialMessages: MessageCreatedData[],
   initialPendingApprovals: Approval[]
 ): OutcomeConversationState {
   return {
@@ -269,7 +270,7 @@ export function buildInitialOutcomeConversationState(
     artifacts: sortArtifactsInternal(initialArtifacts),
     logs: sortLogsInternal(initialLogs),
     pendingApprovals: initialPendingApprovals,
-    messages: [],
+    messages: sortMessagesInternal(initialMessages),
     assistantMessages: sortAssistantMessagesInternal(initialAssistantMessages)
   };
 }

@@ -5,6 +5,7 @@ import type {
   Approval,
   AssistantMessageSnapshot,
   Artifact,
+  MessageCreatedData,
   OutcomeSource,
   Plan,
   RunDetail,
@@ -54,6 +55,7 @@ type OutcomeConversationProps = {
   initialArtifacts: Artifact[];
   initialLogs: RunLogData[];
   initialAssistantMessages: AssistantMessageSnapshot[];
+  initialMessages: MessageCreatedData[];
   initialPendingApprovals: Approval[];
 };
 
@@ -68,6 +70,7 @@ function buildInitialViewState(
   initialArtifacts: Artifact[],
   initialLogs: RunLogData[],
   initialAssistantMessages: AssistantMessageSnapshot[],
+  initialMessages: MessageCreatedData[],
   initialPendingApprovals: Approval[]
 ): OutcomeConversationViewState {
   return {
@@ -78,6 +81,7 @@ function buildInitialViewState(
       initialArtifacts,
       initialLogs,
       initialAssistantMessages,
+      initialMessages,
       initialPendingApprovals
     )
   };
@@ -128,6 +132,7 @@ export function OutcomeConversation({
   initialArtifacts,
   initialLogs,
   initialAssistantMessages,
+  initialMessages,
   initialPendingApprovals
 }: OutcomeConversationProps) {
   const [viewState, setViewState] = useState<OutcomeConversationViewState>(() =>
@@ -137,6 +142,7 @@ export function OutcomeConversation({
       initialArtifacts,
       initialLogs,
       initialAssistantMessages,
+      initialMessages,
       initialPendingApprovals
     )
   );
@@ -154,6 +160,7 @@ export function OutcomeConversation({
         initialArtifacts,
         initialLogs,
         initialAssistantMessages,
+        initialMessages,
         initialPendingApprovals
       )
     );
@@ -163,6 +170,7 @@ export function OutcomeConversation({
     initialArtifacts,
     initialLogs,
     initialAssistantMessages,
+    initialMessages,
     initialPendingApprovals
   ]);
 

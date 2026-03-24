@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import type { DatabaseClient } from "../client";
 import { outcomeMessages, outcomes, users, workspaces } from "../schema";
 
@@ -119,6 +119,22 @@ export class OutcomeRepository {
       content: found.content,
       createdAt: found.createdAt.toISOString()
     };
+  }
+
+  async listMessages(outcomeId: string): Promise<StoredOutcomeMessage[]> {
+    const rows = await this.db
+      .select()
+      .from(outcomeMessages)
+      .where(eq(outcomeMessages.outcomeId, outcomeId))
+      .orderBy(asc(outcomeMessages.createdAt));
+
+    return rows.map((row) => ({
+      id: row.id,
+      outcomeId: row.outcomeId,
+      role: row.role as StoredOutcomeMessage["role"],
+      content: row.content,
+      createdAt: row.createdAt.toISOString()
+    }));
   }
 
   async listByWorkspace(workspaceId: string): Promise<StoredOutcome[]> {

@@ -9,6 +9,7 @@ import {
   listOutcomes,
   listApprovals,
   getOutcome,
+  getOutcomeMessages,
   getPlan,
   getRunArtifacts,
   getRunAssistantMessages,
@@ -59,15 +60,17 @@ export default async function OutcomeDetailPage({
 
   const outcomesPromise = listOutcomes(outcome.workspaceId);
   const approvalsPromise = listApprovals(outcome.workspaceId);
-  const [artifacts, logs, assistantMessages, approvals, outcomes] = run
+  const [artifacts, logs, messages, assistantMessages, approvals, outcomes] = run
     ? await Promise.all([
         getRunArtifacts(run.id),
         getRunLogs(run.id),
+        getOutcomeMessages(id),
         getRunAssistantMessages(run.id),
         approvalsPromise,
         outcomesPromise
       ])
     : [
+        [],
         [],
         [],
         [],
@@ -159,6 +162,7 @@ export default async function OutcomeDetailPage({
               initialArtifacts={artifacts}
               initialLogs={logs}
               initialAssistantMessages={assistantMessages}
+              initialMessages={messages}
               initialPendingApprovals={pendingApprovalsForRun}
             />
           </div>

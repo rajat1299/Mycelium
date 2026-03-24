@@ -144,6 +144,7 @@ describe("OutcomeConversation", () => {
           }
         ]}
         initialAssistantMessages={[]}
+        initialMessages={[]}
         initialPendingApprovals={[]}
       />
     );
@@ -207,6 +208,7 @@ describe("OutcomeConversation", () => {
         initialArtifacts={[]}
         initialLogs={[]}
         initialAssistantMessages={[]}
+        initialMessages={[]}
         initialPendingApprovals={[]}
       />
     );
@@ -281,6 +283,7 @@ describe("OutcomeConversation", () => {
         initialArtifacts={[]}
         initialLogs={[]}
         initialAssistantMessages={[]}
+        initialMessages={[]}
         initialPendingApprovals={[
           {
             id: "approval_123",
@@ -320,6 +323,7 @@ describe("OutcomeConversation", () => {
         initialArtifacts={[]}
         initialLogs={[]}
         initialAssistantMessages={[]}
+        initialMessages={[]}
         initialPendingApprovals={[]}
       />
     );
@@ -339,6 +343,43 @@ describe("OutcomeConversation", () => {
         });
       }
     });
+
+    expect(
+      screen.getByText("Refine the final report for principals.")
+    ).toBeInTheDocument();
+  });
+
+  it("renders persisted follow-up messages from initial page hydration", () => {
+    render(
+      <OutcomeConversation
+        outcomeId="outcome_123"
+        outcomePrompt="Draft the weekly update."
+        outcomeSource="web"
+        initialPlan={null}
+        initialRun={{
+          id: "run_123",
+          outcomeId: "outcome_123",
+          planId: "plan_outcome_123",
+          status: "completed",
+          createdAt: "2026-03-19T00:01:00.000Z",
+          updatedAt: "2026-03-19T00:02:00.000Z",
+          steps: []
+        }}
+        initialArtifacts={[]}
+        initialLogs={[]}
+        initialAssistantMessages={[]}
+        initialMessages={[
+          {
+            id: "msg_123",
+            outcomeId: "outcome_123",
+            role: "user",
+            content: "Refine the final report for principals.",
+            createdAt: "2026-03-19T00:03:00.000Z"
+          }
+        ]}
+        initialPendingApprovals={[]}
+      />
+    );
 
     expect(
       screen.getByText("Refine the final report for principals.")
@@ -423,6 +464,7 @@ describe("OutcomeConversation", () => {
           }
         ]}
         initialAssistantMessages={[]}
+        initialMessages={[]}
         initialPendingApprovals={[]}
       />
     );
@@ -456,6 +498,7 @@ describe("OutcomeConversation", () => {
         initialArtifacts={[]}
         initialLogs={[]}
         initialAssistantMessages={[]}
+        initialMessages={[]}
         initialPendingApprovals={[]}
       />
     );
@@ -633,6 +676,7 @@ describe("OutcomeConversation", () => {
             status: "completed"
           }
         ]}
+        initialMessages={[]}
         initialPendingApprovals={[]}
       />
     );
@@ -726,6 +770,7 @@ describe("OutcomeConversation", () => {
           }
         ]}
         initialAssistantMessages={[]}
+        initialMessages={[]}
         initialPendingApprovals={[]}
       />
     );
@@ -760,6 +805,7 @@ describe("OutcomeConversation", () => {
             }
           ]}
           initialAssistantMessages={[]}
+          initialMessages={[]}
           initialPendingApprovals={[]}
         />
       );

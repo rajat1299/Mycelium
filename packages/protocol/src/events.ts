@@ -101,6 +101,10 @@ export const AssistantMessageListResponseSchema = z.object({
   assistantMessages: z.array(AssistantMessageSnapshotSchema)
 });
 
+export const OutcomeMessageListResponseSchema = z.object({
+  messages: z.array(MessageCreatedDataSchema)
+});
+
 export const EventEnvelopeSchema = z.object({
   type: EventTypeSchema,
   data: z.unknown()
@@ -320,6 +324,9 @@ export type RunLogEvent = z.infer<typeof RunLogEventSchema>;
 export type RunLogListResponse = z.infer<typeof RunLogListResponseSchema>;
 export type AssistantMessageListResponse = z.infer<
   typeof AssistantMessageListResponseSchema
+>;
+export type OutcomeMessageListResponse = z.infer<
+  typeof OutcomeMessageListResponseSchema
 >;
 export type ArtifactCreatedEvent = z.infer<typeof ArtifactCreatedEventSchema>;
 export type CheckpointCreatedEvent = z.infer<typeof CheckpointCreatedEventSchema>;
