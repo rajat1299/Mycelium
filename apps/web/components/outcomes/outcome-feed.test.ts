@@ -2,6 +2,63 @@ import { describe, expect, it } from "vitest";
 import { buildOutcomeFeed } from "./outcome-feed";
 
 describe("buildOutcomeFeed", () => {
+  it("places persisted follow-up messages before the assistant response they triggered", () => {
+    const feed = buildOutcomeFeed({
+      outcomePrompt: "Research AI in K-12 education and generate a PDF.",
+      outcomeSource: "web",
+      state: {
+        plan: null,
+        run: {
+          id: "run_456",
+          outcomeId: "outcome_123",
+          planId: "plan_outcome_123",
+          status: "running",
+          createdAt: "2026-03-22T00:05:00.000Z",
+          updatedAt: "2026-03-22T00:05:10.000Z",
+          steps: []
+        },
+        artifacts: [],
+        logs: [],
+        pendingApprovals: [],
+        messages: [
+          {
+            id: "msg_followup",
+            outcomeId: "outcome_123",
+            role: "user",
+            content: "Make the report shorter and more executive-friendly.",
+            createdAt: "2026-03-22T00:04:59.000Z"
+          }
+        ],
+        assistantMessages: [
+          {
+            id: "assistant_msg_1",
+            runId: "run_456",
+            kind: "acknowledgment",
+            content:
+              "I’ll tighten the framing, keep the evidence, and rewrite it for school leaders.",
+            createdAt: "2026-03-22T00:05:01.000Z",
+            updatedAt: "2026-03-22T00:05:02.000Z",
+            status: "completed"
+          }
+        ]
+      }
+    });
+
+    expect(feed[1]).toMatchObject({
+      type: "message",
+      message: expect.objectContaining({
+        content: "Make the report shorter and more executive-friendly."
+      })
+    });
+    expect(feed[2]).toMatchObject({
+      type: "assistant-message",
+      message: expect.objectContaining({
+        content:
+          "I’ll tighten the framing, keep the evidence, and rewrite it for school leaders."
+      })
+    });
+  });
+
   it("keeps the opening intent and appends a separate delivery note after the final artifact", () => {
     const feed = buildOutcomeFeed({
       outcomePrompt: "Research AI in K-12 education and generate a PDF.",

@@ -497,6 +497,16 @@ function shouldRenderStepCard(step: RunStep) {
   return !["pending", "ready"].includes(step.status);
 }
 
+function buildMessageItem(
+  message: MessageCreatedData
+): Extract<OutcomeFeedItem, { type: "message" }> {
+  return {
+    type: "message",
+    key: `msg:${message.id}`,
+    message
+  };
+}
+
 export function buildOutcomeFeed({
   outcomePrompt,
   outcomeSource,
@@ -516,11 +526,27 @@ export function buildOutcomeFeed({
   const visibleAssistantMessages = sortAssistantMessagesInternal(
     state.assistantMessages.filter((message) => message.content.length > 0)
   );
+  const orderedMessages = sortMessagesInternal(state.messages);
   const hasAssistantNarrative = visibleAssistantMessages.length > 0;
   const leadAssistantMessage = hasAssistantNarrative ? visibleAssistantMessages[0] : null;
   const trailingAssistantMessages = hasAssistantNarrative
     ? visibleAssistantMessages.slice(1)
     : [];
+  const primaryIntentLog = promotedIntentLogs[0] ?? null;
+  const syntheticFallbackIntro =
+    !leadAssistantMessage && !primaryIntentLog && orderedMessages.length === 0
+      ? fallbackIntroMessage(outcomeSource, state.run)
+      : null;
+  const leadNarrativeTimestamp =
+    leadAssistantMessage?.createdAt ?? primaryIntentLog?.createdAt ?? null;
+  const leadMessages = leadNarrativeTimestamp
+    ? orderedMessages.filter((message) => message.createdAt <= leadNarrativeTimestamp)
+    : [];
+  const trailingMessages = orderedMessages.filter(
+    (message) => !leadMessages.some((candidate) => candidate.id === message.id)
+  );
+
+  items.push(...leadMessages.map(buildMessageItem));
 
   if (leadAssistantMessage) {
     items.push({
@@ -528,16 +554,17 @@ export function buildOutcomeFeed({
       key: `assistant-message:${leadAssistantMessage.id}`,
       message: leadAssistantMessage
     });
-  } else {
-    const primaryIntent =
-      promotedIntentLogs[0]?.message ?? fallbackIntroMessage(outcomeSource, state.run);
-
+  } else if (primaryIntentLog) {
     items.push({
       type: "intent",
-      key: promotedIntentLogs[0]
-        ? `intent:${logKey(promotedIntentLogs[0])}`
-        : `intent:fallback:${state.run?.status ?? "idle"}`,
-      message: primaryIntent
+      key: `intent:${logKey(primaryIntentLog)}`,
+      message: primaryIntentLog.message
+    });
+  } else if (syntheticFallbackIntro) {
+    items.push({
+      type: "intent",
+      key: `intent:fallback:${state.run?.status ?? "idle"}`,
+      message: syntheticFallbackIntro
     });
   }
 
@@ -650,15 +677,11 @@ export function buildOutcomeFeed({
     });
   }
 
-  for (const message of sortMessagesInternal(state.messages)) {
+  for (const message of trailingMessages) {
     chronoEntries.push({
       timestamp: message.createdAt,
       order: 50,
-      item: {
-        type: "message",
-        key: `msg:${message.id}`,
-        message
-      }
+      item: buildMessageItem(message)
     });
   }
 
