@@ -397,8 +397,10 @@ export const outcomePlans = pgTable("outcome_plans", {
   id: text("id").primaryKey(),
   outcomeId: text("outcome_id")
     .notNull()
-    .references(() => outcomes.id)
-    .unique(),
+    .references(() => outcomes.id),
+  triggerMessageId: text("trigger_message_id")
+    .notNull()
+    .references(() => outcomeMessages.id),
   status: planStatusEnum("status").notNull().default("draft"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
@@ -474,6 +476,9 @@ export const outcomeRuns = pgTable("outcome_runs", {
   planId: text("plan_id")
     .notNull()
     .references(() => outcomePlans.id),
+  triggerMessageId: text("trigger_message_id")
+    .notNull()
+    .references(() => outcomeMessages.id),
   status: runStatusEnum("status").notNull().default("draft"),
   latestCheckpointId: text("latest_checkpoint_id"),
   resumable: boolean("resumable").notNull().default(false),

@@ -9,6 +9,7 @@ function buildExecutablePlanInput() {
   return {
     id: "plan_outcome_123",
     outcomeId: "outcome_123",
+    triggerMessageId: "msg_plan_outcome_123",
     status: "draft" as const,
     createdAt: "2026-03-16T00:00:00.000Z",
     updatedAt: "2026-03-16T00:00:00.000Z",
@@ -277,6 +278,7 @@ describe("RemoteWorkerRepository", () => {
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
+      triggerMessageId: "msg_run_123",
       createdAt: "2026-03-16T10:00:00.000Z",
       updatedAt: "2026-03-16T10:00:00.000Z"
     });
@@ -389,6 +391,7 @@ describe("RemoteWorkerRepository", () => {
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
+      triggerMessageId: "msg_run_123",
       createdAt: "2026-03-16T10:00:00.000Z",
       updatedAt: "2026-03-16T10:00:00.000Z"
     });
@@ -499,6 +502,7 @@ describe("RemoteWorkerRepository", () => {
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
+      triggerMessageId: "msg_run_123",
       createdAt: "2026-03-16T10:00:00.000Z",
       updatedAt: "2026-03-16T10:00:00.000Z"
     });

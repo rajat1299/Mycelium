@@ -1,8 +1,9 @@
-import { asc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { DatabaseClient } from "../client";
 import { outcomeMessages, outcomes, users, workspaces } from "../schema";
 
 type OutcomeRow = typeof outcomes.$inferSelect;
+type OutcomeMessageRow = typeof outcomeMessages.$inferSelect;
 type OutcomeSource = "web" | "schedule" | "slack" | "telegram";
 type OutcomeStatus = OutcomeRow["status"];
 
@@ -54,6 +55,29 @@ function mapOutcomeRow(row: OutcomeRow): StoredOutcome {
   };
 }
 
+function mapOutcomeMessageRow(row: OutcomeMessageRow): StoredOutcomeMessage {
+  return {
+    id: row.id,
+    outcomeId: row.outcomeId,
+    role: row.role as StoredOutcomeMessage["role"],
+    content: row.content,
+    createdAt: row.createdAt.toISOString()
+  };
+}
+
+function compareOutcomeMessageRows(
+  left: OutcomeMessageRow,
+  right: OutcomeMessageRow
+) {
+  const createdDelta = left.createdAt.getTime() - right.createdAt.getTime();
+
+  if (createdDelta !== 0) {
+    return createdDelta;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
 function workspaceName(id: string) {
   return `Workspace ${id}`;
 }
@@ -103,38 +127,23 @@ export class OutcomeRepository {
   }
 
   async getMessageById(id: string): Promise<StoredOutcomeMessage | null> {
-    const [found] = await this.db
-      .select()
-      .from(outcomeMessages)
-      .where(eq(outcomeMessages.id, id));
+    const rows = await this.db.select().from(outcomeMessages);
+    const found = rows.find((row) => row.id === id);
 
     if (!found) {
       return null;
     }
 
-    return {
-      id: found.id,
-      outcomeId: found.outcomeId,
-      role: found.role as StoredOutcomeMessage["role"],
-      content: found.content,
-      createdAt: found.createdAt.toISOString()
-    };
+    return mapOutcomeMessageRow(found);
   }
 
   async listMessages(outcomeId: string): Promise<StoredOutcomeMessage[]> {
-    const rows = await this.db
-      .select()
-      .from(outcomeMessages)
-      .where(eq(outcomeMessages.outcomeId, outcomeId))
-      .orderBy(asc(outcomeMessages.createdAt));
+    const rows = await this.db.select().from(outcomeMessages);
 
-    return rows.map((row) => ({
-      id: row.id,
-      outcomeId: row.outcomeId,
-      role: row.role as StoredOutcomeMessage["role"],
-      content: row.content,
-      createdAt: row.createdAt.toISOString()
-    }));
+    return rows
+      .filter((row) => row.outcomeId === outcomeId)
+      .sort(compareOutcomeMessageRows)
+      .map(mapOutcomeMessageRow);
   }
 
   async listByWorkspace(workspaceId: string): Promise<StoredOutcome[]> {

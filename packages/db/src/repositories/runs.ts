@@ -47,6 +47,7 @@ export type StoredRun = {
   id: string;
   outcomeId: string;
   planId: string;
+  triggerMessageId: string;
   status: RunRow["status"];
   latestCheckpointId?: string | null;
   resumable?: boolean;
@@ -96,6 +97,7 @@ export type CreateRunFromPlanInput = {
   id: string;
   outcomeId: string;
   planId: string;
+  triggerMessageId: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -178,6 +180,7 @@ function mapRunRow(row: RunRow): StoredRun {
     id: row.id,
     outcomeId: row.outcomeId,
     planId: row.planId,
+    triggerMessageId: row.triggerMessageId,
     status: row.status,
     latestCheckpointId: row.latestCheckpointId,
     resumable: row.resumable,
@@ -305,6 +308,7 @@ export class RunRepository {
           id: input.id,
           outcomeId: plan.outcomeId,
           planId: input.planId,
+          triggerMessageId: input.triggerMessageId,
           status: "queued",
           latestCheckpointId: null,
           resumable: false,

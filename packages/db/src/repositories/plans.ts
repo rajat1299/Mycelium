@@ -27,6 +27,7 @@ function mapApprovalRequirement(
 export type StoredPlan = {
   id: string;
   outcomeId: string;
+  triggerMessageId: string;
   status: PlanRow["status"];
   createdAt: string;
   updatedAt: string;
@@ -56,6 +57,7 @@ export type StoredPlanEdge = {
 export type CreatePlanInput = {
   id: string;
   outcomeId: string;
+  triggerMessageId: string;
   status: PlanRow["status"];
   createdAt: string;
   updatedAt: string;
@@ -80,10 +82,27 @@ function mapPlanRow(row: PlanRow): StoredPlan {
   return {
     id: row.id,
     outcomeId: row.outcomeId,
+    triggerMessageId: row.triggerMessageId,
     status: row.status,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString()
   };
+}
+
+function comparePlanRows(left: PlanRow, right: PlanRow) {
+  const createdDelta = left.createdAt.getTime() - right.createdAt.getTime();
+
+  if (createdDelta !== 0) {
+    return createdDelta;
+  }
+
+  const updatedDelta = left.updatedAt.getTime() - right.updatedAt.getTime();
+
+  if (updatedDelta !== 0) {
+    return updatedDelta;
+  }
+
+  return left.id.localeCompare(right.id);
 }
 
 function mapPlanNodeRow(row: PlanNodeRow): StoredPlanNode {
@@ -122,12 +141,6 @@ export class PlanRepository {
 
   async create(input: CreatePlanInput): Promise<StoredPlan> {
     return this.db.transaction(async (transaction) => {
-      const existingPlans = await transaction.select().from(outcomePlans);
-
-      if (existingPlans.some((plan) => plan.outcomeId === input.outcomeId)) {
-        throw new Error(`Plan already exists for outcome ${input.outcomeId}.`);
-      }
-
       const inputNodeIds = new Set(input.nodes.map((node) => node.id));
 
       if (
@@ -143,6 +156,7 @@ export class PlanRepository {
         .values({
           id: input.id,
           outcomeId: input.outcomeId,
+          triggerMessageId: input.triggerMessageId,
           status: input.status,
           createdAt: new Date(input.createdAt),
           updatedAt: new Date(input.updatedAt)
@@ -193,10 +207,33 @@ export class PlanRepository {
     });
   }
 
-  async getByOutcome(outcomeId: string): Promise<StoredPlan | null> {
+  async getById(id: string): Promise<StoredPlan | null> {
     const rows = await this.db.select().from(outcomePlans);
-    const found = rows.find((row) => row.outcomeId === outcomeId);
+    const found = rows.find((row) => row.id === id);
     return found ? mapPlanRow(found) : null;
+  }
+
+  async getByOutcome(outcomeId: string): Promise<StoredPlan | null> {
+    return this.getLatestByOutcome(outcomeId);
+  }
+
+  async getLatestByOutcome(outcomeId: string): Promise<StoredPlan | null> {
+    const rows = await this.db.select().from(outcomePlans);
+    const found = rows
+      .filter((row) => row.outcomeId === outcomeId)
+      .sort(comparePlanRows)
+      .at(-1);
+
+    return found ? mapPlanRow(found) : null;
+  }
+
+  async listByOutcome(outcomeId: string): Promise<StoredPlan[]> {
+    const rows = await this.db.select().from(outcomePlans);
+
+    return rows
+      .filter((row) => row.outcomeId === outcomeId)
+      .sort(comparePlanRows)
+      .map(mapPlanRow);
   }
 
   async listNodes(planId: string): Promise<StoredPlanNode[]> {

@@ -7,6 +7,7 @@ function buildExecutablePlanInput() {
   return {
     id: "plan_outcome_123",
     outcomeId: "outcome_123",
+    triggerMessageId: "msg_plan_outcome_123",
     status: "draft" as const,
     createdAt: "2026-03-12T00:00:00.000Z",
     updatedAt: "2026-03-12T00:00:00.000Z",
@@ -88,6 +89,7 @@ describe("RunRepository", () => {
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
+      triggerMessageId: "msg_run_123",
       createdAt: "2026-03-12T00:05:00.000Z",
       updatedAt: "2026-03-12T00:05:00.000Z"
     });
@@ -102,6 +104,13 @@ describe("RunRepository", () => {
         status: "ready"
       })
     ]);
+
+    await expect(runs.getById("run_123")).resolves.toEqual(
+      expect.objectContaining({
+        id: "run_123",
+        triggerMessageId: "msg_run_123"
+      })
+    );
   });
 
   it("updates run status and lists outcome runs in chronological order", async () => {
@@ -115,6 +124,7 @@ describe("RunRepository", () => {
       id: "run_001",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
+      triggerMessageId: "msg_run_001",
       createdAt: "2026-03-12T00:05:00.000Z",
       updatedAt: "2026-03-12T00:05:00.000Z"
     });
@@ -122,6 +132,7 @@ describe("RunRepository", () => {
       id: "run_002",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
+      triggerMessageId: "msg_run_002",
       createdAt: "2026-03-12T00:10:00.000Z",
       updatedAt: "2026-03-12T00:10:00.000Z"
     });
@@ -167,6 +178,7 @@ describe("RunRepository", () => {
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
+      triggerMessageId: "msg_run_123",
       createdAt: "2026-03-12T00:05:00.000Z",
       updatedAt: "2026-03-12T00:05:00.000Z"
     });
@@ -216,6 +228,7 @@ describe("RunRepository", () => {
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
+      triggerMessageId: "msg_run_123",
       createdAt: "2026-03-12T00:05:00.000Z",
       updatedAt: "2026-03-12T00:05:00.000Z"
     });
@@ -277,6 +290,7 @@ describe("RunRepository", () => {
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
+      triggerMessageId: "msg_run_123",
       createdAt: "2026-03-12T00:05:00.000Z",
       updatedAt: "2026-03-12T00:05:00.000Z"
     });
@@ -322,6 +336,7 @@ describe("RunRepository", () => {
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
+      triggerMessageId: "msg_run_123",
       createdAt: "2026-03-12T00:05:00.000Z",
       updatedAt: "2026-03-12T00:05:00.000Z"
     });
@@ -414,6 +429,7 @@ describe("RunRepository", () => {
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
+      triggerMessageId: "msg_run_123",
       createdAt: "2026-03-12T00:05:00.000Z",
       updatedAt: "2026-03-12T00:05:00.000Z"
     });
@@ -512,6 +528,7 @@ describe("RunRepository", () => {
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
+      triggerMessageId: "msg_run_123",
       createdAt: "2026-03-12T00:05:00.000Z",
       updatedAt: "2026-03-12T00:05:00.000Z"
     });
@@ -575,6 +592,7 @@ describe("RunRepository", () => {
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_outcome_123",
+      triggerMessageId: "msg_run_123",
       createdAt: "2026-03-12T00:05:00.000Z",
       updatedAt: "2026-03-12T00:05:00.000Z"
     });

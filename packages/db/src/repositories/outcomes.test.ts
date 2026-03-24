@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { OutcomeRepository } from "./outcomes";
-import { outcomes, users, workspaces } from "../schema";
+import { outcomeMessages, outcomes, users, workspaces } from "../schema";
 
 describe("OutcomeRepository", () => {
   it("creates default workspace and user records before inserting an outcome", async () => {
@@ -148,5 +148,72 @@ describe("OutcomeRepository", () => {
         updatedAt: "2026-03-11T00:15:00.000Z"
       })
     );
+  });
+
+  it("fetches outcome messages by id and in chronological order", async () => {
+    const state = {
+      outcomeMessages: [] as Array<Record<string, unknown>>
+    };
+    const db = {
+      insert(table: typeof outcomeMessages) {
+        expect(table).toBe(outcomeMessages);
+
+        return {
+          values(values: Record<string, unknown>) {
+            state.outcomeMessages.push(values);
+            return Promise.resolve();
+          }
+        };
+      },
+      select() {
+        return {
+          from(table: typeof outcomeMessages) {
+            expect(table).toBe(outcomeMessages);
+            return Promise.resolve(state.outcomeMessages);
+          }
+        };
+      }
+    };
+    const repository = new OutcomeRepository(db as never);
+
+    await repository.appendMessage({
+      id: "msg_001",
+      outcomeId: "outcome_123",
+      role: "user",
+      content: "First turn",
+      createdAt: "2026-03-11T00:01:00.000Z"
+    });
+    await repository.appendMessage({
+      id: "msg_002",
+      outcomeId: "outcome_123",
+      role: "assistant",
+      content: "Second turn",
+      createdAt: "2026-03-11T00:02:00.000Z"
+    });
+
+    await expect(repository.getMessageById("msg_001")).resolves.toEqual({
+      id: "msg_001",
+      outcomeId: "outcome_123",
+      role: "user",
+      content: "First turn",
+      createdAt: "2026-03-11T00:01:00.000Z"
+    });
+
+    await expect(repository.listMessages("outcome_123")).resolves.toEqual([
+      {
+        id: "msg_001",
+        outcomeId: "outcome_123",
+        role: "user",
+        content: "First turn",
+        createdAt: "2026-03-11T00:01:00.000Z"
+      },
+      {
+        id: "msg_002",
+        outcomeId: "outcome_123",
+        role: "assistant",
+        content: "Second turn",
+        createdAt: "2026-03-11T00:02:00.000Z"
+      }
+    ]);
   });
 });

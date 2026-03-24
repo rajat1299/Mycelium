@@ -54,10 +54,14 @@ type TestDatabaseOptions = {
 function buildPlanInput(overrides: Partial<Record<string, unknown>> = {}) {
   const outcomeId = String(overrides.outcomeId ?? "outcome_123");
   const planId = String(overrides.id ?? `plan_${outcomeId}`);
+  const triggerMessageId = String(
+    overrides.triggerMessageId ?? `msg_${planId}`
+  );
 
   return {
     id: planId,
     outcomeId,
+    triggerMessageId,
     status: "draft" as const,
     createdAt: "2026-03-11T00:00:00.000Z",
     updatedAt: "2026-03-11T00:00:00.000Z",
@@ -198,14 +202,6 @@ function createRepositoryTestDatabase(options: TestDatabaseOptions = {}) {
               throw new Error(`duplicate key value violates unique constraint "${tableName}_pkey"`);
             }
 
-            if (
-              tableName === "outcome_plans" &&
-              tableRows.some((existing) => existing.outcomeId === row.outcomeId)
-            ) {
-              throw new Error(
-                'duplicate key value violates unique constraint "outcome_plans_outcome_id_key"'
-              );
-            }
           }
 
           tableRows.push(...rows);
@@ -303,6 +299,7 @@ describe("plan and run repositories", () => {
         values: {
           id: "plan_123",
           outcomeId: "outcome_123",
+          triggerMessageId: "msg_plan_123",
           status: "draft",
           createdAt: new Date("2026-03-11T00:00:00.000Z"),
           updatedAt: new Date("2026-03-11T00:00:00.000Z")
@@ -347,15 +344,55 @@ describe("plan and run repositories", () => {
     ]);
   });
 
-  it("enforces one active plan per outcome", async () => {
+  it("stores multiple plans for the same outcome and exposes coherent lookup APIs", async () => {
     const { db } = createRepositoryTestDatabase();
     const repository = new PlanRepository(db as never);
 
-    await repository.create(buildPlanInput({ id: "plan_123", outcomeId: "outcome_123" }));
+    await repository.create(
+      buildPlanInput({
+        id: "plan_123",
+        outcomeId: "outcome_123",
+        triggerMessageId: "msg_turn_001",
+        createdAt: "2026-03-11T00:00:00.000Z",
+        updatedAt: "2026-03-11T00:00:00.000Z"
+      })
+    );
+    await repository.create(
+      buildPlanInput({
+        id: "plan_456",
+        outcomeId: "outcome_123",
+        triggerMessageId: "msg_turn_002",
+        createdAt: "2026-03-11T00:10:00.000Z",
+        updatedAt: "2026-03-11T00:10:00.000Z"
+      })
+    );
 
-    await expect(
-      repository.create(buildPlanInput({ id: "plan_456", outcomeId: "outcome_123" }))
-    ).rejects.toThrow("Plan already exists for outcome outcome_123.");
+    await expect(repository.getById("plan_123")).resolves.toEqual(
+      expect.objectContaining({
+        id: "plan_123",
+        outcomeId: "outcome_123",
+        triggerMessageId: "msg_turn_001"
+      })
+    );
+
+    await expect(repository.getLatestByOutcome("outcome_123")).resolves.toEqual(
+      expect.objectContaining({
+        id: "plan_456",
+        outcomeId: "outcome_123",
+        triggerMessageId: "msg_turn_002"
+      })
+    );
+
+    await expect(repository.listByOutcome("outcome_123")).resolves.toEqual([
+      expect.objectContaining({
+        id: "plan_123",
+        triggerMessageId: "msg_turn_001"
+      }),
+      expect.objectContaining({
+        id: "plan_456",
+        triggerMessageId: "msg_turn_002"
+      })
+    ]);
   });
 
   it("rolls back the parent plan when node insertion fails", async () => {
@@ -409,11 +446,13 @@ describe("plan and run repositories", () => {
       id: "run_123",
       outcomeId: "outcome_123",
       planId: "plan_123",
+      triggerMessageId: "msg_run_123",
       createdAt: "2026-03-11T00:05:00.000Z",
       updatedAt: "2026-03-11T00:05:00.000Z"
     });
 
     expect(run.status).toBe("queued");
+    expect(run.triggerMessageId).toBe("msg_run_123");
 
     const steps = await runRepository.listSteps("run_123");
 
@@ -490,6 +529,7 @@ describe("plan and run repositories", () => {
       id: "run_older",
       outcomeId: "outcome_123",
       planId: "plan_123",
+      triggerMessageId: "msg_run_older",
       createdAt: "2026-03-11T00:05:00.000Z",
       updatedAt: "2026-03-11T00:05:00.000Z"
     });
@@ -498,6 +538,7 @@ describe("plan and run repositories", () => {
       id: "run_newer",
       outcomeId: "outcome_123",
       planId: "plan_123",
+      triggerMessageId: "msg_run_newer",
       createdAt: "2026-03-11T00:06:00.000Z",
       updatedAt: "2026-03-11T00:06:00.000Z"
     });
@@ -524,6 +565,7 @@ describe("plan and run repositories", () => {
         id: "run_rollback",
         outcomeId: "outcome_123",
         planId: "plan_123",
+        triggerMessageId: "msg_run_rollback",
         createdAt: "2026-03-11T00:05:00.000Z",
         updatedAt: "2026-03-11T00:05:00.000Z"
       })
@@ -545,6 +587,7 @@ describe("plan and run repositories", () => {
         id: "run_mismatch",
         outcomeId: "outcome_A",
         planId: "plan_B",
+        triggerMessageId: "msg_run_mismatch",
         createdAt: "2026-03-11T00:05:00.000Z",
         updatedAt: "2026-03-11T00:05:00.000Z"
       })
