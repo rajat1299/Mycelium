@@ -658,20 +658,22 @@ export function buildOutcomeFeed({
     }
   }
 
-  const currentApproval = state.run
-    ? (state.pendingApprovals.find((approval) => approval.runId === state.run?.id) ?? null)
-    : null;
+  const runApprovals = state.run
+    ? [...state.pendingApprovals]
+        .filter((approval) => approval.runId === state.run?.id)
+        .sort((left, right) => left.requestedAt.localeCompare(right.requestedAt))
+    : [];
 
-  if (currentApproval) {
+  for (const approval of runApprovals) {
     chronoEntries.push({
-      timestamp: currentApproval.requestedAt,
+      timestamp: approval.requestedAt,
       order: 40,
       item: {
         type: "approval",
-        key: `approval:${currentApproval.id}`,
-        approval: currentApproval,
+        key: `approval:${approval.id}`,
+        approval,
         artifacts: state.artifacts.filter((artifact) =>
-          currentApproval.artifactIds.includes(artifact.id)
+          approval.artifactIds.includes(artifact.id)
         )
       }
     });

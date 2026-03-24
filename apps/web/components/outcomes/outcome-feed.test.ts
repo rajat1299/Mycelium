@@ -182,4 +182,77 @@ describe("buildOutcomeFeed", () => {
     expect(artifactIndex).toBeGreaterThan(-1);
     expect(deliveryNoteIndex).toBeGreaterThan(artifactIndex);
   });
+
+  it("renders every pending approval for the selected run", () => {
+    const feed = buildOutcomeFeed({
+      outcomePrompt: "Review two high-risk outputs before completion.",
+      outcomeSource: "web",
+      state: {
+        plan: null,
+        run: {
+          id: "run_123",
+          outcomeId: "outcome_123",
+          planId: "plan_outcome_123",
+          status: "blocked",
+          createdAt: "2026-03-21T00:01:00.000Z",
+          updatedAt: "2026-03-21T00:05:00.000Z",
+          steps: []
+        },
+        artifacts: [],
+        logs: [],
+        pendingApprovals: [
+          {
+            id: "approval_1",
+            workspaceId: "ws_default",
+            outcomeId: "outcome_123",
+            runId: "run_123",
+            stepId: "step_1",
+            status: "pending",
+            kind: "output_review_required",
+            title: "Review browser action",
+            summary: "Inspect browser side effects.",
+            instruction: "Approve to continue.",
+            artifactIds: [],
+            requestedAt: "2026-03-21T00:03:00.000Z",
+            resolvedAt: null,
+            resolution: null,
+            resolutionNote: null
+          },
+          {
+            id: "approval_2",
+            workspaceId: "ws_default",
+            outcomeId: "outcome_123",
+            runId: "run_123",
+            stepId: "step_2",
+            status: "pending",
+            kind: "output_review_required",
+            title: "Review generated report",
+            summary: "Inspect the final report.",
+            instruction: "Approve to complete.",
+            artifactIds: [],
+            requestedAt: "2026-03-21T00:04:00.000Z",
+            resolvedAt: null,
+            resolution: null,
+            resolutionNote: null
+          }
+        ],
+        messages: [],
+        assistantMessages: []
+      }
+    });
+
+    const approvals = feed.filter((item) => item.type === "approval");
+
+    expect(approvals).toHaveLength(2);
+    expect(approvals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          approval: expect.objectContaining({ id: "approval_1" })
+        }),
+        expect.objectContaining({
+          approval: expect.objectContaining({ id: "approval_2" })
+        })
+      ])
+    );
+  });
 });
