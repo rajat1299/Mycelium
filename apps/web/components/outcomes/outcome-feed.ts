@@ -21,6 +21,10 @@ export type OutcomeConversationState = {
   pendingApprovals: Approval[];
   messages: MessageCreatedData[];
   assistantMessages: AssistantNarrativeMessage[];
+  thread?: {
+    plans: Plan[];
+    runs: RunDetail[];
+  };
 };
 
 export type AssistantNarrativeMessage = AssistantMessageSnapshot;
@@ -58,6 +62,24 @@ export type OutcomeFeedItem =
   | { type: "approval"; key: string; approval: Approval; artifacts: Artifact[] }
   | { type: "message"; key: string; message: MessageCreatedData }
   | { type: "loading"; key: string };
+
+export type OutcomeThreadTurn = {
+  key: string;
+  triggerMessageId: string | null;
+  promptItem: Extract<OutcomeFeedItem, { type: "prompt" }> | null;
+  messageItem: Extract<OutcomeFeedItem, { type: "message" }> | null;
+  leadItem:
+    | Extract<OutcomeFeedItem, { type: "intent" }>
+    | Extract<OutcomeFeedItem, { type: "assistant-message" }>
+    | null;
+  planItems: Array<Extract<OutcomeFeedItem, { type: "plan" }>>;
+  bodyItems: Array<
+    Exclude<OutcomeFeedItem, { type: "prompt" | "plan" | "loading" }>
+  >;
+  loadingItem: Extract<OutcomeFeedItem, { type: "loading" }> | null;
+  runIds: string[];
+  planIds: string[];
+};
 
 type OutcomeFeedInput = {
   outcomePrompt: string;
@@ -121,6 +143,42 @@ function sortMessagesInternal(messages: MessageCreatedData[]) {
   return [...messages].sort((left, right) =>
     left.createdAt.localeCompare(right.createdAt)
   );
+}
+
+function sortPlansInternal(plans: Plan[]) {
+  return [...plans].sort((left, right) => {
+    const createdDelta = left.createdAt.localeCompare(right.createdAt);
+
+    if (createdDelta !== 0) {
+      return createdDelta;
+    }
+
+    const updatedDelta = left.updatedAt.localeCompare(right.updatedAt);
+
+    if (updatedDelta !== 0) {
+      return updatedDelta;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+}
+
+function sortRunsInternal(runs: RunDetail[]) {
+  return [...runs].sort((left, right) => {
+    const createdDelta = left.createdAt.localeCompare(right.createdAt);
+
+    if (createdDelta !== 0) {
+      return createdDelta;
+    }
+
+    const updatedDelta = left.updatedAt.localeCompare(right.updatedAt);
+
+    if (updatedDelta !== 0) {
+      return updatedDelta;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
 }
 
 export function appendMessage(
@@ -393,15 +451,12 @@ function collectPromotedIntentLogs(systemLogs: RunLogData[]) {
   return promoted;
 }
 
-function buildPlanBlock(state: OutcomeConversationState): OutcomeFeedItem | null {
-  if (!state.plan) {
-    return null;
-  }
-
-  const stepLookup = new Map(
-    (state.run?.steps ?? []).map((step) => [step.planNodeId, step])
-  );
-  const nodes = state.plan.nodes.slice().sort((left, right) => left.position - right.position);
+function buildPlanBlock(
+  plan: Plan,
+  run: RunDetail | null
+): Extract<OutcomeFeedItem, { type: "plan" }> {
+  const stepLookup = new Map((run?.steps ?? []).map((step) => [step.planNodeId, step]));
+  const nodes = plan.nodes.slice().sort((left, right) => left.position - right.position);
   const completedCount = nodes.filter((node) =>
     stepLookup.get(node.id)?.status === "completed"
   ).length;
@@ -410,13 +465,13 @@ function buildPlanBlock(state: OutcomeConversationState): OutcomeFeedItem | null
     ? `All ${nodes.length} steps complete`
     : completedCount > 0
       ? `${completedCount} of ${nodes.length} steps complete`
-      : state.run?.status === "running"
+      : run?.status === "running"
         ? `${nodes.length} steps ready to execute`
         : `${nodes.length} steps planned`;
 
   return {
     type: "plan",
-    key: "plan",
+    key: `plan:${plan.id}`,
     title,
     items: nodes.map((node) => ({
       id: node.id,
@@ -507,203 +562,334 @@ function buildMessageItem(
   };
 }
 
-export function buildOutcomeFeed({
+function resolveThreadPlans(state: OutcomeConversationState) {
+  const plans = state.thread ? [...state.thread.plans] : [];
+
+  if (state.plan && !plans.some((plan) => plan.id === state.plan?.id)) {
+    plans.push(state.plan);
+  }
+
+  return sortPlansInternal(plans);
+}
+
+function resolveThreadRuns(state: OutcomeConversationState) {
+  const runs = state.thread ? [...state.thread.runs] : [];
+
+  if (state.run && !runs.some((run) => run.id === state.run?.id)) {
+    runs.push(state.run);
+  }
+
+  return sortRunsInternal(runs);
+}
+
+function selectRunForPlan(plan: Plan, runs: RunDetail[]) {
+  return (
+    sortRunsInternal(
+      runs.filter(
+        (run) =>
+          run.planId === plan.id || run.triggerMessageId === plan.triggerMessageId
+      )
+    ).at(-1) ?? null
+  );
+}
+
+function findTurnKeyForMessage(
+  userMessageIds: Set<string>,
+  triggerMessageId: string
+) {
+  return userMessageIds.has(triggerMessageId)
+    ? `turn:${triggerMessageId}`
+    : "turn:prompt";
+}
+
+type TurnSeed = {
+  key: string;
+  triggerMessageId: string | null;
+  promptItem: Extract<OutcomeFeedItem, { type: "prompt" }> | null;
+  messageItem: Extract<OutcomeFeedItem, { type: "message" }> | null;
+  timestamp: string | null;
+  plans: Plan[];
+  runs: RunDetail[];
+  additionalMessages: MessageCreatedData[];
+};
+
+export function buildOutcomeThreadTurns({
   outcomePrompt,
   outcomeSource,
   state
-}: OutcomeFeedInput): OutcomeFeedItem[] {
-  const items: OutcomeFeedItem[] = [
-    {
+}: OutcomeFeedInput): OutcomeThreadTurn[] {
+  const orderedMessages = sortMessagesInternal(state.messages);
+  const orderedUserMessages = orderedMessages.filter((message) => message.role === "user");
+  const promptTriggerMessage =
+    orderedUserMessages.find((message) => message.content === outcomePrompt) ?? null;
+  const followUpUserMessages = orderedUserMessages.filter(
+    (message) => message.id !== promptTriggerMessage?.id
+  );
+  const nonUserMessages = orderedMessages.filter((message) => message.role !== "user");
+  const threadPlans = resolveThreadPlans(state);
+  const threadRuns = resolveThreadRuns(state);
+  const userMessageIds = new Set(followUpUserMessages.map((message) => message.id));
+  const turns = new Map<string, TurnSeed>();
+
+  const promptTurn: TurnSeed = {
+    key: "turn:prompt",
+    triggerMessageId: promptTriggerMessage?.id ?? null,
+    promptItem: {
       type: "prompt",
       key: "prompt",
       prompt: outcomePrompt
-    }
-  ];
-
-  const orderedLogs = sortLogsInternal(state.logs);
-  const systemLogs = orderedLogs.filter((log) => !log.stepId);
-  const promotedIntentLogs = collectPromotedIntentLogs(systemLogs);
-  const visibleAssistantMessages = sortAssistantMessagesInternal(
-    state.assistantMessages.filter((message) => message.content.length > 0)
-  );
-  const orderedMessages = sortMessagesInternal(state.messages);
-  const hasAssistantNarrative = visibleAssistantMessages.length > 0;
-  const leadAssistantMessage = hasAssistantNarrative ? visibleAssistantMessages[0] : null;
-  const trailingAssistantMessages = hasAssistantNarrative
-    ? visibleAssistantMessages.slice(1)
-    : [];
-  const primaryIntentLog = promotedIntentLogs[0] ?? null;
-  const syntheticFallbackIntro =
-    !leadAssistantMessage && !primaryIntentLog && orderedMessages.length === 0
-      ? fallbackIntroMessage(outcomeSource, state.run)
-      : null;
-  const leadNarrativeTimestamp =
-    leadAssistantMessage?.createdAt ?? primaryIntentLog?.createdAt ?? null;
-  const leadMessages = leadNarrativeTimestamp
-    ? orderedMessages.filter((message) => message.createdAt <= leadNarrativeTimestamp)
-    : [];
-  const trailingMessages = orderedMessages.filter(
-    (message) => !leadMessages.some((candidate) => candidate.id === message.id)
-  );
-
-  items.push(...leadMessages.map(buildMessageItem));
-
-  if (leadAssistantMessage) {
-    items.push({
-      type: "assistant-message",
-      key: `assistant-message:${leadAssistantMessage.id}`,
-      message: leadAssistantMessage
-    });
-  } else if (primaryIntentLog) {
-    items.push({
-      type: "intent",
-      key: `intent:${logKey(primaryIntentLog)}`,
-      message: primaryIntentLog.message
-    });
-  } else if (syntheticFallbackIntro) {
-    items.push({
-      type: "intent",
-      key: `intent:fallback:${state.run?.status ?? "idle"}`,
-      message: syntheticFallbackIntro
-    });
-  }
-
-  const planBlock = buildPlanBlock(state);
-  if (planBlock) {
-    items.push(planBlock);
-  }
-
-  const orderedSteps = sortSteps(state.run?.steps ?? []);
-  const stepCards = orderedSteps
-    .filter((step) => shouldRenderStepCard(step))
-    .map((step) =>
-    buildStepCardData(step, state.logs, state.artifacts)
-  );
-  const stepsById = new Map(orderedSteps.map((step) => [step.id, step]));
-  const promotedDeliveryIds = promotedDeliveryArtifactIds(orderedSteps, state.artifacts);
-  const hasAssistantDeliveryNarrative = visibleAssistantMessages.some(
-    (message) => message.kind === "delivery"
-  );
-
-  type ChronoEntry = {
-    timestamp: string;
-    order: number;
-    item: Exclude<
-      OutcomeFeedItem,
-      { type: "prompt" | "plan" | "loading" }
-    >;
+    },
+    messageItem: null,
+    timestamp: null,
+    plans: [],
+    runs: [],
+    additionalMessages: []
   };
 
-  const chronoEntries: ChronoEntry[] = [];
+  turns.set(promptTurn.key, promptTurn);
 
-  if (!hasAssistantNarrative) {
-    for (const intentLog of promotedIntentLogs.slice(1)) {
+  for (const message of followUpUserMessages) {
+    turns.set(`turn:${message.id}`, {
+      key: `turn:${message.id}`,
+      triggerMessageId: message.id,
+      promptItem: null,
+      messageItem: buildMessageItem(message),
+      timestamp: message.createdAt,
+      plans: [],
+      runs: [],
+      additionalMessages: []
+    });
+  }
+
+  for (const plan of threadPlans) {
+    turns.get(findTurnKeyForMessage(userMessageIds, plan.triggerMessageId))?.plans.push(plan);
+  }
+
+  for (const run of threadRuns) {
+    turns.get(findTurnKeyForMessage(userMessageIds, run.triggerMessageId))?.runs.push(run);
+  }
+
+  const orderedTurnSeeds = [
+    promptTurn,
+    ...followUpUserMessages
+      .map((message) => turns.get(`turn:${message.id}`))
+      .filter((turn): turn is TurnSeed => Boolean(turn))
+  ];
+
+  for (const message of nonUserMessages) {
+    let targetTurn = promptTurn;
+
+    for (const turn of orderedTurnSeeds.slice(1)) {
+      if (turn.timestamp && turn.timestamp.localeCompare(message.createdAt) <= 0) {
+        targetTurn = turn;
+        continue;
+      }
+
+      break;
+    }
+
+    targetTurn.additionalMessages.push(message);
+  }
+
+  return orderedTurnSeeds.map((turn) => {
+    const turnRuns = sortRunsInternal(turn.runs);
+    const turnPlans = sortPlansInternal(turn.plans);
+    const runIds = new Set(turnRuns.map((run) => run.id));
+    const turnLogs = sortLogsInternal(state.logs.filter((log) => runIds.has(log.runId)));
+    const systemLogs = turnLogs.filter((log) => !log.stepId);
+    const promotedIntentLogs = collectPromotedIntentLogs(systemLogs);
+    const visibleAssistantMessages = sortAssistantMessagesInternal(
+      state.assistantMessages.filter(
+        (message) => runIds.has(message.runId) && message.content.length > 0
+      )
+    );
+    const leadAssistantMessage = visibleAssistantMessages[0] ?? null;
+    const trailingAssistantMessages = visibleAssistantMessages.slice(1);
+    const primaryIntentLog = promotedIntentLogs[0] ?? null;
+    const primaryRun = turnRuns.at(-1) ?? null;
+    const syntheticFallbackIntro =
+      !leadAssistantMessage &&
+      !primaryIntentLog &&
+      (turn.promptItem !== null || turnPlans.length > 0 || turnRuns.length > 0)
+        ? fallbackIntroMessage(outcomeSource, primaryRun)
+        : null;
+
+    const leadItem = leadAssistantMessage
+      ? {
+          type: "assistant-message" as const,
+          key: `assistant-message:${leadAssistantMessage.id}`,
+          message: leadAssistantMessage
+        }
+      : primaryIntentLog
+        ? {
+            type: "intent" as const,
+            key: `intent:${logKey(primaryIntentLog)}`,
+            message: primaryIntentLog.message
+          }
+        : syntheticFallbackIntro
+          ? {
+              type: "intent" as const,
+              key: `intent:fallback:${turn.key}:${primaryRun?.status ?? "idle"}`,
+              message: syntheticFallbackIntro
+            }
+          : null;
+
+    const turnSteps = sortSteps(turnRuns.flatMap((run) => run.steps));
+    const stepCards = turnSteps
+      .filter((step) => shouldRenderStepCard(step))
+      .map((step) => buildStepCardData(step, turnLogs, state.artifacts));
+    const stepsById = new Map(turnSteps.map((step) => [step.id, step]));
+    const turnArtifacts = sortArtifactsInternal(
+      state.artifacts.filter(
+        (artifact) =>
+          (artifact.runId ? runIds.has(artifact.runId) : turn.key === promptTurn.key)
+      )
+    );
+    const promotedDeliveryIds = promotedDeliveryArtifactIds(turnSteps, turnArtifacts);
+    const hasAssistantDeliveryNarrative = visibleAssistantMessages.some(
+      (message) => message.kind === "delivery"
+    );
+
+    type ChronoEntry = {
+      timestamp: string;
+      order: number;
+      item: Exclude<OutcomeFeedItem, { type: "prompt" | "plan" | "loading" }>;
+    };
+
+    const chronoEntries: ChronoEntry[] = [];
+
+    if (!leadAssistantMessage) {
+      for (const intentLog of primaryIntentLog ? promotedIntentLogs.slice(1) : promotedIntentLogs) {
+        chronoEntries.push({
+          timestamp: intentLog.createdAt,
+          order: 10,
+          item: {
+            type: "intent",
+            key: `intent:${logKey(intentLog)}`,
+            message: intentLog.message
+          }
+        });
+      }
+    }
+
+    for (const assistantMessage of trailingAssistantMessages) {
       chronoEntries.push({
-        timestamp: intentLog.createdAt,
-        order: 10,
+        timestamp: assistantMessage.createdAt,
+        order: 15,
         item: {
-          type: "intent",
-          key: `intent:${logKey(intentLog)}`,
-          message: intentLog.message
+          type: "assistant-message",
+          key: `assistant-message:${assistantMessage.id}`,
+          message: assistantMessage
         }
       });
     }
-  }
 
-  for (const assistantMessage of trailingAssistantMessages) {
-    chronoEntries.push({
-      timestamp: assistantMessage.createdAt,
-      order: 15,
-      item: {
-        type: "assistant-message",
-        key: `assistant-message:${assistantMessage.id}`,
-        message: assistantMessage
-      }
-    });
-  }
-
-  for (const card of stepCards) {
-    chronoEntries.push({
-      timestamp: card.step.createdAt,
-      order: 20,
-      item: {
-        type: "task",
-        key: `step:${card.step.id}`,
-        data: card
-      }
-    });
-  }
-
-  for (const artifact of sortArtifactsInternal(state.artifacts)) {
-    if (!promotedDeliveryIds.has(artifact.id)) {
-      continue;
-    }
-
-    chronoEntries.push({
-      timestamp: artifact.createdAt,
-      order: 30,
-      item: buildArtifactDeliveryBlock(artifact, stepsById.get(artifact.stepId ?? "") ?? null)
-    });
-
-    const deliveryNote = hasAssistantDeliveryNarrative
-      ? null
-      : buildArtifactDeliveryNote(artifact);
-
-    if (deliveryNote) {
+    for (const card of stepCards) {
       chronoEntries.push({
-        timestamp: artifact.createdAt,
-        order: 35,
-        item: deliveryNote
+        timestamp: card.step.createdAt,
+        order: 20,
+        item: {
+          type: "task",
+          key: `step:${card.step.id}`,
+          data: card
+        }
       });
     }
-  }
 
-  const runApprovals = state.run
-    ? [...state.pendingApprovals]
-        .filter((approval) => approval.runId === state.run?.id)
-        .sort((left, right) => left.requestedAt.localeCompare(right.requestedAt))
-    : [];
-
-  for (const approval of runApprovals) {
-    chronoEntries.push({
-      timestamp: approval.requestedAt,
-      order: 40,
-      item: {
-        type: "approval",
-        key: `approval:${approval.id}`,
-        approval,
-        artifacts: state.artifacts.filter((artifact) =>
-          approval.artifactIds.includes(artifact.id)
-        )
+    for (const artifact of turnArtifacts) {
+      if (!promotedDeliveryIds.has(artifact.id)) {
+        continue;
       }
-    });
-  }
 
-  for (const message of trailingMessages) {
-    chronoEntries.push({
-      timestamp: message.createdAt,
-      order: 50,
-      item: buildMessageItem(message)
-    });
-  }
+      chronoEntries.push({
+        timestamp: artifact.createdAt,
+        order: 30,
+        item: buildArtifactDeliveryBlock(
+          artifact,
+          stepsById.get(artifact.stepId ?? "") ?? null
+        )
+      });
 
-  chronoEntries.sort((left, right) => {
-    const timestampDelta = left.timestamp.localeCompare(right.timestamp);
-    if (timestampDelta !== 0) {
-      return timestampDelta;
+      const deliveryNote = hasAssistantDeliveryNarrative
+        ? null
+        : buildArtifactDeliveryNote(artifact);
+
+      if (deliveryNote) {
+        chronoEntries.push({
+          timestamp: artifact.createdAt,
+          order: 35,
+          item: deliveryNote
+        });
+      }
     }
 
-    return left.order - right.order;
-  });
+    const runApprovals = [...state.pendingApprovals]
+      .filter((approval) => runIds.has(approval.runId))
+      .sort((left, right) => left.requestedAt.localeCompare(right.requestedAt));
 
-  items.push(...chronoEntries.map((entry) => entry.item));
+    for (const approval of runApprovals) {
+      chronoEntries.push({
+        timestamp: approval.requestedAt,
+        order: 40,
+        item: {
+          type: "approval",
+          key: `approval:${approval.id}`,
+          approval,
+          artifacts: turnArtifacts.filter((artifact) =>
+            approval.artifactIds.includes(artifact.id)
+          )
+        }
+      });
+    }
 
-  if (state.run && stepCards.length === 0) {
-    items.push({
-      type: "loading",
-      key: "loading"
+    for (const message of sortMessagesInternal(turn.additionalMessages)) {
+      chronoEntries.push({
+        timestamp: message.createdAt,
+        order: 50,
+        item: buildMessageItem(message)
+      });
+    }
+
+    chronoEntries.sort((left, right) => {
+      const timestampDelta = left.timestamp.localeCompare(right.timestamp);
+
+      if (timestampDelta !== 0) {
+        return timestampDelta;
+      }
+
+      return left.order - right.order;
     });
-  }
 
-  return items;
+    return {
+      key: turn.key,
+      triggerMessageId: turn.triggerMessageId,
+      promptItem: turn.promptItem,
+      messageItem: turn.messageItem,
+      leadItem,
+      planItems: turnPlans.map((plan) =>
+        buildPlanBlock(plan, selectRunForPlan(plan, turnRuns))
+      ),
+      bodyItems: chronoEntries.map((entry) => entry.item),
+      loadingItem:
+        primaryRun && stepCards.length === 0
+          ? {
+              type: "loading",
+              key: `loading:${turn.key}`
+            }
+          : null,
+      runIds: turnRuns.map((run) => run.id),
+      planIds: turnPlans.map((plan) => plan.id)
+    };
+  });
+}
+
+export function buildOutcomeFeed(input: OutcomeFeedInput): OutcomeFeedItem[] {
+  return buildOutcomeThreadTurns(input).flatMap((turn) => [
+    ...(turn.promptItem ? [turn.promptItem] : []),
+    ...(turn.messageItem ? [turn.messageItem] : []),
+    ...(turn.leadItem ? [turn.leadItem] : []),
+    ...turn.planItems,
+    ...turn.bodyItems,
+    ...(turn.loadingItem ? [turn.loadingItem] : [])
+  ]);
 }
