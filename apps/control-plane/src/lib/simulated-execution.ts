@@ -373,6 +373,11 @@ async function executeSimulatedRun(input: {
     return;
   }
 
+  const triggerMessage =
+    await input.repositories.outcomes.getMessageById(run.triggerMessageId);
+  const turnPrompt = triggerMessage?.content.trim() || outcome.prompt;
+  const turnPromptSummary = summarizeTurnPrompt(turnPrompt);
+
   try {
     await input.wait(input.timeline.kickoffMs);
     await streamAssistantMessage(input, {
@@ -380,7 +385,7 @@ async function executeSimulatedRun(input: {
       runId: run.id,
       kind: "acknowledgment",
       content:
-        "I'll start by loading relevant skills and checking my memory for any context about your work, then I'll run parallel research across all four topic areas."
+        `I'll start by loading relevant skills and checking context for ${turnPromptSummary}, then I'll run parallel research across all four topic areas.`
     });
 
     await input.wait(input.timeline.markRunningMs);
@@ -412,13 +417,14 @@ async function executeSimulatedRun(input: {
       outcomeId: outcome.id,
       runId: run.id,
       level: "info",
-      message: "Checking for context about the request and preferred document format."
+      message: `Checking for context about ${turnPromptSummary} and preferred document format.`
     });
 
     await runStepScenario(input, {
       outcome,
       run: runningLifecycle.run,
-      step: contextStep
+      step: contextStep,
+      turnPrompt
     });
 
     await streamAssistantMessage(input, {
@@ -443,7 +449,8 @@ async function executeSimulatedRun(input: {
         runStepScenario(input, {
           outcome,
           run: runningLifecycle.run,
-          step
+          step,
+          turnPrompt
         })
       )
     );
@@ -473,7 +480,8 @@ async function executeSimulatedRun(input: {
     const finalArtifact = await runStepScenario(input, {
       outcome,
       run: runningLifecycle.run,
-      step: synthesisStep
+      step: synthesisStep,
+      turnPrompt
     });
 
     if (finalArtifact) {
@@ -489,7 +497,7 @@ async function executeSimulatedRun(input: {
       runId: run.id,
       kind: "delivery",
       content:
-        "Here's your report - a 16-page PDF covering the current state of AI in K-12 education.\n\n- Executive summary with adoption, time-saved, and market-size stats\n- Tools teachers are actually using in classrooms\n- Effectiveness research and where the evidence is still limited\n- Concerns, implementation risks, and policy responses\n- Emerging trends and where the market is heading next"
+        `Here's your report for ${turnPromptSummary} - a 16-page PDF covering the current state of AI in K-12 education.\n\n- Executive summary with adoption, time-saved, and market-size stats\n- Tools teachers are actually using in classrooms\n- Effectiveness research and where the evidence is still limited\n- Concerns, implementation risks, and policy responses\n- Emerging trends and where the market is heading next`
     });
 
     const completedLifecycle = await input.repositories.runs.updateLifecycleStatus({
@@ -550,6 +558,7 @@ async function runStepScenario(
     outcome: StoredOutcome & {};
     run: StoredRun & {};
     step: StoredStep;
+    turnPrompt: string;
   }
 ) {
   const runningStep = await options.repositories.runs.updateStepStatus({
@@ -587,7 +596,8 @@ async function runStepScenario(
   return completeStep(options, {
     outcome: input.outcome,
     run: input.run,
-    step: runningStep
+    step: runningStep,
+    turnPrompt: input.turnPrompt
   });
 }
 
@@ -601,12 +611,14 @@ async function completeStep(
     outcome: StoredOutcome & {};
     run: StoredRun & {};
     step: StoredStep;
+    turnPrompt: string;
   }
 ) {
   const artifact = await createArtifactForStep(options, {
     outcome: input.outcome,
     runId: input.run.id,
-    step: input.step
+    step: input.step,
+    turnPrompt: input.turnPrompt
   });
 
   const completedStep = await options.repositories.runs.updateStepStatus({
@@ -652,9 +664,10 @@ async function createArtifactForStep(
     outcome: StoredOutcome & {};
     runId: string;
     step: StoredStep;
+    turnPrompt: string;
   }
 ) {
-  const descriptor = artifactDescriptorForStep(input.step, input.outcome.prompt);
+  const descriptor = artifactDescriptorForStep(input.step, input.turnPrompt);
   const artifact = await options.repositories.artifacts.create({
     id: `artifact_${randomUUID()}`,
     outcomeId: input.outcome.id,
@@ -669,6 +682,16 @@ async function createArtifactForStep(
 
   await emitArtifactCreated(options, input.outcome.id, artifact);
   return artifact;
+}
+
+function summarizeTurnPrompt(prompt: string) {
+  const normalized = prompt.trim().replace(/\s+/g, " ");
+
+  if (normalized.length <= 88) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, 85).trimEnd()}...`;
 }
 
 async function createDerivedArtifactLineage(

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AssistantMessageListResponseSchema,
   ArtifactListResponseSchema,
+  OutcomeTurnResponseSchema,
   PlanSchema,
   RunDetailSchema,
   RunLogListResponseSchema
@@ -454,6 +455,80 @@ describe("development simulation mode", () => {
       expect(finalArtifactIndex).toBeGreaterThanOrEqual(0);
       expect(finalDeliveryIndex).toBeGreaterThan(finalArtifactIndex);
       expect(finalDeliveryIndex).toBeGreaterThan(openingAcknowledgmentIndex);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("produces a fresh simulated narrative for each follow-up turn on the same outcome", async () => {
+    const harness = await createExecutionHarness({
+      simulationMode: true,
+      simulationTimeline: FAST_SIMULATION_TIMELINE
+    });
+
+    try {
+      const { app, services } = harness;
+      const startOutcome = await app.inject({
+        method: "POST",
+        url: "/api/outcomes/start",
+        payload: {
+          workspaceId: "ws_simulation",
+          userId: "user_simulation",
+          prompt: "Draft a district AI adoption report with rollout guidance.",
+          source: "web"
+        }
+      });
+
+      expect(startOutcome.statusCode).toBe(201);
+      const firstTurn = OutcomeTurnResponseSchema.parse(startOutcome.json());
+      await services.simulatedExecutionService.waitForRun(firstTurn.run?.id ?? "");
+
+      const continueOutcome = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${firstTurn.outcome.id}/continue`,
+        payload: {
+          content:
+            "Make it shorter for school principals and focus on implementation risks."
+        }
+      });
+
+      expect(continueOutcome.statusCode).toBe(201);
+      const secondTurn = OutcomeTurnResponseSchema.parse(continueOutcome.json());
+      await services.simulatedExecutionService.waitForRun(secondTurn.run?.id ?? "");
+
+      expect(secondTurn.outcome.id).toBe(firstTurn.outcome.id);
+      expect(secondTurn.triggerMessage.id).not.toBe(firstTurn.triggerMessage.id);
+      expect(secondTurn.plan?.id).not.toBe(firstTurn.plan?.id);
+      expect(secondTurn.run?.id).not.toBe(firstTurn.run?.id);
+
+      const [firstRunMessagesResponse, secondRunMessagesResponse] = await Promise.all([
+        app.inject({
+          method: "GET",
+          url: `/api/runs/${firstTurn.run?.id}/assistant-messages`
+        }),
+        app.inject({
+          method: "GET",
+          url: `/api/runs/${secondTurn.run?.id}/assistant-messages`
+        })
+      ]);
+
+      const firstRunMessages = AssistantMessageListResponseSchema.parse(
+        firstRunMessagesResponse.json()
+      ).assistantMessages;
+      const secondRunMessages = AssistantMessageListResponseSchema.parse(
+        secondRunMessagesResponse.json()
+      ).assistantMessages;
+
+      expect(firstRunMessages[0]?.content).toContain(
+        "district AI adoption report with rollout guidance"
+      );
+      expect(secondRunMessages[0]?.content).toContain("school principals");
+      expect(
+        firstRunMessages.find((message) => message.kind === "delivery")?.content
+      ).toContain("district AI adoption report with rollout guidance");
+      expect(
+        secondRunMessages.find((message) => message.kind === "delivery")?.content
+      ).toContain("implementation risks");
     } finally {
       await harness.cleanup();
     }

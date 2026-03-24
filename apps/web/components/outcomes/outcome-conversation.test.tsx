@@ -832,4 +832,107 @@ describe("OutcomeConversation", () => {
       screen.queryByText("Loading fresh persisted context for the selected run.")
     ).toBeInTheDocument();
   });
+
+  it("replaces the prior run delivery with the new run acknowledgment after a follow-up run switch", () => {
+    const rendered = render(
+      <OutcomeConversation
+        outcomeId="outcome_123"
+        outcomePrompt="Research AI in K-12 education and generate a PDF."
+        outcomeSource="web"
+        initialPlan={null}
+        initialRun={{
+          id: "run_123",
+          outcomeId: "outcome_123",
+          planId: "plan_outcome_123",
+          triggerMessageId: "msg_123",
+          status: "completed",
+          createdAt: "2026-03-22T00:00:00.000Z",
+          updatedAt: "2026-03-22T00:04:00.000Z",
+          steps: []
+        }}
+        initialArtifacts={[]}
+        initialLogs={[]}
+        initialAssistantMessages={[
+          {
+            id: "assistant_delivery_first",
+            runId: "run_123",
+            kind: "delivery",
+            content:
+              "Here’s the first completed report with the full district rollout plan.",
+            createdAt: "2026-03-22T00:04:00.000Z",
+            updatedAt: "2026-03-22T00:04:05.000Z",
+            status: "completed"
+          }
+        ]}
+        initialMessages={[
+          {
+            id: "msg_followup",
+            outcomeId: "outcome_123",
+            role: "user",
+            content: "Make it shorter for principals.",
+            createdAt: "2026-03-22T00:05:00.000Z"
+          }
+        ]}
+        initialPendingApprovals={[]}
+      />
+    );
+
+    expect(
+      screen.getByText("Here’s the first completed report with the full district rollout plan.")
+    ).toBeInTheDocument();
+
+    act(() => {
+      rendered.rerender(
+        <OutcomeConversation
+          outcomeId="outcome_123"
+          outcomePrompt="Research AI in K-12 education and generate a PDF."
+          outcomeSource="web"
+          initialPlan={null}
+          initialRun={{
+            id: "run_456",
+            outcomeId: "outcome_123",
+            planId: "plan_outcome_456",
+            triggerMessageId: "msg_followup",
+            status: "running",
+            createdAt: "2026-03-22T00:05:00.000Z",
+            updatedAt: "2026-03-22T00:05:00.000Z",
+            steps: []
+          }}
+          initialArtifacts={[]}
+          initialLogs={[]}
+          initialAssistantMessages={[
+            {
+              id: "assistant_ack_second",
+              runId: "run_456",
+              kind: "acknowledgment",
+              content:
+                "I’m tightening the report for school principals and focusing the research on implementation risks.",
+              createdAt: "2026-03-22T00:05:02.000Z",
+              updatedAt: "2026-03-22T00:05:03.000Z",
+              status: "completed"
+            }
+          ]}
+          initialMessages={[
+            {
+              id: "msg_followup",
+              outcomeId: "outcome_123",
+              role: "user",
+              content: "Make it shorter for principals.",
+              createdAt: "2026-03-22T00:05:00.000Z"
+            }
+          ]}
+          initialPendingApprovals={[]}
+        />
+      );
+    });
+
+    expect(
+      screen.queryByText("Here’s the first completed report with the full district rollout plan.")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "I’m tightening the report for school principals and focusing the research on implementation risks."
+      )
+    ).toBeInTheDocument();
+  });
 });
