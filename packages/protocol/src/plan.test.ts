@@ -185,4 +185,40 @@ describe("plan and run protocols", () => {
       })
     );
   });
+
+  it("accepts trigger message ids on turn-scoped plan and run payloads", () => {
+    expect(
+      PlanSchema.parse({
+        id: "plan_outcome_123",
+        outcomeId: "outcome_123",
+        triggerMessageId: "msg_123",
+        status: "draft",
+        createdAt: "2026-03-11T00:00:00.000Z",
+        updatedAt: "2026-03-11T00:00:00.000Z",
+        nodes: [],
+        edges: []
+      })
+    ).toEqual(
+      expect.objectContaining({
+        triggerMessageId: "msg_123"
+      })
+    );
+
+    expect(
+      RunDetailSchema.parse({
+        id: "run_123",
+        outcomeId: "outcome_123",
+        planId: "plan_outcome_123",
+        triggerMessageId: "msg_123",
+        status: "queued",
+        createdAt: "2026-03-11T00:05:00.000Z",
+        updatedAt: "2026-03-11T00:05:00.000Z",
+        steps: []
+      })
+    ).toEqual(
+      expect.objectContaining({
+        triggerMessageId: "msg_123"
+      })
+    );
+  });
 });

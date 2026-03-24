@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PlanSchema, RunDetailSchema } from "./plan";
 
 export const OutcomeStatusSchema = z.enum([
   "draft",
@@ -37,6 +38,14 @@ export const CreateOutcomeRequestSchema = z.object({
   source: OutcomeSourceSchema
 });
 
+export const StartOutcomeRequestSchema = CreateOutcomeRequestSchema.extend({
+  triggerMessageId: z.string().min(1).optional()
+});
+
+export const ContinueOutcomeRequestSchema = StartOutcomeRequestSchema.extend({
+  outcomeId: z.string().min(1).optional()
+});
+
 export const OutcomeListResponseSchema = z.object({
   outcomes: z.array(OutcomeSchema)
 });
@@ -46,11 +55,23 @@ export const CreateOutcomeMessageRequestSchema = z.object({
   content: z.string().min(1)
 });
 
+export const OutcomeTurnResponseSchema = z.object({
+  outcome: OutcomeSchema,
+  triggerMessageId: z.string().min(1).optional(),
+  plan: PlanSchema.nullable().optional(),
+  run: RunDetailSchema.nullable().optional()
+});
+
 export type OutcomeStatus = z.infer<typeof OutcomeStatusSchema>;
 export type OutcomeSource = z.infer<typeof OutcomeSourceSchema>;
 export type Outcome = z.infer<typeof OutcomeSchema>;
 export type CreateOutcomeRequest = z.infer<typeof CreateOutcomeRequestSchema>;
+export type StartOutcomeRequest = z.infer<typeof StartOutcomeRequestSchema>;
+export type ContinueOutcomeRequest = z.infer<
+  typeof ContinueOutcomeRequestSchema
+>;
 export type OutcomeListResponse = z.infer<typeof OutcomeListResponseSchema>;
 export type CreateOutcomeMessageRequest = z.infer<
   typeof CreateOutcomeMessageRequestSchema
 >;
+export type OutcomeTurnResponse = z.infer<typeof OutcomeTurnResponseSchema>;

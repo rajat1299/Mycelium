@@ -49,6 +49,7 @@ export const PlanEdgeSchema = z.object({
 export const PlanSchema = z.object({
   id: z.string(),
   outcomeId: z.string(),
+  triggerMessageId: z.string().min(1).optional(),
   status: PlanStatusSchema,
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -89,6 +90,7 @@ export const RunSchema = z
     id: z.string(),
     outcomeId: z.string(),
     planId: z.string(),
+    triggerMessageId: z.string().min(1).optional(),
     status: RunStatusSchema,
     latestCheckpointId: z.string().nullable().optional(),
     resumable: z.boolean().optional(),
