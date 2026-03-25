@@ -971,7 +971,7 @@ function AssistantNarrativeBlock({
 
 /* ── Streaming Text ────────────────────────────────────────────────── */
 
-function StreamingText({
+export function StreamingText({
   text,
   charInterval = 18
 }: {
@@ -980,26 +980,64 @@ function StreamingText({
 }) {
   const [charCount, setCharCount] = useState(0);
   const frameRef = useRef(0);
-  const startRef = useRef(0);
+  const progressRef = useRef(0);
+  const lastTimestampRef = useRef<number | null>(null);
+  const previousTextRef = useRef("");
+  const charCountRef = useRef(0);
+  charCountRef.current = charCount;
 
   useEffect(() => {
-    setCharCount(0);
-    startRef.current = 0;
+    const previousText = previousTextRef.current;
+    const isAppendedText =
+      text.length >= previousText.length && text.startsWith(previousText);
+
+    if (isAppendedText) {
+      const currentCharCount = charCountRef.current;
+      const cappedCount = Math.min(currentCharCount, text.length);
+
+      progressRef.current = cappedCount;
+      charCountRef.current = cappedCount;
+
+      if (cappedCount !== currentCharCount) {
+        setCharCount(cappedCount);
+      }
+    } else {
+      progressRef.current = 0;
+      charCountRef.current = 0;
+      setCharCount(0);
+    }
+
+    previousTextRef.current = text;
+    lastTimestampRef.current = null;
+    cancelAnimationFrame(frameRef.current);
 
     function step(timestamp: number) {
-      if (!startRef.current) startRef.current = timestamp;
-      const target = Math.min(
-        Math.floor((timestamp - startRef.current) / charInterval),
-        text.length
-      );
-      setCharCount(target);
+      if (lastTimestampRef.current === null) {
+        lastTimestampRef.current = timestamp;
+      } else {
+        progressRef.current = Math.min(
+          progressRef.current + (timestamp - lastTimestampRef.current) / charInterval,
+          text.length
+        );
+        lastTimestampRef.current = timestamp;
+      }
+
+      const target = Math.min(Math.floor(progressRef.current), text.length);
+
+      if (target !== charCountRef.current) {
+        charCountRef.current = target;
+        setCharCount(target);
+      }
 
       if (target < text.length) {
         frameRef.current = requestAnimationFrame(step);
       }
     }
 
-    frameRef.current = requestAnimationFrame(step);
+    if (charCountRef.current < text.length) {
+      frameRef.current = requestAnimationFrame(step);
+    }
+
     return () => cancelAnimationFrame(frameRef.current);
   }, [text, charInterval]);
 

@@ -2,7 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { OutcomeConversation } from "./outcome-conversation";
+import { OutcomeConversation, StreamingText } from "./outcome-conversation";
 
 const eventStream = vi.hoisted(() => ({
   handlers: new Set<(event: any) => void>()
@@ -35,6 +35,97 @@ function expectTextOrder(earlier: string, later: string) {
     earlierNode.compareDocumentPosition(laterNode) &
       Node.DOCUMENT_POSITION_FOLLOWING
   ).toBeTruthy();
+}
+
+function emitOutcomeEvent(event: any) {
+  act(() => {
+    for (const handler of eventStream.handlers) {
+      handler({
+        outcomeId: "outcome_123",
+        ...event
+      });
+    }
+  });
+}
+
+function hasNodeByExactText(text: string) {
+  return (
+    screen.queryAllByText((_, node) => {
+      return node !== null && node.textContent === text;
+    }).length > 0
+  );
+}
+
+function getLeafNodeByPrefix(prefix: string) {
+  return screen.getByText((_, node) => {
+    if (!node) {
+      return false;
+    }
+
+    const text = node.textContent ?? "";
+
+    if (!text.startsWith(prefix)) {
+      return false;
+    }
+
+    return Array.from(node.children).every((child) => child.textContent !== text);
+  });
+}
+
+function renderRunningStepConversation() {
+  return render(
+    <OutcomeConversation
+      outcomeId="outcome_123"
+      outcomePrompt="Draft the weekly update."
+      outcomeSource="web"
+      initialPlan={{
+        id: "plan_outcome_123",
+        outcomeId: "outcome_123",
+        triggerMessageId: "msg_123",
+        status: "draft",
+        createdAt: "2026-03-19T00:00:00.000Z",
+        updatedAt: "2026-03-19T00:00:00.000Z",
+        nodes: [
+          {
+            id: "node_analyze",
+            kind: "root",
+            title: "Analyze outcome",
+            capability: "reasoning",
+            position: 0
+          }
+        ],
+        edges: []
+      }}
+      initialRun={{
+        id: "run_123",
+        outcomeId: "outcome_123",
+        planId: "plan_outcome_123",
+        triggerMessageId: "msg_123",
+        status: "running",
+        createdAt: "2026-03-19T00:01:00.000Z",
+        updatedAt: "2026-03-19T00:01:00.000Z",
+        steps: [
+          {
+            id: "step_1",
+            runId: "run_123",
+            planNodeId: "node_analyze",
+            title: "Analyze outcome",
+            kind: "root",
+            capability: "reasoning",
+            status: "running",
+            position: 0,
+            createdAt: "2026-03-19T00:01:00.000Z",
+            updatedAt: "2026-03-19T00:01:00.000Z"
+          }
+        ]
+      }}
+      initialArtifacts={[]}
+      initialLogs={[]}
+      initialAssistantMessages={[]}
+      initialMessages={[]}
+      initialPendingApprovals={[]}
+    />
+  );
 }
 
 describe("OutcomeConversation", () => {
@@ -1360,5 +1451,86 @@ describe("OutcomeConversation", () => {
       "Now make it shorter for the district cabinet.",
       "I’m trimming it down even further for cabinet review."
     );
+  });
+
+  it("continues step streaming from the current visible progress when new text appends", async () => {
+    vi.useFakeTimers();
+
+    try {
+      renderRunningStepConversation();
+      await act(async () => {});
+
+      emitOutcomeEvent({
+        type: "run.log",
+        data: {
+          runId: "run_123",
+          stepId: "step_1",
+          stepTitle: "Analyze outcome",
+          level: "info",
+          message: "Loading context",
+          createdAt: "2026-03-19T00:01:10.000Z"
+        }
+      });
+
+      await act(async () => {});
+
+      act(() => {
+        vi.advanceTimersByTime(112);
+      });
+
+      const initialVisiblePrefix = getLeafNodeByPrefix("Load").textContent ?? "";
+      expect(initialVisiblePrefix.length).toBeGreaterThan(0);
+
+      emitOutcomeEvent({
+        type: "run.log",
+        data: {
+          runId: "run_123",
+          stepId: "step_1",
+          stepTitle: "Analyze outcome",
+          level: "info",
+          message: "Loading context from workspace",
+          createdAt: "2026-03-19T00:01:11.000Z"
+        }
+      });
+
+      await act(async () => {});
+
+      expect(hasNodeByExactText(initialVisiblePrefix)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("restarts StreamingText from the beginning when the text is replaced instead of appended", () => {
+    vi.useFakeTimers();
+
+    try {
+      const rendered = render(
+        <StreamingText text="Loading context" charInterval={14} />
+      );
+
+      act(() => {
+        vi.advanceTimersByTime(112);
+      });
+
+      const initialVisiblePrefix = getLeafNodeByPrefix("Load").textContent ?? "";
+      expect(initialVisiblePrefix.length).toBeGreaterThan(0);
+
+      act(() => {
+        rendered.rerender(
+          <StreamingText text="Searching memory" charInterval={14} />
+        );
+      });
+
+      expect(hasNodeByExactText(initialVisiblePrefix)).toBe(false);
+
+      act(() => {
+        vi.advanceTimersByTime(252);
+      });
+
+      expect(getLeafNodeByPrefix("Search")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
