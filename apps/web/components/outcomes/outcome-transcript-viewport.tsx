@@ -44,17 +44,21 @@ function scrollElementToBottom(
 
 type OutcomeTranscriptViewportProps = {
   children: ReactNode;
+  composer?: ReactNode;
 };
 
 export function OutcomeTranscriptViewport({
-  children
+  children,
+  composer
 }: OutcomeTranscriptViewportProps) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const scrollTimeoutRef = useRef<number | null>(null);
   const isNearBottomRef = useRef(true);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [bottomInset, setBottomInset] = useState(0);
 
   const smoothScrollBehavior = useMemo<ScrollBehavior>(
     () => (prefersReducedMotion() ? "auto" : "smooth"),
@@ -143,11 +147,38 @@ export function OutcomeTranscriptViewport({
     };
   }, []);
 
+  useEffect(() => {
+    const overlay = overlayRef.current;
+
+    if (!composer || !overlay || typeof ResizeObserver === "undefined") {
+      setBottomInset(0);
+      return;
+    }
+
+    const syncOverlayLayout = () => {
+      setBottomInset(overlay.offsetHeight);
+      scheduleScrollToBottom({ behavior: "auto" });
+    };
+
+    syncOverlayLayout();
+
+    const observer = new ResizeObserver(() => {
+      syncOverlayLayout();
+    });
+
+    observer.observe(overlay);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [composer]);
+
   return (
     <div className="relative flex min-h-0 flex-1">
       <div
         ref={scrollContainerRef}
-        className="outcome-transcript-scroll flex-1 overflow-y-auto custom-scrollbar scroll-smooth px-4 pb-44 sm:px-6 lg:px-8"
+        className="outcome-transcript-scroll flex-1 overflow-y-auto custom-scrollbar scroll-smooth px-4 sm:px-6 lg:px-8"
+        style={bottomInset > 0 ? { paddingBottom: `${bottomInset}px` } : undefined}
         onScroll={(event) => {
           const container = event.currentTarget;
           const nearBottom = isNearBottom(container);
@@ -162,18 +193,32 @@ export function OutcomeTranscriptViewport({
         </div>
       </div>
 
-      {showJumpToLatest ? (
-        <button
-          type="button"
-          aria-label="Jump to latest"
-          className="absolute bottom-36 left-1/2 z-20 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full border border-panel-line/70 bg-surface-elevated/90 text-muted shadow-card backdrop-blur-sm transition-all duration-150 hover:bg-surface-elevated hover:text-ink active:scale-95"
-          onClick={() => {
-            syncDetachedState(true);
-            scheduleScrollToBottom({ force: true, behavior: smoothScrollBehavior });
-          }}
+      {composer ? (
+        <div
+          ref={overlayRef}
+          data-testid="outcome-transcript-overlay"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-shell via-shell/95 to-transparent px-4 pb-4 pt-16"
         >
-          <ChevronDown className="h-4 w-4" />
-        </button>
+          <div className="mx-auto flex max-w-3xl flex-col gap-3">
+            {showJumpToLatest ? (
+              <div className="pointer-events-auto flex justify-center">
+                <button
+                  type="button"
+                  aria-label="Jump to latest"
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-panel-line/70 bg-surface-elevated/90 text-muted shadow-card backdrop-blur-sm transition-all duration-150 hover:bg-surface-elevated hover:text-ink active:scale-95"
+                  onClick={() => {
+                    syncDetachedState(true);
+                    scheduleScrollToBottom({ force: true, behavior: smoothScrollBehavior });
+                  }}
+                >
+                  <ChevronDown className="h-4 w-4" />
+                </button>
+              </div>
+            ) : null}
+
+            <div className="pointer-events-auto">{composer}</div>
+          </div>
+        </div>
       ) : null}
     </div>
   );

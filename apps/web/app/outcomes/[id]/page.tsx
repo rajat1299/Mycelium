@@ -152,7 +152,20 @@ export default async function OutcomeDetailPage({
         </header>
 
         {/* ── Execution Feed ──────────────────────────────────────── */}
-        <OutcomeTranscriptViewport>
+        <OutcomeTranscriptViewport
+          composer={
+            <FollowUpInput
+              action={appendMessageAction}
+              hasConversation={
+                threadSnapshot.messages.length > 0 ||
+                threadSnapshot.assistantMessages.length > 0 ||
+                threadSnapshot.runs.length > 0 ||
+                threadSnapshot.artifacts.length > 0
+              }
+              disabled={isActiveOutcomeStatus(outcome.status)}
+            />
+          }
+        >
           {bootstrapState === "plan" ? (
             <p className="rounded-xl border border-amber-300/40 bg-amber-50/40 px-4 py-3 text-sm text-amber-800">
               Automatic plan generation failed before execution began.
@@ -190,18 +203,6 @@ export default async function OutcomeDetailPage({
             initialPendingApprovals={threadSnapshot.pendingApprovals}
           />
         </OutcomeTranscriptViewport>
-
-        {/* ── Sticky follow-up input with gradient fade ───────────── */}
-        <FollowUpInput
-          action={appendMessageAction}
-          hasConversation={
-            threadSnapshot.messages.length > 0 ||
-            threadSnapshot.assistantMessages.length > 0 ||
-            threadSnapshot.runs.length > 0 ||
-            threadSnapshot.artifacts.length > 0
-          }
-          disabled={isActiveOutcomeStatus(outcome.status)}
-        />
       </section>
     </main>
   );

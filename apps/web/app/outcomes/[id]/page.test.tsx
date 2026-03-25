@@ -163,10 +163,17 @@ vi.mock("../../../components/outcomes/follow-up-input", () => ({
 
 vi.mock("../../../components/outcomes/outcome-transcript-viewport", () => ({
   OutcomeTranscriptViewport: ({
-    children
+    children,
+    composer
   }: {
     children: React.ReactNode;
-  }) => <div data-testid="outcome-transcript-viewport">{children}</div>
+    composer?: React.ReactNode;
+  }) => (
+    <div data-testid="outcome-transcript-viewport">
+      <div data-testid="outcome-transcript-content">{children}</div>
+      <div data-testid="outcome-transcript-overlay">{composer}</div>
+    </div>
+  )
 }));
 
 vi.mock("../../../components/outcomes/execution-console", () => ({

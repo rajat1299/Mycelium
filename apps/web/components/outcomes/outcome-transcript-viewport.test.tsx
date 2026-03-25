@@ -1,6 +1,13 @@
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OutcomeTranscriptViewport } from "./outcome-transcript-viewport";
 
@@ -153,7 +160,7 @@ describe("OutcomeTranscriptViewport", () => {
 
   it("auto-follows transcript growth while the user is near the bottom", () => {
     const { container } = render(
-      <OutcomeTranscriptViewport>
+      <OutcomeTranscriptViewport composer={<div data-testid="composer-shell" />}>
         <div style={{ height: 200 }}>Turn one</div>
       </OutcomeTranscriptViewport>
     );
@@ -187,7 +194,7 @@ describe("OutcomeTranscriptViewport", () => {
 
   it("does not force-scroll when the user has detached from the live bottom", () => {
     const { container } = render(
-      <OutcomeTranscriptViewport>
+      <OutcomeTranscriptViewport composer={<div data-testid="composer-shell" />}>
         <div style={{ height: 200 }}>Turn one</div>
       </OutcomeTranscriptViewport>
     );
@@ -218,7 +225,7 @@ describe("OutcomeTranscriptViewport", () => {
 
   it("shows the jump-to-latest control while detached and hides it at the live bottom", () => {
     const { container } = render(
-      <OutcomeTranscriptViewport>
+      <OutcomeTranscriptViewport composer={<div data-testid="composer-shell" />}>
         <div style={{ height: 200 }}>Turn one</div>
       </OutcomeTranscriptViewport>
     );
@@ -243,7 +250,7 @@ describe("OutcomeTranscriptViewport", () => {
 
   it("restores live follow mode when jump-to-latest is clicked", () => {
     const { container } = render(
-      <OutcomeTranscriptViewport>
+      <OutcomeTranscriptViewport composer={<div data-testid="composer-shell" />}>
         <div style={{ height: 200 }}>Turn one</div>
       </OutcomeTranscriptViewport>
     );
@@ -291,7 +298,7 @@ describe("OutcomeTranscriptViewport", () => {
     });
 
     const { container } = render(
-      <OutcomeTranscriptViewport>
+      <OutcomeTranscriptViewport composer={<div data-testid="composer-shell" />}>
         <div style={{ height: 200 }}>Turn one</div>
       </OutcomeTranscriptViewport>
     );
@@ -312,6 +319,50 @@ describe("OutcomeTranscriptViewport", () => {
     expect(metrics.scrollTo).toHaveBeenCalledWith({
       top: 2_000,
       behavior: "auto"
+    });
+  });
+
+  it("renders the jump control inside the composer overlay and sizes transcript padding from the overlay height", () => {
+    const { container } = render(
+      <OutcomeTranscriptViewport composer={<div data-testid="composer-shell" />}>
+        <div style={{ height: 200 }}>Turn one</div>
+      </OutcomeTranscriptViewport>
+    );
+
+    const scrollContainer = container.querySelector(
+      ".outcome-transcript-scroll"
+    ) as HTMLElement;
+    const overlay = screen.getByTestId("outcome-transcript-overlay");
+    const metrics = configureScrollableMetrics(scrollContainer, {
+      clientHeight: 400,
+      scrollHeight: 2_000,
+      scrollTop: 900
+    });
+
+    Object.defineProperty(overlay, "offsetHeight", {
+      configurable: true,
+      get: () => 264
+    });
+
+    act(() => {
+      triggerResize(overlay);
+    });
+
+    expect(scrollContainer.style.paddingBottom).toBe("264px");
+
+    metrics.setMetrics({ scrollTop: 900 });
+    fireEvent.scroll(scrollContainer);
+
+    const jumpButton = within(overlay).getByRole("button", { name: /jump to latest/i });
+    expect(within(overlay).getByTestId("composer-shell")).toBeInTheDocument();
+    expect(jumpButton).toBeInTheDocument();
+
+    metrics.scrollTo.mockClear();
+    fireEvent.click(jumpButton);
+
+    expect(metrics.scrollTo).toHaveBeenCalledWith({
+      top: 2_000,
+      behavior: "smooth"
     });
   });
 });
