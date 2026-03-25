@@ -1,6 +1,13 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  startTransition,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import type {
   Approval,
   AssistantMessageSnapshot,
@@ -33,13 +40,16 @@ import {
   appendAssistantMessageDelta,
   appendMessage,
   buildInitialOutcomeConversationState,
-  buildOutcomeFeed,
+  buildOutcomeThreadTurns,
   completeAssistantMessage,
   displayWorkspacePath,
   formatByteSize,
   type OutcomeConversationState,
+  type OutcomeFeedItem,
+  type OutcomeThreadTurn,
   startAssistantMessage,
   type StepCardData,
+  sortSteps,
   upsertArtifact,
   upsertStep
 } from "./outcome-feed";
@@ -60,9 +70,202 @@ type OutcomeConversationProps = {
 };
 
 type OutcomeConversationViewState = {
-  pinnedRunId: string | null;
   conversation: OutcomeConversationState;
 };
+
+type OutcomeThreadState = NonNullable<OutcomeConversationState["thread"]>;
+type RunEventSnapshot = Omit<RunDetail, "steps"> & Partial<Pick<RunDetail, "steps">>;
+
+function seedThreadState(
+  conversation: OutcomeConversationState
+): OutcomeThreadState {
+  return {
+    isHydrated: conversation.thread?.isHydrated ?? false,
+    plans: conversation.thread?.plans ?? (conversation.plan ? [conversation.plan] : []),
+    runs: conversation.thread?.runs ?? (conversation.run ? [conversation.run] : [])
+  };
+}
+
+function mergeAssistantMessages(
+  current: AssistantMessageSnapshot[],
+  incoming: AssistantMessageSnapshot[]
+) {
+  const next = [...current];
+
+  for (const message of incoming) {
+    const index = next.findIndex((entry) => entry.id === message.id);
+
+    if (index >= 0) {
+      next[index] = message;
+      continue;
+    }
+
+    next.push(message);
+  }
+
+  return [...next].sort((left, right) => {
+    const createdDelta = left.createdAt.localeCompare(right.createdAt);
+
+    if (createdDelta !== 0) {
+      return createdDelta;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+}
+
+function mergePendingApprovals(current: Approval[], incoming: Approval[]) {
+  const next = [...current];
+
+  for (const approval of incoming) {
+    const index = next.findIndex((entry) => entry.id === approval.id);
+
+    if (index >= 0) {
+      next[index] = approval;
+      continue;
+    }
+
+    next.push(approval);
+  }
+
+  return [...next].sort((left, right) => left.requestedAt.localeCompare(right.requestedAt));
+}
+
+function mergeThreadPlans(current: Plan[], incoming: Plan[]) {
+  const next = [...current];
+
+  for (const plan of incoming) {
+    const index = next.findIndex((entry) => entry.id === plan.id);
+
+    if (index >= 0) {
+      next[index] = plan;
+      continue;
+    }
+
+    next.push(plan);
+  }
+
+  return [...next].sort((left, right) => {
+    const createdDelta = left.createdAt.localeCompare(right.createdAt);
+
+    if (createdDelta !== 0) {
+      return createdDelta;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+}
+
+function mergeThreadRuns(current: RunDetail[], incoming: RunDetail[]) {
+  const next = [...current];
+
+  for (const run of incoming) {
+    const index = next.findIndex((entry) => entry.id === run.id);
+
+    if (index >= 0) {
+      next[index] = {
+        ...run,
+        steps: sortSteps(run.steps)
+      };
+      continue;
+    }
+
+    next.push({
+      ...run,
+      steps: sortSteps(run.steps)
+    });
+  }
+
+  return [...next].sort((left, right) => {
+    const createdDelta = left.createdAt.localeCompare(right.createdAt);
+
+    if (createdDelta !== 0) {
+      return createdDelta;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+}
+
+function toRunDetail(incoming: RunEventSnapshot, fallbackSteps: RunStep[] = []): RunDetail {
+  return {
+    ...incoming,
+    steps: sortSteps(Array.isArray(incoming.steps) ? incoming.steps : fallbackSteps)
+  };
+}
+
+function upsertLiveRun(current: RunDetail[], incoming: RunEventSnapshot) {
+  const next = [...current];
+  const index = next.findIndex((entry) => entry.id === incoming.id);
+
+  const mergedRun =
+    index >= 0
+      ? toRunDetail(incoming, next[index]?.steps ?? [])
+      : toRunDetail(incoming);
+
+  if (index >= 0) {
+    next[index] = mergedRun;
+  } else {
+    next.push(mergedRun);
+  }
+
+  return mergeThreadRuns([], next);
+}
+
+function upsertRunStepInThread(current: RunDetail[], incoming: RunStep) {
+  return current.map((run) =>
+    run.id === incoming.runId
+      ? {
+          ...run,
+          steps: upsertStep(run.steps, incoming)
+        }
+      : run
+  );
+}
+
+function mergeConversationState(
+  current: OutcomeConversationState,
+  incoming: OutcomeConversationState
+): OutcomeConversationState {
+  const hasThread = Boolean(
+    current.thread ||
+      incoming.thread ||
+      (current.plan && incoming.plan && current.plan.id !== incoming.plan.id) ||
+      (current.run && incoming.run && current.run.id !== incoming.run.id)
+  );
+
+  return {
+    plan: incoming.plan ?? current.plan,
+    run: incoming.run ?? current.run,
+    artifacts: incoming.artifacts.reduce(upsertArtifact, current.artifacts),
+    logs: incoming.logs.reduce(appendLog, current.logs),
+    pendingApprovals: mergePendingApprovals(
+      current.pendingApprovals,
+      incoming.pendingApprovals
+    ),
+    messages: incoming.messages.reduce(appendMessage, current.messages),
+    assistantMessages: mergeAssistantMessages(
+      current.assistantMessages,
+      incoming.assistantMessages
+    ),
+    ...(hasThread
+      ? {
+          thread: {
+            isHydrated:
+              current.thread?.isHydrated ?? incoming.thread?.isHydrated ?? false,
+            plans: mergeThreadPlans(
+              current.thread?.plans ?? (current.plan ? [current.plan] : []),
+              incoming.thread?.plans ?? (incoming.plan ? [incoming.plan] : [])
+            ),
+            runs: mergeThreadRuns(
+              current.thread?.runs ?? (current.run ? [current.run] : []),
+              incoming.thread?.runs ?? (incoming.run ? [incoming.run] : [])
+            )
+          }
+        }
+      : {})
+  };
+}
 
 function buildInitialViewState(
   initialPlan: Plan | null,
@@ -73,22 +276,19 @@ function buildInitialViewState(
   initialMessages: MessageCreatedData[],
   initialPendingApprovals: Approval[]
 ): OutcomeConversationViewState {
-  return {
-    pinnedRunId: initialRun?.id ?? null,
-    conversation: buildInitialOutcomeConversationState(
-      initialPlan,
-      initialRun,
-      initialArtifacts,
-      initialLogs,
-      initialAssistantMessages,
-      initialMessages,
-      initialPendingApprovals
-    )
-  };
-}
+  const conversation = buildInitialOutcomeConversationState(
+    initialPlan,
+    initialRun,
+    initialArtifacts,
+    initialLogs,
+    initialAssistantMessages,
+    initialMessages,
+    initialPendingApprovals
+  );
 
-function resolveActiveRunId(state: OutcomeConversationViewState) {
-  return state.pinnedRunId ?? state.conversation.run?.id ?? null;
+  return {
+    conversation
+  };
 }
 
 function readErrorMessage(payload: unknown, action: "approve" | "reject") {
@@ -115,6 +315,35 @@ function formatStepTimestamp(step: RunStep) {
   if (minutes < 60) return `${time} \u00b7 ${minutes}m`;
   const hours = Math.floor(minutes / 60);
   return `${time} \u00b7 ${hours}h ${minutes % 60}m`;
+}
+
+function flattenTurnItems(turn: OutcomeThreadTurn): OutcomeFeedItem[] {
+  return [
+    ...(turn.promptItem ? [turn.promptItem] : []),
+    ...(turn.messageItem ? [turn.messageItem] : []),
+    ...(turn.leadItem ? [turn.leadItem] : []),
+    ...turn.planItems,
+    ...turn.bodyItems,
+    ...(turn.loadingItem ? [turn.loadingItem] : [])
+  ];
+}
+
+function resolveLatestTurnRun(
+  turn: OutcomeThreadTurn,
+  state: OutcomeConversationState
+) {
+  const runs = state.thread?.runs ?? (state.run ? [state.run] : []);
+  const turnRuns = runs.filter((run) => turn.runIds.includes(run.id));
+
+  return turnRuns.sort((left, right) => {
+    const createdDelta = left.createdAt.localeCompare(right.createdAt);
+
+    if (createdDelta !== 0) {
+      return createdDelta;
+    }
+
+    return left.id.localeCompare(right.id);
+  }).at(-1) ?? null;
 }
 
 /* ── Easing ─────────────────────────────────────────────────────────── */
@@ -147,24 +376,38 @@ export function OutcomeConversation({
     )
   );
   const [showFullPrompt, setShowFullPrompt] = useState(false);
+  const previousOutcomeIdRef = useRef(outcomeId);
 
   /* Keys present at first render — anything NOT in this set arrived via SSE */
   const mountKeysRef = useRef<Set<string> | null>(null);
 
   useEffect(() => {
     mountKeysRef.current = null;
-    setViewState(
-      buildInitialViewState(
-        initialPlan,
-        initialRun,
-        initialArtifacts,
-        initialLogs,
-        initialAssistantMessages,
-        initialMessages,
-        initialPendingApprovals
-      )
+    const nextState = buildInitialViewState(
+      initialPlan,
+      initialRun,
+      initialArtifacts,
+      initialLogs,
+      initialAssistantMessages,
+      initialMessages,
+      initialPendingApprovals
     );
+
+    setViewState((current) => {
+      if (previousOutcomeIdRef.current !== outcomeId) {
+        previousOutcomeIdRef.current = outcomeId;
+        return nextState;
+      }
+
+      return {
+        conversation: mergeConversationState(
+          current.conversation,
+          nextState.conversation
+        )
+      };
+    });
   }, [
+    outcomeId,
     initialPlan,
     initialRun,
     initialArtifacts,
@@ -178,23 +421,27 @@ export function OutcomeConversation({
     return subscribeToOutcomeEvents(outcomeId, (event) => {
       startTransition(() => {
         setViewState((current) => {
-          const activeRunId = resolveActiveRunId(current);
           const conversation = current.conversation;
 
           switch (event.type) {
             case "plan.created":
-              if (conversation.run && event.data.id !== conversation.run.planId) {
-                return current;
+              {
+                const thread = seedThreadState(conversation);
+
+                return {
+                  conversation: {
+                    ...conversation,
+                    plan: event.data,
+                    thread: {
+                      isHydrated: thread.isHydrated,
+                      plans: mergeThreadPlans(thread.plans, [event.data]),
+                      runs: thread.runs
+                    }
+                  }
+                };
               }
-              return {
-                ...current,
-                conversation: { ...conversation, plan: event.data }
-              };
             case "assistant.message.started":
-              if (activeRunId && activeRunId !== event.data.runId) return current;
               return {
-                ...current,
-                pinnedRunId: activeRunId ?? event.data.runId,
                 conversation: {
                   ...conversation,
                   assistantMessages: startAssistantMessage(
@@ -204,10 +451,7 @@ export function OutcomeConversation({
                 }
               };
             case "assistant.message.delta":
-              if (activeRunId && activeRunId !== event.data.runId) return current;
               return {
-                ...current,
-                pinnedRunId: activeRunId ?? event.data.runId,
                 conversation: {
                   ...conversation,
                   assistantMessages: appendAssistantMessageDelta(
@@ -217,10 +461,7 @@ export function OutcomeConversation({
                 }
               };
             case "assistant.message.completed":
-              if (activeRunId && activeRunId !== event.data.runId) return current;
               return {
-                ...current,
-                pinnedRunId: activeRunId ?? event.data.runId,
                 conversation: {
                   ...conversation,
                   assistantMessages: completeAssistantMessage(
@@ -230,82 +471,76 @@ export function OutcomeConversation({
                 }
               };
             case "run.created":
-              if (activeRunId && activeRunId !== event.data.id) return current;
-              return {
-                ...current,
-                pinnedRunId: activeRunId ?? event.data.id,
-                conversation: {
-                  ...conversation,
-                  run:
-                    conversation.run && conversation.run.id === event.data.id
-                      ? { ...conversation.run, ...event.data }
-                      : {
-                          ...event.data,
-                          steps:
-                            conversation.run?.id === event.data.id
-                              ? conversation.run.steps
-                              : []
-                        }
-                }
-              };
-            case "run.updated":
-              if (
-                !conversation.run ||
-                activeRunId !== event.data.id ||
-                conversation.run.id !== event.data.id
-              ) {
-                return current;
-              }
-              return {
-                ...current,
-                conversation: {
-                  ...conversation,
-                  run: { ...conversation.run, ...event.data }
-                }
-              };
-            case "run.step.updated":
-              if (
-                !conversation.run ||
-                activeRunId !== event.data.runId ||
-                conversation.run.id !== event.data.runId
-              ) {
-                return current;
-              }
-              return {
-                ...current,
-                conversation: {
-                  ...conversation,
-                  run: {
-                    ...conversation.run,
-                    steps: upsertStep(conversation.run.steps, event.data)
+              {
+                const thread = seedThreadState(conversation);
+
+                return {
+                  conversation: {
+                    ...conversation,
+                    run: toRunDetail(
+                      event.data,
+                      conversation.run?.id === event.data.id
+                        ? conversation.run.steps
+                        : []
+                    ),
+                    thread: {
+                      isHydrated: thread.isHydrated,
+                      plans: thread.plans,
+                      runs: upsertLiveRun(thread.runs, event.data)
+                    }
                   }
-                }
-              };
-            case "run.log":
-              if (
-                !conversation.run ||
-                activeRunId !== event.data.runId ||
-                conversation.run.id !== event.data.runId
-              ) {
-                return current;
+                };
               }
+            case "run.updated":
+              {
+                const thread = seedThreadState(conversation);
+
+                return {
+                  conversation: {
+                    ...conversation,
+                    run:
+                      conversation.run?.id === event.data.id
+                        ? toRunDetail(event.data, conversation.run.steps)
+                        : conversation.run,
+                    thread: {
+                      isHydrated: thread.isHydrated,
+                      plans: thread.plans,
+                      runs: upsertLiveRun(thread.runs, event.data)
+                    }
+                  }
+                };
+              }
+            case "run.step.updated":
+              {
+                const thread = seedThreadState(conversation);
+
+                return {
+                  conversation: {
+                    ...conversation,
+                    run:
+                      conversation.run?.id === event.data.runId
+                        ? {
+                            ...conversation.run,
+                            steps: upsertStep(conversation.run.steps, event.data)
+                          }
+                        : conversation.run,
+                    thread: {
+                      isHydrated: thread.isHydrated,
+                      plans: thread.plans,
+                      runs: upsertRunStepInThread(thread.runs, event.data)
+                    }
+                  }
+                };
+              }
+            case "run.log":
               return {
-                ...current,
                 conversation: {
                   ...conversation,
                   logs: appendLog(conversation.logs, event.data)
                 }
               };
             case "artifact.created":
-              if (
-                !conversation.run ||
-                activeRunId !== event.data.runId ||
-                conversation.run.id !== event.data.runId
-              ) {
-                return current;
-              }
               return {
-                ...current,
                 conversation: {
                   ...conversation,
                   artifacts: upsertArtifact(conversation.artifacts, event.data)
@@ -313,7 +548,6 @@ export function OutcomeConversation({
               };
             case "approval.requested":
               return {
-                ...current,
                 conversation: {
                   ...conversation,
                   pendingApprovals: conversation.pendingApprovals.some(
@@ -327,7 +561,6 @@ export function OutcomeConversation({
               };
             case "approval.resolved":
               return {
-                ...current,
                 conversation: {
                   ...conversation,
                   pendingApprovals: conversation.pendingApprovals.filter(
@@ -337,7 +570,6 @@ export function OutcomeConversation({
               };
             case "message.created":
               return {
-                ...current,
                 conversation: {
                   ...conversation,
                   messages: appendMessage(conversation.messages, event.data)
@@ -359,188 +591,209 @@ export function OutcomeConversation({
       : `${outcomePrompt.slice(0, 280).trimEnd()}\u2026`;
 
   const state = viewState.conversation;
-  const isLive = !state.run || ["running", "queued", "blocked"].includes(state.run.status);
-
-  const feedItems = useMemo(() => {
-    return buildOutcomeFeed({
+  const threadTurns = useMemo(() => {
+    return buildOutcomeThreadTurns({
       outcomePrompt,
       outcomeSource,
       state
     });
   }, [outcomePrompt, outcomeSource, state]);
+  const flattenedTurnItems = useMemo(
+    () => threadTurns.flatMap((turn) => flattenTurnItems(turn)),
+    [threadTurns]
+  );
+  const itemIndexByKey = useMemo(
+    () =>
+      new Map(flattenedTurnItems.map((item, index) => [item.key, index])),
+    [flattenedTurnItems]
+  );
 
   /* Snapshot on first render */
   if (mountKeysRef.current === null) {
-    mountKeysRef.current = new Set(feedItems.map((item) => item.key));
+    mountKeysRef.current = new Set(flattenedTurnItems.map((item) => item.key));
   }
 
   /* ── Render ─────────────────────────────────────────────────── */
 
   return (
     <div className="flex flex-col gap-6">
-      {feedItems.map((item, index) => {
-        const isFromSSE = !(mountKeysRef.current?.has(item.key) ?? true);
-        const delay = isFromSSE ? 0 : Math.min(index * 0.06, 0.5);
+      {threadTurns.map((turn) => {
+        const turnItems = flattenTurnItems(turn);
+        const latestTurnRun = resolveLatestTurnRun(turn, state);
+        const isTurnLive =
+          latestTurnRun !== null &&
+          ["running", "queued", "blocked"].includes(latestTurnRun.status);
 
-        switch (item.type) {
-          case "prompt":
-            return (
-              <motion.div
-                key={item.key}
-                initial={{ opacity: 0, x: 12, filter: "blur(4px)" }}
-                animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
-                transition={{ duration: 0.4, ease }}
-                className="flex justify-end"
-              >
-                <div className="max-w-[85%] rounded-2xl rounded-br-lg bg-accent-soft px-5 py-3.5">
-                  <p className="text-[15px] leading-relaxed text-ink whitespace-pre-wrap [text-wrap:pretty]">
-                    {promptPreview}
-                  </p>
-                  {outcomePrompt.length > 280 && (
-                    <button
-                      type="button"
-                      onClick={() => setShowFullPrompt((c) => !c)}
-                      className="mt-2 flex items-center gap-1 text-xs font-medium text-muted transition-colors hover:text-ink"
+        return (
+          <Fragment key={turn.key}>
+            {turnItems.map((item) => {
+              const isFromSSE = !(mountKeysRef.current?.has(item.key) ?? true);
+              const delay = isFromSSE
+                ? 0
+                : Math.min((itemIndexByKey.get(item.key) ?? 0) * 0.06, 0.5);
+
+              switch (item.type) {
+                case "prompt":
+                  return (
+                    <motion.div
+                      key={item.key}
+                      initial={{ opacity: 0, x: 12, filter: "blur(4px)" }}
+                      animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+                      transition={{ duration: 0.4, ease }}
+                      className="flex justify-end"
                     >
-                      {showFullPrompt ? "Show less" : "Show more"}
-                      <ChevronDown
-                        className={cn(
-                          "h-3 w-3 transition-transform duration-200",
-                          showFullPrompt && "rotate-180"
+                      <div className="max-w-[85%] rounded-2xl rounded-br-lg bg-accent-soft px-5 py-3.5">
+                        <p className="text-[15px] leading-relaxed text-ink whitespace-pre-wrap [text-wrap:pretty]">
+                          {promptPreview}
+                        </p>
+                        {outcomePrompt.length > 280 && (
+                          <button
+                            type="button"
+                            onClick={() => setShowFullPrompt((c) => !c)}
+                            className="mt-2 flex items-center gap-1 text-xs font-medium text-muted transition-colors hover:text-ink"
+                          >
+                            {showFullPrompt ? "Show less" : "Show more"}
+                            <ChevronDown
+                              className={cn(
+                                "h-3 w-3 transition-transform duration-200",
+                                showFullPrompt && "rotate-180"
+                              )}
+                            />
+                          </button>
                         )}
-                      />
-                    </button>
-                  )}
-                </div>
-              </motion.div>
-            );
+                      </div>
+                    </motion.div>
+                  );
 
-          case "intent":
-            return (
-              <motion.div
-                key={item.key}
-                initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                transition={{ duration: 0.5, ease, delay }}
-              >
-                <p className="font-serif text-lg leading-[1.65] text-ink sm:text-xl [text-wrap:pretty]">
-                  {isLive && isFromSSE ? (
-                    <StreamingText text={item.message} />
-                  ) : (
-                    item.message
-                  )}
-                </p>
-              </motion.div>
-            );
-
-          case "assistant-message":
-            return (
-              <motion.div
-                key={item.key}
-                initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                transition={{ duration: 0.5, ease, delay }}
-              >
-                <AssistantNarrativeBlock message={item.message} />
-              </motion.div>
-            );
-
-          case "plan":
-            return (
-              <ActionGroup
-                key={item.key}
-                title={item.title}
-                items={item.items}
-                delay={delay}
-              />
-            );
-
-          case "task":
-            return (
-              <SubtaskOutputCard
-                key={item.key}
-                data={item.data}
-                delay={delay}
-              />
-            );
-
-          case "artifact-delivery":
-            return (
-              <ArtifactDeliveryCard
-                key={item.key}
-                title={item.title}
-                workspacePath={item.workspacePath}
-                artifact={item.artifact}
-                step={item.step}
-                delay={delay}
-              />
-            );
-
-          case "delivery-note":
-            return (
-              <motion.div
-                key={item.key}
-                initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                transition={{ duration: 0.5, ease, delay }}
-              >
-                <div className="prose-feed">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {item.message}
-                  </ReactMarkdown>
-                </div>
-              </motion.div>
-            );
-
-          case "approval":
-            return (
-              <InlineApprovalCard
-                key={item.key}
-                approval={item.approval}
-                artifacts={item.artifacts}
-              />
-            );
-
-          case "message":
-            return (
-              <motion.div
-                key={item.key}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.35, ease }}
-              >
-                {item.message.role === "user" ? (
-                  <div className="flex justify-end">
-                    <div className="max-w-[85%] rounded-2xl rounded-br-lg bg-accent-soft px-5 py-3.5">
-                      <p className="text-[15px] leading-relaxed text-ink whitespace-pre-wrap [text-wrap:pretty]">
-                        {item.message.content}
+                case "intent":
+                  return (
+                    <motion.div
+                      key={item.key}
+                      initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
+                      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                      transition={{ duration: 0.5, ease, delay }}
+                    >
+                      <p className="font-serif text-lg leading-[1.65] text-ink sm:text-xl [text-wrap:pretty]">
+                        {isTurnLive && isFromSSE ? (
+                          <StreamingText text={item.message} />
+                        ) : (
+                          item.message
+                        )}
                       </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="prose-feed">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {item.message.content}
-                    </ReactMarkdown>
-                  </div>
-                )}
-              </motion.div>
-            );
+                    </motion.div>
+                  );
 
-          case "loading":
-            return (
-              <motion.div
-                key={item.key}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.3, ease }}
-                className="flex items-center gap-2 py-6 text-sm text-muted"
-              >
-                <Loader2 className="h-4 w-4 animate-spin text-accent" />
-                <span>Preparing steps&hellip;</span>
-              </motion.div>
-            );
-        }
+                case "assistant-message":
+                  return (
+                    <motion.div
+                      key={item.key}
+                      initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
+                      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                      transition={{ duration: 0.5, ease, delay }}
+                    >
+                      <AssistantNarrativeBlock message={item.message} />
+                    </motion.div>
+                  );
+
+                case "plan":
+                  return (
+                    <ActionGroup
+                      key={item.key}
+                      title={item.title}
+                      items={item.items}
+                      delay={delay}
+                    />
+                  );
+
+                case "task":
+                  return (
+                    <SubtaskOutputCard
+                      key={item.key}
+                      data={item.data}
+                      delay={delay}
+                    />
+                  );
+
+                case "artifact-delivery":
+                  return (
+                    <ArtifactDeliveryCard
+                      key={item.key}
+                      title={item.title}
+                      workspacePath={item.workspacePath}
+                      artifact={item.artifact}
+                      step={item.step}
+                      delay={delay}
+                    />
+                  );
+
+                case "delivery-note":
+                  return (
+                    <motion.div
+                      key={item.key}
+                      initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
+                      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                      transition={{ duration: 0.5, ease, delay }}
+                    >
+                      <div className="prose-feed">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {item.message}
+                        </ReactMarkdown>
+                      </div>
+                    </motion.div>
+                  );
+
+                case "approval":
+                  return (
+                    <InlineApprovalCard
+                      key={item.key}
+                      approval={item.approval}
+                      artifacts={item.artifacts}
+                    />
+                  );
+
+                case "message":
+                  return (
+                    <motion.div
+                      key={item.key}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.35, ease }}
+                    >
+                      {item.message.role === "user" ? (
+                        <div className="flex justify-end">
+                          <div className="max-w-[85%] rounded-2xl rounded-br-lg bg-accent-soft px-5 py-3.5">
+                            <p className="text-[15px] leading-relaxed text-ink whitespace-pre-wrap [text-wrap:pretty]">
+                              {item.message.content}
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="prose-feed">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {item.message.content}
+                          </ReactMarkdown>
+                        </div>
+                      )}
+                    </motion.div>
+                  );
+
+                case "loading":
+                  return (
+                    <motion.div
+                      key={item.key}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.3, ease }}
+                      className="flex items-center gap-2 py-6 text-sm text-muted"
+                    >
+                      <Loader2 className="h-4 w-4 animate-spin text-accent" />
+                      <span>Preparing steps&hellip;</span>
+                    </motion.div>
+                  );
+              }
+            })}
+          </Fragment>
+        );
       })}
     </div>
   );

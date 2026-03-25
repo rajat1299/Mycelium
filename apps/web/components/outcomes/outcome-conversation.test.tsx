@@ -27,6 +27,16 @@ afterEach(() => {
   eventStream.handlers.clear();
 });
 
+function expectTextOrder(earlier: string, later: string) {
+  const earlierNode = screen.getByText(earlier);
+  const laterNode = screen.getByText(later);
+
+  expect(
+    earlierNode.compareDocumentPosition(laterNode) &
+      Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy();
+}
+
 describe("OutcomeConversation", () => {
   beforeEach(() => {
     eventStream.handlers.clear();
@@ -606,7 +616,7 @@ describe("OutcomeConversation", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("ignores assistant and run events for a different run while viewing a historical run", () => {
+  it("renders follow-up run events as a later thread turn in chronological order", () => {
     render(
       <OutcomeConversation
         outcomeId="outcome_123"
@@ -696,6 +706,17 @@ describe("OutcomeConversation", () => {
       for (const handler of eventStream.handlers) {
         handler({
           outcomeId: "outcome_123",
+          type: "message.created",
+          data: {
+            id: "msg_456",
+            outcomeId: "outcome_123",
+            role: "user",
+            content: "Collect fresh research for the live follow-up run.",
+            createdAt: "2026-03-22T00:05:00.000Z"
+          }
+        });
+        handler({
+          outcomeId: "outcome_123",
           type: "plan.created",
           data: {
             id: "plan_outcome_456",
@@ -728,6 +749,22 @@ describe("OutcomeConversation", () => {
             createdAt: "2026-03-22T00:05:00.000Z",
             updatedAt: "2026-03-22T00:05:00.000Z",
             steps: []
+          }
+        });
+        handler({
+          outcomeId: "outcome_123",
+          type: "run.step.updated",
+          data: {
+            id: "step_collect",
+            runId: "run_456",
+            planNodeId: "node_collect",
+            title: "Collect fresh research",
+            kind: "root",
+            capability: "reasoning",
+            status: "running",
+            position: 0,
+            createdAt: "2026-03-22T00:05:00.500Z",
+            updatedAt: "2026-03-22T00:05:00.500Z"
           }
         });
         handler({
@@ -772,14 +809,24 @@ describe("OutcomeConversation", () => {
       screen.getByText("I archived the previous run and preserved the research trail.")
     ).toBeInTheDocument();
     expect(screen.getAllByText("Archive current findings").length).toBeGreaterThan(0);
-    expect(screen.queryByText("Collect fresh research")).not.toBeInTheDocument();
     expect(
-      screen.queryByText("I’m starting a new live run and collecting fresh research.")
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText("Preparing steps…")).not.toBeInTheDocument();
+      screen.getByText("Collect fresh research for the live follow-up run.")
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Collect fresh research").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText("I’m starting a new live run and collecting fresh research.")
+    ).toBeInTheDocument();
+    expectTextOrder(
+      "I archived the previous run and preserved the research trail.",
+      "Collect fresh research for the live follow-up run."
+    );
+    expectTextOrder(
+      "Collect fresh research for the live follow-up run.",
+      "I’m starting a new live run and collecting fresh research."
+    );
   });
 
-  it("renders a newly selected persisted running run as hydrated content instead of live streaming", () => {
+  it("appends a newly hydrated running turn without retyping older thread content", () => {
     const rendered = render(
       <OutcomeConversation
         outcomeId="outcome_123"
@@ -837,7 +884,7 @@ describe("OutcomeConversation", () => {
             {
               runId: "run_456",
               level: "info",
-              message: "Loading fresh persisted context for the selected run.",
+              message: "Read fresh persisted context for the selected run.",
               createdAt: "2026-03-22T00:05:05.000Z"
             }
           ]}
@@ -849,14 +896,18 @@ describe("OutcomeConversation", () => {
     });
 
     expect(
-      screen.queryByText("Historical persisted summary for the earlier run.")
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("Loading fresh persisted context for the selected run.")
+      screen.getByText("Historical persisted summary for the earlier run.")
     ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Read fresh persisted context for the selected run.")
+    ).toBeInTheDocument();
+    expectTextOrder(
+      "Historical persisted summary for the earlier run.",
+      "Read fresh persisted context for the selected run."
+    );
   });
 
-  it("replaces the prior run delivery with the new run acknowledgment after a follow-up run switch", () => {
+  it("preserves older turn content when a follow-up run arrives through refreshed props", () => {
     const rendered = render(
       <OutcomeConversation
         outcomeId="outcome_123"
@@ -950,12 +1001,129 @@ describe("OutcomeConversation", () => {
     });
 
     expect(
-      screen.queryByText("Here’s the first completed report with the full district rollout plan.")
-    ).not.toBeInTheDocument();
+      screen.getByText("Here’s the first completed report with the full district rollout plan.")
+    ).toBeInTheDocument();
+    expect(screen.getByText("Make it shorter for principals.")).toBeInTheDocument();
     expect(
       screen.getByText(
         "I’m tightening the report for school principals and focusing the research on implementation risks."
       )
     ).toBeInTheDocument();
+    expectTextOrder(
+      "Here’s the first completed report with the full district rollout plan.",
+      "Make it shorter for principals."
+    );
+    expectTextOrder(
+      "Make it shorter for principals.",
+      "I’m tightening the report for school principals and focusing the research on implementation risks."
+    );
+  });
+
+  it("keeps an older follow-up visible when a newer follow-up run is merged", () => {
+    const rendered = render(
+      <OutcomeConversation
+        outcomeId="outcome_123"
+        outcomePrompt="Research AI in K-12 education and generate a PDF."
+        outcomeSource="web"
+        initialPlan={null}
+        initialRun={{
+          id: "run_followup_a",
+          outcomeId: "outcome_123",
+          planId: "plan_followup_a",
+          triggerMessageId: "msg_followup_a",
+          status: "completed",
+          createdAt: "2026-03-22T00:05:00.000Z",
+          updatedAt: "2026-03-22T00:06:00.000Z",
+          steps: []
+        }}
+        initialArtifacts={[]}
+        initialLogs={[]}
+        initialAssistantMessages={[
+          {
+            id: "assistant_followup_a",
+            runId: "run_followup_a",
+            kind: "delivery",
+            content: "Here is the shorter principal-ready version.",
+            createdAt: "2026-03-22T00:05:10.000Z",
+            updatedAt: "2026-03-22T00:05:20.000Z",
+            status: "completed"
+          }
+        ]}
+        initialMessages={[
+          {
+            id: "msg_followup_a",
+            outcomeId: "outcome_123",
+            role: "user",
+            content: "Make it shorter for principals.",
+            createdAt: "2026-03-22T00:05:00.000Z"
+          }
+        ]}
+        initialPendingApprovals={[]}
+      />
+    );
+
+    act(() => {
+      rendered.rerender(
+        <OutcomeConversation
+          outcomeId="outcome_123"
+          outcomePrompt="Research AI in K-12 education and generate a PDF."
+          outcomeSource="web"
+          initialPlan={null}
+          initialRun={{
+            id: "run_followup_b",
+            outcomeId: "outcome_123",
+            planId: "plan_followup_b",
+            triggerMessageId: "msg_followup_b",
+            status: "running",
+            createdAt: "2026-03-22T00:07:00.000Z",
+            updatedAt: "2026-03-22T00:07:00.000Z",
+            steps: []
+          }}
+          initialArtifacts={[]}
+          initialLogs={[]}
+          initialAssistantMessages={[
+            {
+              id: "assistant_followup_b",
+              runId: "run_followup_b",
+              kind: "acknowledgment",
+              content: "I’m trimming it down even further for cabinet review.",
+              createdAt: "2026-03-22T00:07:05.000Z",
+              updatedAt: "2026-03-22T00:07:06.000Z",
+              status: "completed"
+            }
+          ]}
+          initialMessages={[
+            {
+              id: "msg_followup_a",
+              outcomeId: "outcome_123",
+              role: "user",
+              content: "Make it shorter for principals.",
+              createdAt: "2026-03-22T00:05:00.000Z"
+            },
+            {
+              id: "msg_followup_b",
+              outcomeId: "outcome_123",
+              role: "user",
+              content: "Now make it shorter for the district cabinet.",
+              createdAt: "2026-03-22T00:07:00.000Z"
+            }
+          ]}
+          initialPendingApprovals={[]}
+        />
+      );
+    });
+
+    expect(screen.getByText("Make it shorter for principals.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Now make it shorter for the district cabinet.")
+    ).toBeInTheDocument();
+    expectTextOrder(
+      "Make it shorter for principals.",
+      "Now make it shorter for the district cabinet."
+    );
+    expectTextOrder(
+      "Now make it shorter for the district cabinet.",
+      "I’m trimming it down even further for cabinet review."
+    );
   });
 });

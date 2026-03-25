@@ -22,6 +22,7 @@ export type OutcomeConversationState = {
   messages: MessageCreatedData[];
   assistantMessages: AssistantNarrativeMessage[];
   thread?: {
+    isHydrated?: boolean;
     plans: Plan[];
     runs: RunDetail[];
   };
@@ -589,7 +590,7 @@ function resolvePromptTriggerMessage(
   state: OutcomeConversationState,
   outcomePrompt: string
 ) {
-  if (state.thread) {
+  if (state.thread?.isHydrated) {
     const initialThreadTriggerMessageId =
       sortPlansInternal(threadPlans)[0]?.triggerMessageId ??
       sortRunsInternal(threadRuns)[0]?.triggerMessageId ??

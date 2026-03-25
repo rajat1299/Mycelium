@@ -137,6 +137,7 @@ function buildMultiTurnState(): OutcomeConversationState {
     plan: wednesdayPlan,
     run: wednesdayRun,
     thread: {
+      isHydrated: true,
       plans: [mondayPlan, tuesdayPlan, wednesdayPlan],
       runs: [mondayRun, tuesdayRun, wednesdayRun]
     },
