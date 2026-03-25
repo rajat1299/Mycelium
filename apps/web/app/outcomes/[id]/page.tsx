@@ -1,8 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
-import { FollowUpInput } from "../../../components/outcomes/follow-up-input";
-import { OutcomeConversation } from "../../../components/outcomes/outcome-conversation";
-import { OutcomeTranscriptViewport } from "../../../components/outcomes/outcome-transcript-viewport";
+import { OutcomeThreadPageShell } from "../../../components/outcomes/outcome-thread-page-shell";
 import { TasksPane } from "../../../components/outcomes/tasks-pane";
 import {
   continueOutcome,
@@ -13,17 +11,6 @@ import {
 import { deriveOutcomeTitle } from "../../../lib/outcome-title";
 
 export const dynamic = "force-dynamic";
-
-const ACTIVE_OUTCOME_STATUSES = new Set([
-  "planning",
-  "queued",
-  "running",
-  "blocked_on_approval"
-]);
-
-function isActiveOutcomeStatus(status?: string) {
-  return status ? ACTIVE_OUTCOME_STATUSES.has(status) : false;
-}
 
 function resolveLatestRunId(runs: Array<{ createdAt: string; id: string }>) {
   return [...runs]
@@ -122,87 +109,27 @@ export default async function OutcomeDetailPage({
       <TasksPane outcomes={workspaceOutcomes} selectedOutcomeId={outcome.id} />
 
       <section className="relative flex min-w-0 flex-1 flex-col max-h-screen">
-        {/* ── Header ──────────────────────────────────────────────── */}
-        <header className="sticky top-0 shrink-0 flex items-center justify-between gap-4 border-b border-panel-line/50 bg-shell/80 px-6 py-3 backdrop-blur-xl z-20">
-          <div className="min-w-0 flex-1 flex items-center gap-3">
-            <h2 className="truncate text-sm font-semibold text-ink [text-wrap:balance]">
-              {outcomeTitle}
-            </h2>
-            {(outcome.status === "running" || outcome.status === "planning") && (
-              <span className="relative flex h-1.5 w-1.5 shrink-0">
-                <span
-                  className="absolute inline-flex h-1.5 w-1.5 rounded-full bg-accent opacity-75"
-                  style={{ animation: "ping-slow 2s cubic-bezier(0,0,0.2,1) infinite" }}
-                />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
-              </span>
-            )}
-          </div>
-
-          <div className="flex shrink-0 items-center gap-2">
-            <span className="rounded-full border border-panel-line/70 bg-surface-elevated/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-              {outcome.status}
-            </span>
-            {latestRun ? (
-              <span className="rounded-full border border-panel-line/70 bg-surface-elevated/70 px-3 py-1 text-[11px] font-semibold text-muted">
-                {latestRun.steps.length} {latestRun.steps.length === 1 ? "step" : "steps"}
-              </span>
-            ) : null}
-          </div>
-        </header>
-
-        {/* ── Execution Feed ──────────────────────────────────────── */}
-        <OutcomeTranscriptViewport
-          composer={
-            <FollowUpInput
-              action={appendMessageAction}
-              hasConversation={
-                threadSnapshot.messages.length > 0 ||
-                threadSnapshot.assistantMessages.length > 0 ||
-                threadSnapshot.runs.length > 0 ||
-                threadSnapshot.artifacts.length > 0
-              }
-              disabled={isActiveOutcomeStatus(outcome.status)}
-            />
-          }
-        >
-          {bootstrapState === "plan" ? (
-            <p className="rounded-xl border border-amber-300/40 bg-amber-50/40 px-4 py-3 text-sm text-amber-800">
-              Automatic plan generation failed before execution began.
-            </p>
-          ) : null}
-
-          {bootstrapState === "run" ? (
-            <p className="rounded-xl border border-amber-300/40 bg-amber-50/40 px-4 py-3 text-sm text-amber-800">
-              Automatic run start failed before execution began.
-            </p>
-          ) : null}
-
-          {conflictState === "active-run" ? (
-            <p className="rounded-xl border border-amber-300/40 bg-amber-50/40 px-4 py-3 text-sm text-amber-800">
-              Mycelium is still working on the current run. Wait for it to
-              finish before sending a follow-up.
-            </p>
-          ) : null}
-
-          <OutcomeConversation
-            outcomeId={outcome.id}
-            outcomePrompt={outcome.prompt}
-            outcomeSource={outcome.source}
-            initialPlan={latestPlan}
-            initialRun={latestRun}
-            initialThread={{
-              isHydrated: true,
-              plans: threadSnapshot.plans,
-              runs: threadSnapshot.runs
-            }}
-            initialArtifacts={threadSnapshot.artifacts}
-            initialLogs={threadSnapshot.logs}
-            initialAssistantMessages={threadSnapshot.assistantMessages}
-            initialMessages={threadSnapshot.messages}
-            initialPendingApprovals={threadSnapshot.pendingApprovals}
-          />
-        </OutcomeTranscriptViewport>
+        <OutcomeThreadPageShell
+          outcome={outcome}
+          outcomeTitle={outcomeTitle}
+          bootstrapState={bootstrapState}
+          conflictState={conflictState}
+          appendMessageAction={appendMessageAction}
+          initialPlan={latestPlan}
+          initialRun={latestRun}
+          initialThread={{
+            isHydrated: true,
+            plans: threadSnapshot.plans,
+            runs: threadSnapshot.runs
+          }}
+          initialArtifacts={threadSnapshot.artifacts}
+          initialLogs={threadSnapshot.logs}
+          initialAssistantMessages={threadSnapshot.assistantMessages}
+          initialMessages={threadSnapshot.messages}
+          initialPendingApprovals={threadSnapshot.pendingApprovals}
+          outcomePrompt={outcome.prompt}
+          outcomeSource={outcome.source}
+        />
       </section>
     </main>
   );

@@ -180,6 +180,10 @@ vi.mock("../../../components/outcomes/execution-console", () => ({
   ExecutionConsole: () => <div data-testid="execution-console" />
 }));
 
+vi.mock("../../../lib/events", () => ({
+  subscribeToOutcomeEvents: () => () => undefined
+}));
+
 vi.mock("../../../lib/api", () => ({
   OutcomeContinueConflictError: hoistedErrors.OutcomeContinueConflictError,
   continueOutcome: mocks.continueOutcome,
