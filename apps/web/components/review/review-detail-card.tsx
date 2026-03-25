@@ -180,7 +180,7 @@ export function ReviewDetailCard({
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <a
-          href={`/outcomes/${activeApproval.outcomeId}?runId=${activeApproval.runId}`}
+          href={`/outcomes/${activeApproval.outcomeId}`}
           className="rounded-full border border-panel-line px-4 py-2 text-sm font-semibold text-ink transition hover:border-accent hover:text-accent"
         >
           Open outcome

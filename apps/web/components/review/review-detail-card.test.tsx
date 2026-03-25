@@ -13,6 +13,36 @@ describe("ReviewDetailCard", () => {
     vi.restoreAllMocks();
   });
 
+  it("opens the thread-first outcome page without pinning a historical run id", () => {
+    render(
+      <ReviewDetailCard
+        approval={{
+          id: "approval_1",
+          workspaceId: "ws_default",
+          outcomeId: "outcome_1",
+          runId: "run_1",
+          stepId: "step_1",
+          status: "pending",
+          kind: "output_review_required",
+          title: "Review final result",
+          summary: "Inspect the final artifact before marking the run complete.",
+          instruction: "Approve to complete the run or reject to fail it.",
+          artifactIds: ["artifact_1"],
+          requestedAt: "2026-03-15T00:00:00.000Z",
+          resolvedAt: null,
+          resolution: null,
+          resolutionNote: null
+        }}
+        artifacts={[]}
+      />
+    );
+
+    expect(screen.getByRole("link", { name: "Open outcome" })).toHaveAttribute(
+      "href",
+      "/outcomes/outcome_1"
+    );
+  });
+
   it("sends approve and reject actions through the web approval API surface", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
