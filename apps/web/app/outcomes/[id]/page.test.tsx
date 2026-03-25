@@ -161,6 +161,14 @@ vi.mock("../../../components/outcomes/follow-up-input", () => ({
   }
 }));
 
+vi.mock("../../../components/outcomes/outcome-transcript-viewport", () => ({
+  OutcomeTranscriptViewport: ({
+    children
+  }: {
+    children: React.ReactNode;
+  }) => <div data-testid="outcome-transcript-viewport">{children}</div>
+}));
+
 vi.mock("../../../components/outcomes/execution-console", () => ({
   ExecutionConsole: () => <div data-testid="execution-console" />
 }));

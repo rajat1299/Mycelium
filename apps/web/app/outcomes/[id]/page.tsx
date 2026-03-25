@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import { FollowUpInput } from "../../../components/outcomes/follow-up-input";
 import { OutcomeConversation } from "../../../components/outcomes/outcome-conversation";
+import { OutcomeTranscriptViewport } from "../../../components/outcomes/outcome-transcript-viewport";
 import { TasksPane } from "../../../components/outcomes/tasks-pane";
 import {
   continueOutcome,
@@ -151,46 +152,44 @@ export default async function OutcomeDetailPage({
         </header>
 
         {/* ── Execution Feed ──────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar scroll-smooth px-4 pb-44 sm:px-6 lg:px-8">
-          <div className="mx-auto w-full max-w-3xl space-y-6 py-6">
-            {bootstrapState === "plan" ? (
-              <p className="rounded-xl border border-amber-300/40 bg-amber-50/40 px-4 py-3 text-sm text-amber-800">
-                Automatic plan generation failed before execution began.
-              </p>
-            ) : null}
+        <OutcomeTranscriptViewport>
+          {bootstrapState === "plan" ? (
+            <p className="rounded-xl border border-amber-300/40 bg-amber-50/40 px-4 py-3 text-sm text-amber-800">
+              Automatic plan generation failed before execution began.
+            </p>
+          ) : null}
 
-            {bootstrapState === "run" ? (
-              <p className="rounded-xl border border-amber-300/40 bg-amber-50/40 px-4 py-3 text-sm text-amber-800">
-                Automatic run start failed before execution began.
-              </p>
-            ) : null}
+          {bootstrapState === "run" ? (
+            <p className="rounded-xl border border-amber-300/40 bg-amber-50/40 px-4 py-3 text-sm text-amber-800">
+              Automatic run start failed before execution began.
+            </p>
+          ) : null}
 
-            {conflictState === "active-run" ? (
-              <p className="rounded-xl border border-amber-300/40 bg-amber-50/40 px-4 py-3 text-sm text-amber-800">
-                Mycelium is still working on the current run. Wait for it to
-                finish before sending a follow-up.
-              </p>
-            ) : null}
+          {conflictState === "active-run" ? (
+            <p className="rounded-xl border border-amber-300/40 bg-amber-50/40 px-4 py-3 text-sm text-amber-800">
+              Mycelium is still working on the current run. Wait for it to
+              finish before sending a follow-up.
+            </p>
+          ) : null}
 
-            <OutcomeConversation
-              outcomeId={outcome.id}
-              outcomePrompt={outcome.prompt}
-              outcomeSource={outcome.source}
-              initialPlan={latestPlan}
-              initialRun={latestRun}
-              initialThread={{
-                isHydrated: true,
-                plans: threadSnapshot.plans,
-                runs: threadSnapshot.runs
-              }}
-              initialArtifacts={threadSnapshot.artifacts}
-              initialLogs={threadSnapshot.logs}
-              initialAssistantMessages={threadSnapshot.assistantMessages}
-              initialMessages={threadSnapshot.messages}
-              initialPendingApprovals={threadSnapshot.pendingApprovals}
-            />
-          </div>
-        </div>
+          <OutcomeConversation
+            outcomeId={outcome.id}
+            outcomePrompt={outcome.prompt}
+            outcomeSource={outcome.source}
+            initialPlan={latestPlan}
+            initialRun={latestRun}
+            initialThread={{
+              isHydrated: true,
+              plans: threadSnapshot.plans,
+              runs: threadSnapshot.runs
+            }}
+            initialArtifacts={threadSnapshot.artifacts}
+            initialLogs={threadSnapshot.logs}
+            initialAssistantMessages={threadSnapshot.assistantMessages}
+            initialMessages={threadSnapshot.messages}
+            initialPendingApprovals={threadSnapshot.pendingApprovals}
+          />
+        </OutcomeTranscriptViewport>
 
         {/* ── Sticky follow-up input with gradient fade ───────────── */}
         <FollowUpInput
