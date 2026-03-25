@@ -297,6 +297,7 @@ export function registerOutcomeRoutes(
       ...parsed.data,
       id: `msg_${crypto.randomUUID()}`,
       outcomeId: params.id,
+      submissionId: null,
       createdAt: new Date().toISOString()
     };
 

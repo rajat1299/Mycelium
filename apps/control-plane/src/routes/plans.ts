@@ -40,6 +40,7 @@ async function resolveTriggerMessageId(
     outcomeId: outcome.id,
     role: "user",
     content: outcome.prompt,
+    submissionId: null,
     createdAt: new Date().toISOString()
   });
 

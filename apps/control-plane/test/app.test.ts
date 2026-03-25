@@ -147,7 +147,8 @@ describe("control plane", () => {
         method: "POST",
         url: `/api/outcomes/${started.outcome.id}/continue`,
         payload: {
-          content: "Add the rollout notes."
+          content: "Add the rollout notes.",
+          submissionId: "submit_123"
         }
       });
 

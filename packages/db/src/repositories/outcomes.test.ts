@@ -242,14 +242,16 @@ describe("OutcomeRepository", () => {
       outcomeId: "outcome_123",
       role: "user",
       content: "First turn",
-      createdAt: "2026-03-11T00:01:00.000Z"
+      createdAt: "2026-03-11T00:01:00.000Z",
+      submissionId: "submit_001"
     });
     await repository.appendMessage({
       id: "msg_002",
       outcomeId: "outcome_123",
       role: "assistant",
       content: "Second turn",
-      createdAt: "2026-03-11T00:02:00.000Z"
+      createdAt: "2026-03-11T00:02:00.000Z",
+      submissionId: null
     });
 
     await expect(repository.getMessageById("msg_001")).resolves.toEqual({
@@ -257,7 +259,8 @@ describe("OutcomeRepository", () => {
       outcomeId: "outcome_123",
       role: "user",
       content: "First turn",
-      createdAt: "2026-03-11T00:01:00.000Z"
+      createdAt: "2026-03-11T00:01:00.000Z",
+      submissionId: "submit_001"
     });
 
     await expect(repository.listMessages("outcome_123")).resolves.toEqual([
@@ -266,14 +269,16 @@ describe("OutcomeRepository", () => {
         outcomeId: "outcome_123",
         role: "user",
         content: "First turn",
-        createdAt: "2026-03-11T00:01:00.000Z"
+        createdAt: "2026-03-11T00:01:00.000Z",
+        submissionId: "submit_001"
       },
       {
         id: "msg_002",
         outcomeId: "outcome_123",
         role: "assistant",
         content: "Second turn",
-        createdAt: "2026-03-11T00:02:00.000Z"
+        createdAt: "2026-03-11T00:02:00.000Z",
+        submissionId: null
       }
     ]);
 

@@ -41,7 +41,8 @@ describe("outcome turn routes", () => {
         method: "POST",
         url: `/api/outcomes/${started.outcome.id}/continue`,
         payload: {
-          content: "Add the rollout milestones."
+          content: "Add the rollout milestones.",
+          submissionId: "submit_123"
         }
       });
 
@@ -311,7 +312,8 @@ describe("outcome turn routes", () => {
         method: "POST",
         url: `/api/outcomes/${started.outcome.id}/continue`,
         payload: {
-          content: "Add the rollout milestones."
+          content: "Add the rollout milestones.",
+          submissionId: "submit_123"
         }
       });
 
@@ -322,6 +324,7 @@ describe("outcome turn routes", () => {
       expect(continued.triggerMessage.content).toBe(
         "Add the rollout milestones."
       );
+      expect(continued.triggerMessage.submissionId).toBe("submit_123");
       expect(continued.triggerMessage.id).not.toBe(started.triggerMessage.id);
       expect(continued.plan?.id).not.toBe(started.plan?.id);
       expect(continued.run?.id).not.toBe(started.run?.id);
@@ -354,7 +357,8 @@ describe("outcome turn routes", () => {
         method: "POST",
         url: `/api/outcomes/${started.outcome.id}/continue`,
         payload: {
-          content: "Add the rollout milestones."
+          content: "Add the rollout milestones.",
+          submissionId: "submit_conflict"
         }
       });
 
@@ -376,7 +380,8 @@ describe("outcome turn routes", () => {
         method: "POST",
         url: "/api/outcomes/outcome_missing/continue",
         payload: {
-          content: "Try again"
+          content: "Try again",
+          submissionId: "submit_missing"
         }
       });
 

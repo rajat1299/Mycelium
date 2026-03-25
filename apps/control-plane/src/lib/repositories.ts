@@ -70,6 +70,7 @@ export type CreateStoredOutcomeInput = CreateOutcomeRequest & { id: string };
 export type AppendOutcomeMessageInput = CreateOutcomeMessageRequest & {
   id: string;
   outcomeId: string;
+  submissionId: string | null;
   createdAt: string;
 };
 

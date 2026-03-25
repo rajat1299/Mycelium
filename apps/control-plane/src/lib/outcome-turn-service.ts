@@ -453,6 +453,7 @@ export function createOutcomeTurnService(
         outcomeId: createdOutcome.id,
         role: "user",
         content: input.prompt,
+        submissionId: null,
         createdAt: now().toISOString()
       } as const;
 
@@ -576,6 +577,7 @@ export function createOutcomeTurnService(
         outcomeId: outcome.id,
         role: "user",
         content: input.content,
+        submissionId: input.submissionId,
         createdAt: now().toISOString()
       } as const;
 

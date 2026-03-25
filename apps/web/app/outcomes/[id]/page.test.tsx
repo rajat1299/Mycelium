@@ -837,7 +837,8 @@ describe("OutcomeDetailPage", () => {
         outcomeId: "outcome_123",
         role: "user",
         content: "Make it shorter.",
-        createdAt: "2026-03-11T00:11:00.000Z"
+        createdAt: "2026-03-11T00:11:00.000Z",
+        submissionId: "submit_123"
       },
       plan: {
         id: "plan_followup",
@@ -870,11 +871,13 @@ describe("OutcomeDetailPage", () => {
 
     const formData = new FormData();
     formData.set("content", "Make it shorter.");
+    formData.set("submissionId", "submit_123");
 
     await observedFollowUpAction?.(formData);
 
     expect(mocks.continueOutcome).toHaveBeenCalledWith("outcome_123", {
-      content: "Make it shorter."
+      content: "Make it shorter.",
+      submissionId: "submit_123"
     });
     expect(mocks.redirect).toHaveBeenCalledWith(
       "/outcomes/outcome_123?runId=run_followup"

@@ -44,11 +44,13 @@ describe("OutcomeSchema", () => {
 
     expect(
       ContinueOutcomeRequestSchema.parse({
-        content: "Continue the incident follow-up"
+        content: "Continue the incident follow-up",
+        submissionId: "submit_123"
       })
     ).toEqual(
       expect.objectContaining({
-        content: "Continue the incident follow-up"
+        content: "Continue the incident follow-up",
+        submissionId: "submit_123"
       })
     );
 
@@ -56,7 +58,8 @@ describe("OutcomeSchema", () => {
       Object.keys(CreateOutcomeRequestSchema.shape).sort()
     );
     expect(Object.keys(ContinueOutcomeRequestSchema.shape).sort()).toEqual([
-      "content"
+      "content",
+      "submissionId"
     ]);
     expect(Object.keys(OutcomeTurnResponseSchema.shape).sort()).toEqual([
       "outcome",
@@ -82,7 +85,8 @@ describe("OutcomeSchema", () => {
           outcomeId: "outcome_123",
           role: "user",
           content: "Summarize the latest incident report",
-          createdAt: "2026-03-11T00:00:00.000Z"
+          createdAt: "2026-03-11T00:00:00.000Z",
+          submissionId: "submit_123"
         }
       })
     ).toEqual(
@@ -91,7 +95,8 @@ describe("OutcomeSchema", () => {
           id: "msg_123",
           outcomeId: "outcome_123",
           role: "user",
-          content: "Summarize the latest incident report"
+          content: "Summarize the latest incident report",
+          submissionId: "submit_123"
         })
       })
     );

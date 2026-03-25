@@ -42,7 +42,8 @@ export const CreateOutcomeRequestSchema = z.object({
 export const StartOutcomeRequestSchema = CreateOutcomeRequestSchema;
 
 export const ContinueOutcomeRequestSchema = z.object({
-  content: z.string().min(1)
+  content: z.string().min(1),
+  submissionId: z.string().min(1)
 });
 
 export const OutcomeListResponseSchema = z.object({

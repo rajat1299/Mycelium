@@ -720,7 +720,8 @@ describe("OutcomeConversation", () => {
             outcomeId: "outcome_123",
             role: "user",
             content: "Refine the final report for principals.",
-            createdAt: "2026-03-19T00:03:00.000Z"
+            createdAt: "2026-03-19T00:03:00.000Z",
+            submissionId: null
           }
         ]}
         initialPendingApprovals={[]}
@@ -758,7 +759,8 @@ describe("OutcomeConversation", () => {
             outcomeId: "outcome_123",
             role: "user",
             content: "Refine the final report for principals.",
-            createdAt: "2026-03-19T00:03:00.000Z"
+            createdAt: "2026-03-19T00:03:00.000Z",
+            submissionId: "submit_456"
           }
         ]}
         optimisticMessages={[
@@ -768,8 +770,7 @@ describe("OutcomeConversation", () => {
             role: "user",
             content: "Refine the final report for principals.",
             createdAt: "2026-03-19T00:02:59.000Z",
-            submittedAt: "2026-03-19T00:02:59.000Z",
-            knownMessageIdsAtSubmit: []
+            submissionId: "submit_456"
           }
         ]}
         initialPendingApprovals={[]}
@@ -798,8 +799,7 @@ describe("OutcomeConversation", () => {
             role: "user",
             content: "Refine the final report for principals.",
             createdAt: "2026-03-19T00:02:59.000Z",
-            submittedAt: "2026-03-19T00:02:59.000Z",
-            knownMessageIdsAtSubmit: []
+            submissionId: "submit_456"
           }
         ]}
         initialPendingApprovals={[]}
@@ -813,11 +813,53 @@ describe("OutcomeConversation", () => {
         outcomeId: "outcome_123",
         role: "user",
         content: "Refine the final report for principals.",
-        createdAt: "2026-03-19T00:03:00.000Z"
+        createdAt: "2026-03-19T00:03:00.000Z",
+        submissionId: "submit_456"
       }
     });
 
     expect(screen.getAllByText("Refine the final report for principals.")).toHaveLength(1);
+  });
+
+  it("does not consume a local optimistic follow-up when a foreign same-content message arrives first", () => {
+    render(
+      <OutcomeConversation
+        outcomeId="outcome_123"
+        outcomePrompt="Draft the weekly update."
+        outcomeSource="web"
+        initialPlan={null}
+        initialRun={null}
+        initialArtifacts={[]}
+        initialLogs={[]}
+        initialAssistantMessages={[]}
+        initialMessages={[]}
+        optimisticMessages={[
+          {
+            id: "optimistic:local",
+            outcomeId: "outcome_123",
+            role: "user",
+            content: "Make it shorter.",
+            createdAt: "2026-03-19T00:02:59.000Z",
+            submissionId: "submit_local"
+          }
+        ]}
+        initialPendingApprovals={[]}
+      />
+    );
+
+    emitOutcomeEvent({
+      type: "message.created",
+      data: {
+        id: "msg_foreign",
+        outcomeId: "outcome_123",
+        role: "user",
+        content: "Make it shorter.",
+        createdAt: "2026-03-19T00:03:00.000Z",
+        submissionId: "submit_foreign"
+      }
+    });
+
+    expect(screen.getAllByText("Make it shorter.")).toHaveLength(2);
   });
 
   it("consumes same-content optimistic follow-ups one-to-one when confirmed messages arrive", () => {
@@ -839,8 +881,7 @@ describe("OutcomeConversation", () => {
             role: "user",
             content: "Make it shorter.",
             createdAt: "2026-03-19T00:02:58.000Z",
-            submittedAt: "2026-03-19T00:02:58.000Z",
-            knownMessageIdsAtSubmit: []
+            submissionId: "submit_first"
           },
           {
             id: "optimistic:second",
@@ -848,8 +889,7 @@ describe("OutcomeConversation", () => {
             role: "user",
             content: "Make it shorter.",
             createdAt: "2026-03-19T00:02:59.000Z",
-            submittedAt: "2026-03-19T00:02:59.000Z",
-            knownMessageIdsAtSubmit: []
+            submissionId: "submit_second"
           }
         ]}
         initialPendingApprovals={[]}
@@ -863,7 +903,8 @@ describe("OutcomeConversation", () => {
         outcomeId: "outcome_123",
         role: "user",
         content: "Make it shorter.",
-        createdAt: "2026-03-19T00:03:00.000Z"
+        createdAt: "2026-03-19T00:03:00.000Z",
+        submissionId: "submit_first"
       }
     });
 
@@ -1412,7 +1453,8 @@ describe("OutcomeConversation", () => {
             outcomeId: "outcome_123",
             role: "user",
             content: "Make it shorter for principals.",
-            createdAt: "2026-03-22T00:05:00.000Z"
+            createdAt: "2026-03-22T00:05:00.000Z",
+            submissionId: null
           }
         ]}
         initialPendingApprovals={[]}
@@ -1460,7 +1502,8 @@ describe("OutcomeConversation", () => {
               outcomeId: "outcome_123",
               role: "user",
               content: "Make it shorter for principals.",
-              createdAt: "2026-03-22T00:05:00.000Z"
+              createdAt: "2026-03-22T00:05:00.000Z",
+              submissionId: null
             }
           ]}
           initialPendingApprovals={[]}
@@ -1523,7 +1566,8 @@ describe("OutcomeConversation", () => {
             outcomeId: "outcome_123",
             role: "user",
             content: "Make it shorter for principals.",
-            createdAt: "2026-03-22T00:05:00.000Z"
+            createdAt: "2026-03-22T00:05:00.000Z",
+            submissionId: null
           }
         ]}
         initialPendingApprovals={[]}
@@ -1566,14 +1610,16 @@ describe("OutcomeConversation", () => {
               outcomeId: "outcome_123",
               role: "user",
               content: "Make it shorter for principals.",
-              createdAt: "2026-03-22T00:05:00.000Z"
+              createdAt: "2026-03-22T00:05:00.000Z",
+              submissionId: null
             },
             {
               id: "msg_followup_b",
               outcomeId: "outcome_123",
               role: "user",
               content: "Now make it shorter for the district cabinet.",
-              createdAt: "2026-03-22T00:07:00.000Z"
+              createdAt: "2026-03-22T00:07:00.000Z",
+              submissionId: null
             }
           ]}
           initialPendingApprovals={[]}

@@ -22,6 +22,7 @@ export async function appendUserTurnMessage(
     outcomeId: input.outcomeId,
     role: "user" as const,
     content: input.content,
+    submissionId: null,
     createdAt: input.createdAt
   };
 

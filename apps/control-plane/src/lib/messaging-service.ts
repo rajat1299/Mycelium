@@ -136,6 +136,7 @@ async function appendInboundMessage(
     outcomeId,
     role: "user" as const,
     content: message.text,
+    submissionId: null,
     createdAt: message.receivedAt
   };
 

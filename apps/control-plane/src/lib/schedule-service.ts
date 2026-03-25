@@ -103,6 +103,7 @@ async function resolveTriggerMessageId(
     outcomeId: input.outcomeId,
     role: "user",
     content: input.prompt,
+    submissionId: null,
     createdAt: input.createdAt
   });
 

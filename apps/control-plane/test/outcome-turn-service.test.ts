@@ -211,7 +211,8 @@ describe("OutcomeTurnService", () => {
     const secondTurn = OutcomeTurnResponseSchema.parse(
       await harness.service.continueThread({
         outcomeId: firstTurn.outcome.id,
-        content: "Incorporate the customer feedback."
+        content: "Incorporate the customer feedback.",
+        submissionId: "submit_123"
       })
     );
 
@@ -220,7 +221,8 @@ describe("OutcomeTurnService", () => {
       expect.objectContaining({
         outcomeId: firstTurn.outcome.id,
         role: "user",
-        content: "Incorporate the customer feedback."
+        content: "Incorporate the customer feedback.",
+        submissionId: "submit_123"
       })
     );
     expect(secondTurn.plan).toEqual(
@@ -243,6 +245,8 @@ describe("OutcomeTurnService", () => {
       firstTurn.triggerMessage,
       secondTurn.triggerMessage
     ]);
+
+    expect(secondTurn.triggerMessage.submissionId).toBe("submit_123");
 
     await expect(
       harness.repositories.plans.listByOutcome(firstTurn.outcome.id)
@@ -277,6 +281,12 @@ describe("OutcomeTurnService", () => {
     expect(harness.events.map((event) => event.type)).toEqual(
       expectedInitialEventTypes(secondTurn.run?.steps.length ?? 0)
     );
+    expect(harness.events[0]?.data).toEqual(
+      expect.objectContaining({
+        id: secondTurn.triggerMessage.id,
+        submissionId: "submit_123"
+      })
+    );
     expect(harness.executionService.startRun).toHaveBeenNthCalledWith(
       1,
       firstTurn.run?.id
@@ -303,7 +313,8 @@ describe("OutcomeTurnService", () => {
     await expect(
       harness.service.continueThread({
         outcomeId: firstTurn.outcome.id,
-        content: "Incorporate the customer feedback."
+        content: "Incorporate the customer feedback.",
+        submissionId: "submit_conflict"
       })
     ).rejects.toBeInstanceOf(OutcomeTurnConflictError);
 
@@ -367,7 +378,8 @@ describe("OutcomeTurnService", () => {
     await expect(
       harness.service.continueThread({
         outcomeId: firstTurn.outcome.id,
-        content: "Incorporate the customer feedback."
+        content: "Incorporate the customer feedback.",
+        submissionId: "submit_failure"
       })
     ).rejects.toThrow("simulated follow-up failure");
 

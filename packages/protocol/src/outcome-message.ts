@@ -7,7 +7,8 @@ export const MessageCreatedDataSchema = z.object({
   outcomeId: z.string(),
   role: MessageRoleSchema,
   content: z.string(),
-  createdAt: z.string().datetime()
+  createdAt: z.string().datetime(),
+  submissionId: z.string().min(1).nullable().default(null)
 });
 
 export type MessageRole = z.infer<typeof MessageRoleSchema>;

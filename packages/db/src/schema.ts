@@ -274,6 +274,7 @@ export const outcomeMessages = pgTable("outcome_messages", {
     .references(() => outcomes.id),
   role: text("role").notNull(),
   content: text("content").notNull(),
+  submissionId: text("submission_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
 });
 

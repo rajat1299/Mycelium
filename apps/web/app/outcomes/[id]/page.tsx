@@ -75,14 +75,16 @@ export default async function OutcomeDetailPage({
     "use server";
 
     const content = String(formData.get("content") ?? "").trim();
+    const submissionId = String(formData.get("submissionId") ?? "").trim();
 
-    if (!content) {
+    if (!content || !submissionId) {
       return;
     }
 
     try {
       const response = await continueOutcome(id, {
-        content
+        content,
+        submissionId
       });
 
       if (response.run?.id) {

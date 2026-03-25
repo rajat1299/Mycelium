@@ -245,14 +245,16 @@ function buildMultiTurnState(): OutcomeConversationState {
         outcomeId: "outcome_123",
         role: "user",
         content: "Tighten the architecture recommendation and remove dead ends.",
-        createdAt: "2026-03-18T09:00:00.000Z"
+        createdAt: "2026-03-18T09:00:00.000Z",
+        submissionId: null
       },
       {
         id: "msg_wednesday",
         outcomeId: "outcome_123",
         role: "user",
         content: "Package this up for delivery and call out the remaining risk.",
-        createdAt: "2026-03-19T09:00:00.000Z"
+        createdAt: "2026-03-19T09:00:00.000Z",
+        submissionId: null
       }
     ],
     assistantMessages: [
@@ -429,7 +431,8 @@ describe("buildOutcomeFeed", () => {
       outcomeId: "outcome_123",
       role: "user" as const,
       content: "  Map the system architecture and propose a path forward.\n",
-      createdAt: "2026-03-17T09:00:00.000Z"
+      createdAt: "2026-03-17T09:00:00.000Z",
+      submissionId: null
     };
 
     state.messages = [initialMessage, ...state.messages];
@@ -547,7 +550,8 @@ describe("buildOutcomeFeed", () => {
             outcomeId: "outcome_123",
             role: "user",
             content: "Research AI in K-12 education and generate a PDF.",
-            createdAt: "2026-03-21T00:00:00.000Z"
+            createdAt: "2026-03-21T00:00:00.000Z",
+            submissionId: null
           }
         ],
         assistantMessages: []

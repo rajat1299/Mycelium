@@ -10,7 +10,11 @@ const eventStream = vi.hoisted(() => ({
 
 let observedFollowUpAction: ((formData: FormData) => Promise<void>) | null = null;
 let observedConversationMessages: Array<{ id: string; content: string }> = [];
-let observedOptimisticMessages: Array<{ id: string; content: string }> = [];
+let observedOptimisticMessages: Array<{
+  id: string;
+  content: string;
+  submissionId?: string | null;
+}> = [];
 let observedHasConversation = false;
 
 vi.mock("../../lib/events", () => ({
@@ -376,6 +380,7 @@ describe("OutcomeThreadPageShell", () => {
 
     const formData = new FormData();
     formData.set("content", "Make it shorter for principals.");
+    formData.set("submissionId", "submit_local");
 
     await act(async () => {
       void observedFollowUpAction?.(formData);
@@ -409,6 +414,7 @@ describe("OutcomeThreadPageShell", () => {
 
     const formData = new FormData();
     formData.set("content", "Make it shorter for principals.");
+    formData.set("submissionId", "submit_local");
 
     await expect(
       act(async () => {
@@ -439,6 +445,7 @@ describe("OutcomeThreadPageShell", () => {
 
     const formData = new FormData();
     formData.set("content", "Make it shorter for principals.");
+    formData.set("submissionId", "submit_local");
 
     await act(async () => {
       void observedFollowUpAction?.(formData);
@@ -457,7 +464,8 @@ describe("OutcomeThreadPageShell", () => {
             outcomeId: "outcome_123",
             role: "user",
             content: "Make it shorter for principals.",
-            createdAt: "2026-03-25T10:03:00.000Z"
+            createdAt: "2026-03-25T10:03:00.000Z",
+            submissionId: "submit_local"
           }
         });
       }
@@ -500,9 +508,11 @@ describe("OutcomeThreadPageShell", () => {
 
     const firstFormData = new FormData();
     firstFormData.set("content", "Make it shorter.");
+    firstFormData.set("submissionId", "submit_first");
 
     const secondFormData = new FormData();
     secondFormData.set("content", "Make it shorter.");
+    secondFormData.set("submissionId", "submit_second");
 
     await act(async () => {
       void observedFollowUpAction?.(firstFormData);
@@ -526,7 +536,8 @@ describe("OutcomeThreadPageShell", () => {
             outcomeId: "outcome_123",
             role: "user",
             content: "Make it shorter.",
-            createdAt: "2026-03-25T10:03:00.000Z"
+            createdAt: "2026-03-25T10:03:00.000Z",
+            submissionId: "submit_first"
           }
         });
       }
@@ -538,6 +549,88 @@ describe("OutcomeThreadPageShell", () => {
     await act(async () => {
       resolveFirstAction?.();
       resolveSecondAction?.();
+      await Promise.resolve();
+    });
+  });
+
+  it("does not reconcile a local optimistic echo when another source confirms the same content first", async () => {
+    let resolveAction: (() => void) | null = null;
+
+    const appendMessageAction = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveAction = resolve;
+        })
+    );
+
+    render(
+      <OutcomeThreadPageShell
+        {...buildProps()}
+        appendMessageAction={appendMessageAction}
+      />
+    );
+
+    const formData = new FormData();
+    formData.set("content", "Make it shorter.");
+    formData.set("submissionId", "submit_local");
+
+    await act(async () => {
+      void observedFollowUpAction?.(formData);
+      await Promise.resolve();
+    });
+
+    expect(observedOptimisticMessages).toEqual([
+      expect.objectContaining({
+        content: "Make it shorter.",
+        submissionId: "submit_local"
+      })
+    ]);
+
+    act(() => {
+      for (const handler of eventStream.handlers) {
+        handler({
+          outcomeId: "outcome_123",
+          type: "message.created",
+          data: {
+            id: "msg_foreign",
+            outcomeId: "outcome_123",
+            role: "user",
+            content: "Make it shorter.",
+            createdAt: "2026-03-25T10:03:00.000Z",
+            submissionId: "submit_foreign"
+          }
+        });
+      }
+    });
+
+    expect(observedOptimisticMessages).toEqual([
+      expect.objectContaining({
+        content: "Make it shorter.",
+        submissionId: "submit_local"
+      })
+    ]);
+
+    act(() => {
+      for (const handler of eventStream.handlers) {
+        handler({
+          outcomeId: "outcome_123",
+          type: "message.created",
+          data: {
+            id: "msg_local",
+            outcomeId: "outcome_123",
+            role: "user",
+            content: "Make it shorter.",
+            createdAt: "2026-03-25T10:04:00.000Z",
+            submissionId: "submit_local"
+          }
+        });
+      }
+    });
+
+    expect(observedOptimisticMessages).toEqual([]);
+
+    await act(async () => {
+      resolveAction?.();
       await Promise.resolve();
     });
   });

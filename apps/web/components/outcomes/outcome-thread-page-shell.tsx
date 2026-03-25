@@ -39,19 +39,12 @@ function matchesConfirmedOptimisticMessage(
   optimistic: OptimisticOutcomeMessage,
   confirmed: MessageCreatedData
 ) {
-  if (confirmed.role !== optimistic.role || confirmed.content !== optimistic.content) {
-    return false;
-  }
-
-  if (confirmed.outcomeId !== optimistic.outcomeId) {
-    return false;
-  }
-
-  if (optimistic.knownMessageIdsAtSubmit.includes(confirmed.id)) {
-    return false;
-  }
-
-  return true;
+  return (
+    confirmed.outcomeId === optimistic.outcomeId &&
+    confirmed.role === optimistic.role &&
+    confirmed.submissionId !== null &&
+    confirmed.submissionId === optimistic.submissionId
+  );
 }
 
 function reconcileOptimisticMessages(
@@ -87,6 +80,14 @@ function reconcileOptimisticMessages(
 
 function createOptimisticMessageId() {
   return `optimistic:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function createSubmissionId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `submit_${crypto.randomUUID()}`;
+  }
+
+  return `submit_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function deriveHasConversation(snapshot: {
@@ -159,7 +160,6 @@ export function OutcomeThreadPageShell({
       initialArtifacts
     })
   );
-  const knownMessageIdsRef = useRef<Set<string>>(new Set(initialMessages.map((m) => m.id)));
   const previousOutcomeIdRef = useRef(outcome.id);
 
   useEffect(() => {
@@ -181,7 +181,6 @@ export function OutcomeThreadPageShell({
       setLiveHasConversation(true);
     }
 
-    knownMessageIdsRef.current = new Set(initialMessages.map((message) => message.id));
     setOptimisticMessages((current) =>
       reconcileOptimisticMessages(current, initialMessages)
     );
@@ -190,21 +189,24 @@ export function OutcomeThreadPageShell({
   const appendOptimisticMessageAction = useCallback(
     async (formData: FormData) => {
       const content = String(formData.get("content") ?? "").trim();
+      const submissionId =
+        String(formData.get("submissionId") ?? "").trim() || createSubmissionId();
 
       if (!content) {
         return appendMessageAction(formData);
       }
 
-      const submittedAt = new Date().toISOString();
+      formData.set("submissionId", submissionId);
+
+      const createdAt = new Date().toISOString();
 
       const optimisticMessage: OptimisticOutcomeMessage = {
         id: createOptimisticMessageId(),
         outcomeId: outcome.id,
         role: "user",
         content,
-        createdAt: submittedAt,
-        submittedAt,
-        knownMessageIdsAtSubmit: [...knownMessageIdsRef.current]
+        createdAt,
+        submissionId
       };
 
       setOptimisticMessages((current) => [...current, optimisticMessage]);
@@ -233,7 +235,6 @@ export function OutcomeThreadPageShell({
         }
 
         if (event.type === "message.created" && event.data.outcomeId === outcome.id) {
-          knownMessageIdsRef.current.add(event.data.id);
           setLiveHasConversation(true);
 
           if (event.data.role === "user") {

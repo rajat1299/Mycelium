@@ -228,7 +228,8 @@ describe("OutcomeConversation render isolation", () => {
             outcomeId: "outcome_123",
             role: "user",
             content: "Tighten the recommendation and remove the dead ends.",
-            createdAt: "2026-03-18T09:00:00.000Z"
+            createdAt: "2026-03-18T09:00:00.000Z",
+            submissionId: null
           }
         ]}
         initialPendingApprovals={[]}

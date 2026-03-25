@@ -56,6 +56,7 @@ export type AppendOutcomeMessageInput = {
   outcomeId: string;
   role: "user" | "assistant" | "system";
   content: string;
+  submissionId: string | null;
   createdAt: string;
 };
 
@@ -80,6 +81,7 @@ function mapOutcomeMessageRow(row: OutcomeMessageRow): StoredOutcomeMessage {
     outcomeId: row.outcomeId,
     role: row.role as StoredOutcomeMessage["role"],
     content: row.content,
+    submissionId: row.submissionId,
     createdAt: row.createdAt.toISOString()
   };
 }
@@ -185,6 +187,7 @@ export class OutcomeRepository {
       outcomeId: input.outcomeId,
       role: input.role,
       content: input.content,
+      submissionId: input.submissionId,
       createdAt: new Date(input.createdAt)
     });
   }

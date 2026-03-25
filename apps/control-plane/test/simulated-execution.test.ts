@@ -506,7 +506,8 @@ describe("development simulation mode", () => {
         url: `/api/outcomes/${firstTurn.outcome.id}/continue`,
         payload: {
           content:
-            "Make it shorter for school principals and focus on implementation risks."
+            "Make it shorter for school principals and focus on implementation risks.",
+          submissionId: "submit_second_turn"
         }
       });
 
@@ -580,7 +581,8 @@ describe("development simulation mode", () => {
         url: `/api/outcomes/${firstTurn.outcome.id}/continue`,
         payload: {
           content:
-            "Make it shorter for school principals and focus on implementation risks."
+            "Make it shorter for school principals and focus on implementation risks.",
+          submissionId: "submit_second_turn"
         }
       });
 
@@ -592,7 +594,8 @@ describe("development simulation mode", () => {
         method: "POST",
         url: `/api/outcomes/${firstTurn.outcome.id}/continue`,
         payload: {
-          content: "Turn the same work into a board-ready briefing with headline bullets."
+          content: "Turn the same work into a board-ready briefing with headline bullets.",
+          submissionId: "submit_third_turn"
         }
       });
 

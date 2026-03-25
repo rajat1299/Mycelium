@@ -80,8 +80,7 @@ type OutcomeConversationProps = {
 };
 
 export type OptimisticOutcomeMessage = MessageCreatedData & {
-  submittedAt: string;
-  knownMessageIdsAtSubmit: string[];
+  submissionId: string;
 };
 
 type OutcomeConversationViewState = {
@@ -413,19 +412,12 @@ function matchesConfirmedOptimisticMessage(
   optimistic: OptimisticOutcomeMessage,
   confirmed: MessageCreatedData
 ) {
-  if (confirmed.role !== optimistic.role || confirmed.content !== optimistic.content) {
-    return false;
-  }
-
-  if (confirmed.outcomeId !== optimistic.outcomeId) {
-    return false;
-  }
-
-  if (optimistic.knownMessageIdsAtSubmit.includes(confirmed.id)) {
-    return false;
-  }
-
-  return true;
+  return (
+    confirmed.outcomeId === optimistic.outcomeId &&
+    confirmed.role === optimistic.role &&
+    confirmed.submissionId !== null &&
+    confirmed.submissionId === optimistic.submissionId
+  );
 }
 
 function mergeRenderableOutcomeMessages(
