@@ -327,6 +327,241 @@ describe("OutcomeConversation", () => {
     expect(screen.getByRole("button", { name: "Reject" })).toBeInTheDocument();
   });
 
+  it("removes a stale pending approval when a same-outcome hydrated rerender omits it", () => {
+    const rendered = render(
+      <OutcomeConversation
+        outcomeId="outcome_123"
+        outcomePrompt="Draft the weekly update."
+        outcomeSource="web"
+        initialPlan={null}
+        initialRun={{
+          id: "run_123",
+          outcomeId: "outcome_123",
+          planId: "plan_outcome_123",
+          triggerMessageId: "msg_123",
+          status: "blocked",
+          createdAt: "2026-03-19T00:01:00.000Z",
+          updatedAt: "2026-03-19T00:02:00.000Z",
+          steps: []
+        }}
+        initialThread={{
+          isHydrated: true,
+          plans: [],
+          runs: [
+            {
+              id: "run_123",
+              outcomeId: "outcome_123",
+              planId: "plan_outcome_123",
+              triggerMessageId: "msg_123",
+              status: "blocked",
+              createdAt: "2026-03-19T00:01:00.000Z",
+              updatedAt: "2026-03-19T00:02:00.000Z",
+              steps: []
+            }
+          ]
+        }}
+        initialArtifacts={[]}
+        initialLogs={[]}
+        initialAssistantMessages={[]}
+        initialMessages={[]}
+        initialPendingApprovals={[
+          {
+            id: "approval_123",
+            workspaceId: "ws_default",
+            outcomeId: "outcome_123",
+            runId: "run_123",
+            stepId: "step_1",
+            status: "pending",
+            kind: "output_review_required",
+            title: "Review final result",
+            summary: "Inspect the final artifact before marking the run complete.",
+            instruction: "Approve to complete the run or reject to fail it.",
+            artifactIds: ["artifact_1"],
+            requestedAt: "2026-03-19T00:02:00.000Z",
+            resolvedAt: null,
+            resolution: null,
+            resolutionNote: null
+          }
+        ]}
+      />
+    );
+
+    expect(screen.getByText("Review final result")).toBeInTheDocument();
+
+    act(() => {
+      rendered.rerender(
+        <OutcomeConversation
+          outcomeId="outcome_123"
+          outcomePrompt="Draft the weekly update."
+          outcomeSource="web"
+          initialPlan={null}
+          initialRun={{
+            id: "run_123",
+            outcomeId: "outcome_123",
+            planId: "plan_outcome_123",
+            triggerMessageId: "msg_123",
+            status: "running",
+            createdAt: "2026-03-19T00:01:00.000Z",
+            updatedAt: "2026-03-19T00:03:00.000Z",
+            steps: []
+          }}
+          initialThread={{
+            isHydrated: true,
+            plans: [],
+            runs: [
+              {
+                id: "run_123",
+                outcomeId: "outcome_123",
+                planId: "plan_outcome_123",
+                triggerMessageId: "msg_123",
+                status: "running",
+                createdAt: "2026-03-19T00:01:00.000Z",
+                updatedAt: "2026-03-19T00:03:00.000Z",
+                steps: []
+              }
+            ]
+          }}
+          initialArtifacts={[]}
+          initialLogs={[
+            {
+              runId: "run_123",
+              level: "info",
+              message: "Approval was already resolved in the authoritative snapshot.",
+              createdAt: "2026-03-19T00:03:00.000Z"
+            }
+          ]}
+          initialAssistantMessages={[]}
+          initialMessages={[]}
+          initialPendingApprovals={[]}
+        />
+      );
+    });
+
+    expect(screen.queryByText("Approval required")).not.toBeInTheDocument();
+    expect(screen.queryByText("Review final result")).not.toBeInTheDocument();
+  });
+
+  it("preserves a newer live approval when a stale hydrated rerender has not caught up yet", () => {
+    const rendered = render(
+      <OutcomeConversation
+        outcomeId="outcome_123"
+        outcomePrompt="Draft the weekly update."
+        outcomeSource="web"
+        initialPlan={null}
+        initialRun={{
+          id: "run_123",
+          outcomeId: "outcome_123",
+          planId: "plan_outcome_123",
+          triggerMessageId: "msg_123",
+          status: "running",
+          createdAt: "2026-03-19T00:01:00.000Z",
+          updatedAt: "2026-03-19T00:03:00.000Z",
+          steps: []
+        }}
+        initialThread={{
+          isHydrated: true,
+          plans: [],
+          runs: [
+            {
+              id: "run_123",
+              outcomeId: "outcome_123",
+              planId: "plan_outcome_123",
+              triggerMessageId: "msg_123",
+              status: "running",
+              createdAt: "2026-03-19T00:01:00.000Z",
+              updatedAt: "2026-03-19T00:03:00.000Z",
+              steps: []
+            }
+          ]
+        }}
+        initialArtifacts={[]}
+        initialLogs={[]}
+        initialAssistantMessages={[]}
+        initialMessages={[]}
+        initialPendingApprovals={[]}
+      />
+    );
+
+    act(() => {
+      for (const handler of eventStream.handlers) {
+        handler({
+          outcomeId: "outcome_123",
+          type: "approval.requested",
+          data: {
+            id: "approval_456",
+            workspaceId: "ws_default",
+            outcomeId: "outcome_123",
+            runId: "run_123",
+            stepId: "step_2",
+            status: "pending",
+            kind: "output_review_required",
+            title: "Review cabinet brief",
+            summary: "Check the shorter cabinet-facing version before sharing.",
+            instruction: "Approve to publish or reject to revise.",
+            artifactIds: ["artifact_2"],
+            requestedAt: "2026-03-19T00:04:30.000Z",
+            resolvedAt: null,
+            resolution: null,
+            resolutionNote: null
+          }
+        });
+      }
+    });
+
+    expect(screen.getByText("Review cabinet brief")).toBeInTheDocument();
+
+    act(() => {
+      rendered.rerender(
+        <OutcomeConversation
+          outcomeId="outcome_123"
+          outcomePrompt="Draft the weekly update."
+          outcomeSource="web"
+          initialPlan={null}
+          initialRun={{
+            id: "run_123",
+            outcomeId: "outcome_123",
+            planId: "plan_outcome_123",
+            triggerMessageId: "msg_123",
+            status: "running",
+            createdAt: "2026-03-19T00:01:00.000Z",
+            updatedAt: "2026-03-19T00:03:30.000Z",
+            steps: []
+          }}
+          initialThread={{
+            isHydrated: true,
+            plans: [],
+            runs: [
+              {
+                id: "run_123",
+                outcomeId: "outcome_123",
+                planId: "plan_outcome_123",
+                triggerMessageId: "msg_123",
+                status: "running",
+                createdAt: "2026-03-19T00:01:00.000Z",
+                updatedAt: "2026-03-19T00:03:30.000Z",
+                steps: []
+              }
+            ]
+          }}
+          initialArtifacts={[]}
+          initialLogs={[
+            {
+              runId: "run_123",
+              level: "info",
+              message: "The refreshed snapshot is still older than the live approval event.",
+              createdAt: "2026-03-19T00:03:30.000Z"
+            }
+          ]}
+          initialAssistantMessages={[]}
+          initialMessages={[]}
+          initialPendingApprovals={[]}
+        />
+      );
+    });
+
+    expect(screen.getByText("Review cabinet brief")).toBeInTheDocument();
+  });
+
   it("appends follow-up messages when message.created events arrive", () => {
     render(
       <OutcomeConversation

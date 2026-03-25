@@ -119,7 +119,29 @@ function mergeAssistantMessages(
   });
 }
 
-function mergePendingApprovals(current: Approval[], incoming: Approval[]) {
+function mergePendingApprovals(
+  current: Approval[],
+  incoming: Approval[],
+  options?: {
+    authoritativeHydration?: boolean;
+    preserveLiveApprovalIds?: ReadonlySet<string>;
+  }
+) {
+  const authoritativeHydration = options?.authoritativeHydration ?? false;
+
+  if (authoritativeHydration) {
+    const incomingIds = new Set(incoming.map((approval) => approval.id));
+    const preservedApprovals = current.filter(
+      (approval) =>
+        !incomingIds.has(approval.id) &&
+        (options?.preserveLiveApprovalIds?.has(approval.id) ?? false)
+    );
+
+    return [...incoming, ...preservedApprovals].sort((left, right) =>
+      left.requestedAt.localeCompare(right.requestedAt)
+    );
+  }
+
   const next = [...current];
 
   for (const approval of incoming) {
@@ -230,7 +252,10 @@ function upsertRunStepInThread(current: RunDetail[], incoming: RunStep) {
 
 function mergeConversationState(
   current: OutcomeConversationState,
-  incoming: OutcomeConversationState
+  incoming: OutcomeConversationState,
+  options?: {
+    preserveLiveApprovalIds?: ReadonlySet<string>;
+  }
 ): OutcomeConversationState {
   const hasThread = Boolean(
     current.thread ||
@@ -246,7 +271,11 @@ function mergeConversationState(
     logs: incoming.logs.reduce(appendLog, current.logs),
     pendingApprovals: mergePendingApprovals(
       current.pendingApprovals,
-      incoming.pendingApprovals
+      incoming.pendingApprovals,
+      {
+        authoritativeHydration: incoming.thread?.isHydrated ?? false,
+        preserveLiveApprovalIds: options?.preserveLiveApprovalIds
+      }
     ),
     messages: incoming.messages.reduce(appendMessage, current.messages),
     assistantMessages: mergeAssistantMessages(
@@ -394,6 +423,7 @@ export function OutcomeConversation({
   );
   const [showFullPrompt, setShowFullPrompt] = useState(false);
   const previousOutcomeIdRef = useRef(outcomeId);
+  const livePendingApprovalIdsRef = useRef<Set<string>>(new Set());
 
   /* Keys present at first render — anything NOT in this set arrived via SSE */
   const mountKeysRef = useRef<Set<string> | null>(null);
@@ -414,13 +444,23 @@ export function OutcomeConversation({
     setViewState((current) => {
       if (previousOutcomeIdRef.current !== outcomeId) {
         previousOutcomeIdRef.current = outcomeId;
+        livePendingApprovalIdsRef.current = new Set();
         return nextState;
+      }
+
+      if (nextState.conversation.thread?.isHydrated) {
+        for (const approval of nextState.conversation.pendingApprovals) {
+          livePendingApprovalIdsRef.current.delete(approval.id);
+        }
       }
 
       return {
         conversation: mergeConversationState(
           current.conversation,
-          nextState.conversation
+          nextState.conversation,
+          {
+            preserveLiveApprovalIds: livePendingApprovalIdsRef.current
+          }
         )
       };
     });
@@ -566,6 +606,7 @@ export function OutcomeConversation({
                 }
               };
             case "approval.requested":
+              livePendingApprovalIdsRef.current.add(event.data.id);
               return {
                 conversation: {
                   ...conversation,
@@ -579,6 +620,7 @@ export function OutcomeConversation({
                 }
               };
             case "approval.resolved":
+              livePendingApprovalIdsRef.current.delete(event.data.id);
               return {
                 conversation: {
                   ...conversation,
