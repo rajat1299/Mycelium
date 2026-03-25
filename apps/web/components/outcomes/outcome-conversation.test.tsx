@@ -123,6 +123,7 @@ function renderRunningStepConversation() {
       initialLogs={[]}
       initialAssistantMessages={[]}
       initialMessages={[]}
+      optimisticMessages={[]}
       initialPendingApprovals={[]}
     />
   );
@@ -248,6 +249,7 @@ describe("OutcomeConversation", () => {
         ]}
         initialAssistantMessages={[]}
         initialMessages={[]}
+        optimisticMessages={[]}
         initialPendingApprovals={[]}
       />
     );
@@ -314,6 +316,7 @@ describe("OutcomeConversation", () => {
         initialLogs={[]}
         initialAssistantMessages={[]}
         initialMessages={[]}
+        optimisticMessages={[]}
         initialPendingApprovals={[]}
       />
     );
@@ -569,6 +572,7 @@ describe("OutcomeConversation", () => {
         initialLogs={[]}
         initialAssistantMessages={[]}
         initialMessages={[]}
+        optimisticMessages={[]}
         initialPendingApprovals={[]}
       />
     );
@@ -726,6 +730,94 @@ describe("OutcomeConversation", () => {
     expect(
       screen.getByText("Refine the final report for principals.")
     ).toBeInTheDocument();
+  });
+
+  it("does not duplicate a matching optimistic follow-up once the confirmed message is hydrated", () => {
+    render(
+      <OutcomeConversation
+        outcomeId="outcome_123"
+        outcomePrompt="Draft the weekly update."
+        outcomeSource="web"
+        initialPlan={null}
+        initialRun={{
+          id: "run_123",
+          outcomeId: "outcome_123",
+          planId: "plan_outcome_123",
+          triggerMessageId: "msg_123",
+          status: "completed",
+          createdAt: "2026-03-19T00:01:00.000Z",
+          updatedAt: "2026-03-19T00:02:00.000Z",
+          steps: []
+        }}
+        initialArtifacts={[]}
+        initialLogs={[]}
+        initialAssistantMessages={[]}
+        initialMessages={[
+          {
+            id: "msg_456",
+            outcomeId: "outcome_123",
+            role: "user",
+            content: "Refine the final report for principals.",
+            createdAt: "2026-03-19T00:03:00.000Z"
+          }
+        ]}
+        optimisticMessages={[
+          {
+            id: "optimistic:msg_456",
+            outcomeId: "outcome_123",
+            role: "user",
+            content: "Refine the final report for principals.",
+            createdAt: "2026-03-19T00:02:59.000Z",
+            submittedAt: "2026-03-19T00:02:59.000Z",
+            knownMessageIdsAtSubmit: []
+          }
+        ]}
+        initialPendingApprovals={[]}
+      />
+    );
+
+    expect(screen.getAllByText("Refine the final report for principals.")).toHaveLength(1);
+  });
+
+  it("does not duplicate a matching optimistic follow-up after message.created arrives", () => {
+    render(
+      <OutcomeConversation
+        outcomeId="outcome_123"
+        outcomePrompt="Draft the weekly update."
+        outcomeSource="web"
+        initialPlan={null}
+        initialRun={null}
+        initialArtifacts={[]}
+        initialLogs={[]}
+        initialAssistantMessages={[]}
+        initialMessages={[]}
+        optimisticMessages={[
+          {
+            id: "optimistic:msg_456",
+            outcomeId: "outcome_123",
+            role: "user",
+            content: "Refine the final report for principals.",
+            createdAt: "2026-03-19T00:02:59.000Z",
+            submittedAt: "2026-03-19T00:02:59.000Z",
+            knownMessageIdsAtSubmit: []
+          }
+        ]}
+        initialPendingApprovals={[]}
+      />
+    );
+
+    emitOutcomeEvent({
+      type: "message.created",
+      data: {
+        id: "msg_456",
+        outcomeId: "outcome_123",
+        role: "user",
+        content: "Refine the final report for principals.",
+        createdAt: "2026-03-19T00:03:00.000Z"
+      }
+    });
+
+    expect(screen.getAllByText("Refine the final report for principals.")).toHaveLength(1);
   });
 
   it("surfaces a completed result artifact as a dedicated delivery block", () => {

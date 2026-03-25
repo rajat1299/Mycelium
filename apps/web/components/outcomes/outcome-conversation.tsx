@@ -75,7 +75,13 @@ type OutcomeConversationProps = {
   initialLogs: RunLogData[];
   initialAssistantMessages: AssistantMessageSnapshot[];
   initialMessages: MessageCreatedData[];
+  optimisticMessages?: OptimisticOutcomeMessage[];
   initialPendingApprovals: Approval[];
+};
+
+export type OptimisticOutcomeMessage = MessageCreatedData & {
+  submittedAt: string;
+  knownMessageIdsAtSubmit: string[];
 };
 
 type OutcomeConversationViewState = {
@@ -391,6 +397,59 @@ function buildThreadRenderEntries(
   });
 }
 
+function sortRenderableMessages(messages: MessageCreatedData[]) {
+  return [...messages].sort((left, right) => {
+    const createdDelta = left.createdAt.localeCompare(right.createdAt);
+
+    if (createdDelta !== 0) {
+      return createdDelta;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+}
+
+function matchesConfirmedOptimisticMessage(
+  optimistic: OptimisticOutcomeMessage,
+  confirmed: MessageCreatedData
+) {
+  if (confirmed.role !== optimistic.role || confirmed.content !== optimistic.content) {
+    return false;
+  }
+
+  if (confirmed.outcomeId !== optimistic.outcomeId) {
+    return false;
+  }
+
+  if (optimistic.knownMessageIdsAtSubmit.includes(confirmed.id)) {
+    return false;
+  }
+
+  return true;
+}
+
+function mergeRenderableOutcomeMessages(
+  confirmedMessages: MessageCreatedData[],
+  optimisticMessages: OptimisticOutcomeMessage[]
+) {
+  if (optimisticMessages.length === 0) {
+    return confirmedMessages;
+  }
+
+  const unresolvedOptimisticMessages = optimisticMessages.filter(
+    (optimistic) =>
+      !confirmedMessages.some((confirmed) =>
+        matchesConfirmedOptimisticMessage(optimistic, confirmed)
+      )
+  );
+
+  if (unresolvedOptimisticMessages.length === 0) {
+    return confirmedMessages;
+  }
+
+  return sortRenderableMessages([...confirmedMessages, ...unresolvedOptimisticMessages]);
+}
+
 /* ── Main component ─────────────────────────────────────────────────── */
 
 export function OutcomeConversation({
@@ -404,6 +463,7 @@ export function OutcomeConversation({
   initialLogs,
   initialAssistantMessages,
   initialMessages,
+  optimisticMessages = [],
   initialPendingApprovals
 }: OutcomeConversationProps) {
   const [viewState, setViewState] = useState<OutcomeConversationViewState>(() =>
@@ -651,17 +711,28 @@ export function OutcomeConversation({
       : `${outcomePrompt.slice(0, 280).trimEnd()}\u2026`;
 
   const state = viewState.conversation;
+  const renderableMessages = useMemo(
+    () => mergeRenderableOutcomeMessages(state.messages, optimisticMessages),
+    [optimisticMessages, state.messages]
+  );
+  const renderState = useMemo(
+    () => ({
+      ...state,
+      messages: renderableMessages
+    }),
+    [renderableMessages, state]
+  );
   const threadTurns = useMemo(() => {
     return buildOutcomeThreadTurns({
       outcomePrompt,
       outcomeSource,
-      state,
+      state: renderState,
       previousTurns:
         previousTurnsOutcomeIdRef.current === outcomeId
           ? previousTurnsRef.current
           : undefined
     });
-  }, [outcomePrompt, outcomeSource, state]);
+  }, [outcomePrompt, outcomeSource, outcomeId, renderState]);
   const threadRenderEntries = useMemo(
     () => buildThreadRenderEntries(threadTurns),
     [threadTurns]

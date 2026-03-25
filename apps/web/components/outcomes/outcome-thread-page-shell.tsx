@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useState } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import type {
   Approval,
   AssistantMessageSnapshot,
@@ -14,7 +14,10 @@ import type {
 } from "@computer-oss/protocol";
 import { subscribeToOutcomeEvents } from "../../lib/events";
 import { FollowUpInput } from "./follow-up-input";
-import { OutcomeConversation } from "./outcome-conversation";
+import {
+  OutcomeConversation,
+  type OptimisticOutcomeMessage
+} from "./outcome-conversation";
 import { OutcomeTranscriptViewport } from "./outcome-transcript-viewport";
 
 const ACTIVE_OUTCOME_STATUSES = new Set([
@@ -30,6 +33,41 @@ function isActiveOutcomeStatus(status?: string) {
 
 function isStaleOutcomeUpdate(current: Outcome, incoming: Outcome) {
   return incoming.updatedAt.localeCompare(current.updatedAt) < 0;
+}
+
+function matchesConfirmedOptimisticMessage(
+  optimistic: OptimisticOutcomeMessage,
+  confirmed: MessageCreatedData
+) {
+  if (confirmed.role !== optimistic.role || confirmed.content !== optimistic.content) {
+    return false;
+  }
+
+  if (confirmed.outcomeId !== optimistic.outcomeId) {
+    return false;
+  }
+
+  if (optimistic.knownMessageIdsAtSubmit.includes(confirmed.id)) {
+    return false;
+  }
+
+  return true;
+}
+
+function reconcileOptimisticMessages(
+  optimisticMessages: OptimisticOutcomeMessage[],
+  confirmedMessages: MessageCreatedData[]
+) {
+  return optimisticMessages.filter(
+    (optimistic) =>
+      !confirmedMessages.some((confirmed) =>
+        matchesConfirmedOptimisticMessage(optimistic, confirmed)
+      )
+  );
+}
+
+function createOptimisticMessageId() {
+  return `optimistic:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
 }
 
 type OutcomeThreadPageShellProps = {
@@ -72,21 +110,75 @@ export function OutcomeThreadPageShell({
   outcomeSource
 }: OutcomeThreadPageShellProps) {
   const [liveOutcome, setLiveOutcome] = useState(outcome);
+  const [optimisticMessages, setOptimisticMessages] = useState<OptimisticOutcomeMessage[]>(
+    []
+  );
+  const knownMessageIdsRef = useRef<Set<string>>(new Set(initialMessages.map((m) => m.id)));
 
   useEffect(() => {
     setLiveOutcome(outcome);
   }, [outcome]);
 
   useEffect(() => {
-    return subscribeToOutcomeEvents(outcome.id, (event) => {
-      if (event.type !== "outcome.updated" || event.data.id !== outcome.id) {
-        return;
+    knownMessageIdsRef.current = new Set(initialMessages.map((message) => message.id));
+    setOptimisticMessages((current) =>
+      reconcileOptimisticMessages(current, initialMessages)
+    );
+  }, [initialMessages, outcome.id]);
+
+  const appendOptimisticMessageAction = useCallback(
+    async (formData: FormData) => {
+      const content = String(formData.get("content") ?? "").trim();
+
+      if (!content) {
+        return appendMessageAction(formData);
       }
 
-      startTransition(() => {
-        setLiveOutcome((current) =>
-          isStaleOutcomeUpdate(current, event.data) ? current : event.data
+      const submittedAt = new Date().toISOString();
+
+      const optimisticMessage: OptimisticOutcomeMessage = {
+        id: createOptimisticMessageId(),
+        outcomeId: outcome.id,
+        role: "user",
+        content,
+        createdAt: submittedAt,
+        submittedAt,
+        knownMessageIdsAtSubmit: [...knownMessageIdsRef.current]
+      };
+
+      setOptimisticMessages((current) => [...current, optimisticMessage]);
+
+      try {
+        await appendMessageAction(formData);
+      } catch (error) {
+        setOptimisticMessages((current) =>
+          current.filter((message) => message.id !== optimisticMessage.id)
         );
+        throw error;
+      }
+    },
+    [appendMessageAction, outcome.id]
+  );
+
+  useEffect(() => {
+    return subscribeToOutcomeEvents(outcome.id, (event) => {
+      startTransition(() => {
+        if (event.type === "outcome.updated" && event.data.id === outcome.id) {
+          setLiveOutcome((current) =>
+            isStaleOutcomeUpdate(current, event.data) ? current : event.data
+          );
+          return;
+        }
+
+        if (event.type === "message.created" && event.data.outcomeId === outcome.id) {
+          knownMessageIdsRef.current.add(event.data.id);
+
+          if (event.data.role === "user") {
+            setOptimisticMessages((current) =>
+              reconcileOptimisticMessages(current, [event.data])
+            );
+          }
+        }
       });
     });
   }, [outcome.id]);
@@ -136,7 +228,7 @@ export function OutcomeThreadPageShell({
       <OutcomeTranscriptViewport
         composer={
           <FollowUpInput
-            action={appendMessageAction}
+            action={appendOptimisticMessageAction}
             hasConversation={hasConversation}
             disabled={isActiveOutcomeStatus(liveOutcome.status)}
           />
@@ -172,6 +264,7 @@ export function OutcomeThreadPageShell({
           initialLogs={initialLogs}
           initialAssistantMessages={initialAssistantMessages}
           initialMessages={initialMessages}
+          optimisticMessages={optimisticMessages}
           initialPendingApprovals={initialPendingApprovals}
         />
       </OutcomeTranscriptViewport>

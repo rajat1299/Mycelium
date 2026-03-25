@@ -8,6 +8,10 @@ const eventStream = vi.hoisted(() => ({
   handlers: new Set<(event: any) => void>()
 }));
 
+let observedFollowUpAction: ((formData: FormData) => Promise<void>) | null = null;
+let observedConversationMessages: Array<{ id: string; content: string }> = [];
+let observedOptimisticMessages: Array<{ id: string; content: string }> = [];
+
 vi.mock("../../lib/events", () => ({
   subscribeToOutcomeEvents: (
     _outcomeId: string,
@@ -23,7 +27,38 @@ vi.mock("../../lib/events", () => ({
 }));
 
 vi.mock("./outcome-conversation", () => ({
-  OutcomeConversation: () => <div data-testid="outcome-conversation" />
+  OutcomeConversation: ({
+    initialMessages,
+    optimisticMessages = []
+  }: {
+    initialMessages: Array<{ id: string; content: string }>;
+    optimisticMessages?: Array<{ id: string; content: string }>;
+  }) => {
+    observedConversationMessages = initialMessages;
+    observedOptimisticMessages = optimisticMessages;
+
+    return (
+      <div data-testid="outcome-conversation">
+        {[...initialMessages, ...optimisticMessages].map((message) => (
+          <p key={message.id}>{message.content}</p>
+        ))}
+      </div>
+    );
+  }
+}));
+
+vi.mock("./follow-up-input", () => ({
+  FollowUpInput: ({
+    action,
+    disabled
+  }: {
+    action: (formData: FormData) => Promise<void>;
+    disabled?: boolean;
+  }) => {
+    observedFollowUpAction = action;
+
+    return <textarea placeholder="Type a command..." disabled={disabled} />;
+  }
 }));
 
 vi.mock("./outcome-transcript-viewport", () => ({
@@ -86,11 +121,17 @@ function buildProps() {
 describe("OutcomeThreadPageShell", () => {
   beforeEach(() => {
     eventStream.handlers.clear();
+    observedFollowUpAction = null;
+    observedConversationMessages = [];
+    observedOptimisticMessages = [];
   });
 
   afterEach(() => {
     cleanup();
     eventStream.handlers.clear();
+    observedFollowUpAction = null;
+    observedConversationMessages = [];
+    observedOptimisticMessages = [];
   });
 
   it("re-enables the follow-up composer and updates the header when the live outcome completes", () => {
@@ -201,5 +242,120 @@ describe("OutcomeThreadPageShell", () => {
     expect(screen.getByTestId("outcome-status-pill")).toHaveTextContent("completed");
     expect(screen.queryByTestId("outcome-status-pulse")).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText("Type a command...")).not.toBeDisabled();
+  });
+
+  it("echoes a follow-up message into the thread immediately while the server action is pending", async () => {
+    let resolveAction: (() => void) | null = null;
+
+    const appendMessageAction = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveAction = resolve;
+        })
+    );
+
+    render(
+      <OutcomeThreadPageShell
+        {...buildProps()}
+        appendMessageAction={appendMessageAction}
+      />
+    );
+
+    const formData = new FormData();
+    formData.set("content", "Make it shorter for principals.");
+
+    await act(async () => {
+      void observedFollowUpAction?.(formData);
+      await Promise.resolve();
+    });
+
+    expect(observedOptimisticMessages).toEqual([
+      expect.objectContaining({
+        content: "Make it shorter for principals."
+      })
+    ]);
+    expect(screen.getByText("Make it shorter for principals.")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveAction?.();
+      await Promise.resolve();
+    });
+  });
+
+  it("removes an optimistic follow-up echo when the submit action fails", async () => {
+    const appendMessageAction = vi
+      .fn()
+      .mockRejectedValue(new Error("Mycelium is still working on the current run."));
+
+    render(
+      <OutcomeThreadPageShell
+        {...buildProps()}
+        appendMessageAction={appendMessageAction}
+      />
+    );
+
+    const formData = new FormData();
+    formData.set("content", "Make it shorter for principals.");
+
+    await expect(
+      act(async () => {
+        await observedFollowUpAction?.(formData);
+      })
+    ).rejects.toThrow("Mycelium is still working on the current run.");
+
+    expect(observedOptimisticMessages).toEqual([]);
+    expect(screen.queryByText("Make it shorter for principals.")).not.toBeInTheDocument();
+  });
+
+  it("reconciles an optimistic follow-up when the confirmed message arrives over SSE", async () => {
+    let resolveAction: (() => void) | null = null;
+
+    const appendMessageAction = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveAction = resolve;
+        })
+    );
+
+    render(
+      <OutcomeThreadPageShell
+        {...buildProps()}
+        appendMessageAction={appendMessageAction}
+      />
+    );
+
+    const formData = new FormData();
+    formData.set("content", "Make it shorter for principals.");
+
+    await act(async () => {
+      void observedFollowUpAction?.(formData);
+      await Promise.resolve();
+    });
+
+    expect(screen.getAllByText("Make it shorter for principals.")).toHaveLength(1);
+
+    act(() => {
+      for (const handler of eventStream.handlers) {
+        handler({
+          outcomeId: "outcome_123",
+          type: "message.created",
+          data: {
+            id: "msg_456",
+            outcomeId: "outcome_123",
+            role: "user",
+            content: "Make it shorter for principals.",
+            createdAt: "2026-03-25T10:03:00.000Z"
+          }
+        });
+      }
+    });
+
+    expect(observedOptimisticMessages).toEqual([]);
+    expect(screen.queryByText("Make it shorter for principals.")).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveAction?.();
+      await Promise.resolve();
+    });
   });
 });
