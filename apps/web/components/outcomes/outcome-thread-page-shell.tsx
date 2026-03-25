@@ -327,6 +327,13 @@ export function OutcomeThreadPageShell({
           </p>
         ) : null}
 
+        {conflictState === "replay-content" ? (
+          <p className="rounded-xl border border-amber-300/40 bg-amber-50/40 px-4 py-3 text-sm text-amber-800">
+            Mycelium couldn&apos;t match this follow-up to its original submission.
+            Please send the message again.
+          </p>
+        ) : null}
+
         <OutcomeConversation
           outcomeId={outcome.id}
           outcomePrompt={outcomePrompt}

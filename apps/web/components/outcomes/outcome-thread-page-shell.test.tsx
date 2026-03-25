@@ -215,6 +215,22 @@ describe("OutcomeThreadPageShell", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("renders a replay-content conflict banner without reusing the active-run copy", () => {
+    render(
+      <OutcomeThreadPageShell
+        {...buildProps()}
+        conflictState="replay-content"
+      />
+    );
+
+    expect(
+      screen.getByText(/couldn't match this follow-up to its original submission/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Mycelium is still working on the current run/i)
+    ).not.toBeInTheDocument();
+  });
+
   it("treats queued and blocked outcomes as active shell states", () => {
     const props = buildProps();
     const { rerender } = render(

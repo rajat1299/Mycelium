@@ -40,9 +40,15 @@ const mocks = vi.hoisted(() => ({
 
 const hoistedErrors = vi.hoisted(() => ({
   OutcomeContinueConflictError: class MockOutcomeContinueConflictError extends Error {
-    constructor(message = "Mycelium is still working on the current run.") {
+    reason: "active-run" | "replay-content";
+
+    constructor(
+      message = "Mycelium is still working on the current run.",
+      reason: "active-run" | "replay-content" = "active-run"
+    ) {
       super(message);
       this.name = "OutcomeContinueConflictError";
+      this.reason = reason;
     }
   }
 }));
@@ -1002,7 +1008,8 @@ describe("OutcomeDetailPage", () => {
   it("redirects back to the outcome page with a conflict banner when a stale follow-up hits an active run", async () => {
     mocks.continueOutcome.mockRejectedValue(
       new hoistedErrors.OutcomeContinueConflictError(
-        "Outcome outcome_123 already has an active run run_live with status running."
+        "Outcome outcome_123 already has an active run run_live with status running.",
+        "active-run"
       )
     );
 
@@ -1020,6 +1027,31 @@ describe("OutcomeDetailPage", () => {
 
     expect(mocks.redirect).toHaveBeenCalledWith(
       "/outcomes/outcome_123?runId=run_latest&conflict=active-run"
+    );
+  });
+
+  it("redirects replay-content conflicts to a replay-specific banner state", async () => {
+    mocks.continueOutcome.mockRejectedValue(
+      new hoistedErrors.OutcomeContinueConflictError(
+        "Outcome outcome_123 submission id submit_conflict already belongs to a different message.",
+        "replay-content"
+      )
+    );
+
+    render(
+      await OutcomeDetailPage({
+        params: Promise.resolve({ id: "outcome_123" }),
+        searchParams: Promise.resolve({ runId: "run_latest" })
+      })
+    );
+
+    const formData = new FormData();
+    formData.set("content", "Make it shorter.");
+
+    await observedFollowUpAction?.(formData);
+
+    expect(mocks.redirect).toHaveBeenCalledWith(
+      "/outcomes/outcome_123?runId=run_latest&conflict=replay-content"
     );
   });
 

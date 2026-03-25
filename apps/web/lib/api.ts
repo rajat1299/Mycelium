@@ -61,9 +61,15 @@ const DEFAULT_WORKSPACE_ID = "ws_default";
 const DEFAULT_USER_ID = "user_default";
 
 export class OutcomeContinueConflictError extends Error {
-  constructor(message = "Mycelium is still working on the current run.") {
+  readonly reason: "active-run" | "replay-content";
+
+  constructor(
+    message = "Mycelium is still working on the current run.",
+    reason: "active-run" | "replay-content" = "active-run"
+  ) {
     super(message);
     this.name = "OutcomeContinueConflictError";
+    this.reason = reason;
   }
 }
 
@@ -250,6 +256,7 @@ export async function continueOutcome(
 
   if (response.status === 409) {
     let message = "Mycelium is still working on the current run.";
+    let reason: "active-run" | "replay-content" = "active-run";
 
     try {
       const parsed = await response.json();
@@ -261,12 +268,18 @@ export async function continueOutcome(
         parsed.error.length > 0
       ) {
         message = parsed.error;
+        if (
+          parsed.error.includes("submission id") &&
+          parsed.error.includes("different message")
+        ) {
+          reason = "replay-content";
+        }
       }
     } catch {
       // Fall back to the generic conflict message.
     }
 
-    throw new OutcomeContinueConflictError(message);
+    throw new OutcomeContinueConflictError(message, reason);
   }
 
   if (!response.ok) {

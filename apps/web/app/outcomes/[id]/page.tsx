@@ -98,9 +98,11 @@ export default async function OutcomeDetailPage({
       revalidatePath(`/outcomes/${id}`);
     } catch (error) {
       if (error instanceof OutcomeContinueConflictError) {
+        const conflictReason =
+          error.reason === "replay-content" ? "replay-content" : "active-run";
         const targetPath = selectedRunId
-          ? `/outcomes/${id}?runId=${selectedRunId}&conflict=active-run`
-          : `/outcomes/${id}?conflict=active-run`;
+          ? `/outcomes/${id}?runId=${selectedRunId}&conflict=${conflictReason}`
+          : `/outcomes/${id}?conflict=${conflictReason}`;
         redirect(targetPath);
         return;
       }
