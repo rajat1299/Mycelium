@@ -192,6 +192,20 @@ describe("OutcomeTranscriptViewport", () => {
     expect(screen.queryByRole("button", { name: /jump to latest/i })).not.toBeInTheDocument();
   });
 
+  it("does not rely on CSS smooth scrolling for live transcript follow mode", () => {
+    const { container } = render(
+      <OutcomeTranscriptViewport composer={<div data-testid="composer-shell" />}>
+        <div style={{ height: 200 }}>Turn one</div>
+      </OutcomeTranscriptViewport>
+    );
+
+    const scrollContainer = container.querySelector(
+      ".outcome-transcript-scroll"
+    ) as HTMLElement;
+
+    expect(scrollContainer).not.toHaveClass("scroll-smooth");
+  });
+
   it("does not force-scroll when the user has detached from the live bottom", () => {
     const { container } = render(
       <OutcomeTranscriptViewport composer={<div data-testid="composer-shell" />}>

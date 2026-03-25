@@ -177,7 +177,7 @@ export function OutcomeTranscriptViewport({
     <div className="relative flex min-h-0 flex-1">
       <div
         ref={scrollContainerRef}
-        className="outcome-transcript-scroll flex-1 overflow-y-auto custom-scrollbar scroll-smooth px-4 sm:px-6 lg:px-8"
+        className="outcome-transcript-scroll flex-1 overflow-y-auto custom-scrollbar px-4 sm:px-6 lg:px-8"
         style={bottomInset > 0 ? { paddingBottom: `${bottomInset}px` } : undefined}
         onScroll={(event) => {
           const container = event.currentTarget;
