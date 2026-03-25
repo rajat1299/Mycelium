@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import OutcomeDetailPage from "./page";
 
 const mocks = vi.hoisted(() => ({
+  getOutcomeThreadSnapshot: vi.fn(),
   getOutcome: vi.fn(),
   getPlan: vi.fn(),
   getRunPlan: vi.fn(),
@@ -50,6 +51,9 @@ let observedTaskOutcomes: Array<{ id: string; prompt: string; status: string }> 
 let observedSelectedOutcomeId: string | null = null;
 let observedConversationPlan: Plan | null = null;
 let observedConversationRun: RunDetail | null = null;
+let observedConversationThread:
+  | { plans: Plan[]; runs: RunDetail[]; isHydrated?: boolean }
+  | null = null;
 let observedConversationArtifacts: Artifact[] = [];
 let observedConversationLogs: Array<{ message: string; level: string }> = [];
 let observedConversationAssistantMessages: Array<{ content: string; kind: string }> = [];
@@ -95,6 +99,7 @@ vi.mock("../../../components/outcomes/outcome-conversation", () => ({
     initialPlan,
     outcomeSource,
     initialRun,
+    initialThread,
     initialArtifacts,
     initialLogs,
     initialAssistantMessages,
@@ -104,6 +109,7 @@ vi.mock("../../../components/outcomes/outcome-conversation", () => ({
     initialPlan: Plan | null;
     outcomeSource: string;
     initialRun: RunDetail | null;
+    initialThread?: { plans: Plan[]; runs: RunDetail[]; isHydrated?: boolean };
     initialArtifacts: Artifact[];
     initialLogs: Array<{ message: string; level: string }>;
     initialAssistantMessages: Array<{ content: string; kind: string }>;
@@ -112,6 +118,7 @@ vi.mock("../../../components/outcomes/outcome-conversation", () => ({
   }) => {
     observedConversationPlan = initialPlan;
     observedConversationRun = initialRun;
+    observedConversationThread = initialThread ?? null;
     observedConversationArtifacts = initialArtifacts;
     observedConversationLogs = initialLogs;
     observedConversationAssistantMessages = initialAssistantMessages;
@@ -161,6 +168,7 @@ vi.mock("../../../components/outcomes/execution-console", () => ({
 vi.mock("../../../lib/api", () => ({
   OutcomeContinueConflictError: hoistedErrors.OutcomeContinueConflictError,
   continueOutcome: mocks.continueOutcome,
+  getOutcomeThreadSnapshot: mocks.getOutcomeThreadSnapshot,
   getOutcome: mocks.getOutcome,
   getPlan: mocks.getPlan,
   getRunPlan: mocks.getRunPlan,
@@ -191,6 +199,7 @@ describe("OutcomeDetailPage", () => {
     observedSelectedOutcomeId = null;
     observedConversationPlan = null;
     observedConversationRun = null;
+    observedConversationThread = null;
     observedConversationArtifacts = [];
     observedConversationLogs = [];
     observedConversationAssistantMessages = [];
@@ -201,15 +210,139 @@ describe("OutcomeDetailPage", () => {
     observedFollowUpDisabled = null;
     vi.clearAllMocks();
 
-    mocks.getOutcome.mockResolvedValue({
-      id: "outcome_123",
-      workspaceId: "ws_default",
-      userId: "user_default",
-      prompt: "Resume the queued run from storage.",
-      source: "web",
-      status: "queued",
-      createdAt: "2026-03-11T00:00:00.000Z",
-      updatedAt: "2026-03-11T00:10:00.000Z"
+    mocks.getOutcomeThreadSnapshot.mockResolvedValue({
+      outcome: {
+        id: "outcome_123",
+        workspaceId: "ws_default",
+        userId: "user_default",
+        prompt: "Resume the queued run from storage.",
+        source: "web",
+        status: "queued",
+        createdAt: "2026-03-11T00:00:00.000Z",
+        updatedAt: "2026-03-11T00:10:00.000Z"
+      },
+      messages: [
+        {
+          id: "msg_123",
+          outcomeId: "outcome_123",
+          role: "user",
+          content: "Refine the final report for principals.",
+          createdAt: "2026-03-11T00:09:25.000Z"
+        },
+        {
+          id: "msg_456",
+          outcomeId: "outcome_123",
+          role: "user",
+          content: "Now make it shorter for the district cabinet.",
+          createdAt: "2026-03-11T00:11:25.000Z"
+        }
+      ],
+      plans: [
+        {
+          id: "plan_run_older",
+          outcomeId: "outcome_123",
+          triggerMessageId: "msg_123",
+          status: "draft",
+          createdAt: "2026-03-11T00:09:05.000Z",
+          updatedAt: "2026-03-11T00:09:05.000Z",
+          nodes: [],
+          edges: []
+        },
+        {
+          id: "plan_run_latest",
+          outcomeId: "outcome_123",
+          triggerMessageId: "msg_456",
+          status: "draft",
+          createdAt: "2026-03-11T00:11:05.000Z",
+          updatedAt: "2026-03-11T00:11:05.000Z",
+          nodes: [],
+          edges: []
+        }
+      ],
+      runs: [
+        {
+          id: "run_older",
+          outcomeId: "outcome_123",
+          planId: "plan_run_older",
+          triggerMessageId: "msg_123",
+          status: "completed",
+          createdAt: "2026-03-11T00:09:00.000Z",
+          updatedAt: "2026-03-11T00:10:00.000Z",
+          steps: []
+        },
+        {
+          id: "run_latest",
+          outcomeId: "outcome_123",
+          planId: "plan_run_latest",
+          triggerMessageId: "msg_456",
+          status: "queued",
+          createdAt: "2026-03-11T00:11:00.000Z",
+          updatedAt: "2026-03-11T00:11:00.000Z",
+          steps: []
+        }
+      ],
+      assistantMessages: [
+        {
+          id: "assistant_123",
+          runId: "run_older",
+          kind: "acknowledgment",
+          content: "I'll start by loading relevant skills.",
+          createdAt: "2026-03-11T00:09:10.000Z",
+          updatedAt: "2026-03-11T00:09:12.000Z",
+          status: "completed"
+        },
+        {
+          id: "assistant_456",
+          runId: "run_latest",
+          kind: "acknowledgment",
+          content: "I’m tightening the cabinet version now.",
+          createdAt: "2026-03-11T00:11:10.000Z",
+          updatedAt: "2026-03-11T00:11:12.000Z",
+          status: "completed"
+        }
+      ],
+      artifacts: [
+        {
+          id: "artifact_123",
+          outcomeId: "outcome_123",
+          runId: "run_older",
+          stepId: "step_1",
+          kind: "analysis",
+          relativePath: "artifacts/analyze-outcome.md",
+          size: 128,
+          metadata: {},
+          createdAt: "2026-03-11T00:09:30.000Z"
+        }
+      ],
+      logs: [
+        {
+          runId: "run_older",
+          stepId: "step_1",
+          stepTitle: "Analyze outcome",
+          level: "info",
+          message: "Recovered persisted log output.",
+          createdAt: "2026-03-11T00:09:20.000Z"
+        }
+      ],
+      pendingApprovals: [
+        {
+          id: "approval_123",
+          workspaceId: "ws_default",
+          outcomeId: "outcome_123",
+          runId: "run_latest",
+          stepId: "step_1",
+          status: "pending",
+          kind: "output_review_required",
+          title: "Review final result",
+          summary: "Inspect the final artifact before marking the run complete.",
+          instruction: "Approve to complete the run or reject to fail it.",
+          artifactIds: ["artifact_123"],
+          requestedAt: "2026-03-11T00:11:40.000Z",
+          resolvedAt: null,
+          resolution: null,
+          resolutionNote: null
+        }
+      ]
     });
     mocks.getPlan.mockResolvedValue(null);
     mocks.getRunPlan.mockResolvedValue({
@@ -256,15 +389,7 @@ describe("OutcomeDetailPage", () => {
         createdAt: "2026-03-11T00:09:20.000Z"
       }
     ]);
-    mocks.getOutcomeMessages.mockResolvedValue([
-      {
-        id: "msg_123",
-        outcomeId: "outcome_123",
-        role: "user",
-        content: "Refine the final report for principals.",
-        createdAt: "2026-03-11T00:09:25.000Z"
-      }
-    ]);
+    mocks.getOutcomeMessages.mockResolvedValue([]);
     mocks.getRunAssistantMessages.mockResolvedValue([
       {
         id: "assistant_123",
@@ -446,29 +571,37 @@ describe("OutcomeDetailPage", () => {
       })
     );
 
-    expect(mocks.getLatestRun).toHaveBeenCalledWith("outcome_123");
-    expect(mocks.getOutcomeMessageHistory).not.toHaveBeenCalled();
+    expect(mocks.getOutcomeThreadSnapshot).toHaveBeenCalledWith("outcome_123");
+    expect(mocks.getLatestRun).not.toHaveBeenCalled();
+    expect(mocks.getOutcome).not.toHaveBeenCalled();
     expect(mocks.getRun).not.toHaveBeenCalled();
-    expect(mocks.getRunPlan).toHaveBeenCalledWith("run_latest");
+    expect(mocks.getRunPlan).not.toHaveBeenCalled();
     expect(mocks.getPlan).not.toHaveBeenCalled();
     expect(mocks.listOutcomes).toHaveBeenCalledWith("ws_default");
-    expect(mocks.listApprovals).toHaveBeenCalledWith("ws_default");
-    expect(mocks.getRunArtifacts).toHaveBeenCalledWith("run_latest");
-    expect(mocks.getRunLogs).toHaveBeenCalledWith("run_latest");
-    expect(mocks.getOutcomeMessages).toHaveBeenCalledWith("outcome_123");
-    expect(mocks.getRunAssistantMessages).toHaveBeenCalledWith("run_latest");
-    expect(mocks.listAuthProfiles).not.toHaveBeenCalled();
-    expect(mocks.listWorkers).not.toHaveBeenCalled();
-    expect(mocks.getRunArtifactLineage).not.toHaveBeenCalled();
-    expect(mocks.getRunCheckpoints).not.toHaveBeenCalled();
-    expect(mocks.getCheckpoint).not.toHaveBeenCalled();
-    expect(mocks.getRunAudit).not.toHaveBeenCalled();
+    expect(mocks.listApprovals).not.toHaveBeenCalled();
+    expect(mocks.getRunArtifacts).not.toHaveBeenCalled();
+    expect(mocks.getRunLogs).not.toHaveBeenCalled();
+    expect(mocks.getOutcomeMessages).not.toHaveBeenCalled();
+    expect(mocks.getRunAssistantMessages).not.toHaveBeenCalled();
     expect(observedConversationSource).toBe("web");
     expect(observedSelectedOutcomeId).toBe("outcome_123");
     expect(observedConversationPlan).toEqual(
       expect.objectContaining({
         id: "plan_run_latest",
-        triggerMessageId: "msg_123"
+        triggerMessageId: "msg_456"
+      })
+    );
+    expect(observedConversationThread).toEqual(
+      expect.objectContaining({
+        isHydrated: true,
+        plans: [
+          expect.objectContaining({ id: "plan_run_older" }),
+          expect.objectContaining({ id: "plan_run_latest" })
+        ],
+        runs: [
+          expect.objectContaining({ id: "run_older" }),
+          expect.objectContaining({ id: "run_latest" })
+        ]
       })
     );
     expect(observedTaskOutcomes).toEqual([
@@ -494,16 +627,22 @@ describe("OutcomeDetailPage", () => {
         level: "info"
       })
     ]);
-    expect(observedConversationAssistantMessages).toEqual([
+    expect(observedConversationAssistantMessages).toEqual(
+      expect.arrayContaining([
       expect.objectContaining({
         kind: "acknowledgment",
         content: "I'll start by loading relevant skills."
       })
-    ]);
+      ])
+    );
     expect(observedConversationMessages).toEqual([
       expect.objectContaining({
         role: "user",
         content: "Refine the final report for principals."
+      }),
+      expect.objectContaining({
+        role: "user",
+        content: "Now make it shorter for the district cabinet."
       })
     ]);
     expect(observedConversationPendingApprovals).toEqual([
@@ -520,50 +659,48 @@ describe("OutcomeDetailPage", () => {
     expect(screen.queryByText("Operator trace")).not.toBeInTheDocument();
   });
 
-  it("ignores a runId that belongs to a different outcome and falls back to the latest local run", async () => {
-    mocks.getRun.mockResolvedValue({
-      id: "run_other",
-      outcomeId: "outcome_other",
-      planId: "plan_outcome_other",
-      triggerMessageId: "msg_other",
-      status: "queued",
-      createdAt: "2026-03-11T00:08:00.000Z",
-      updatedAt: "2026-03-11T00:08:00.000Z",
-      steps: []
-    });
-
+  it("does not let runId replace the main thread transcript", async () => {
     render(
       await OutcomeDetailPage({
         params: Promise.resolve({ id: "outcome_123" }),
-        searchParams: Promise.resolve({ runId: "run_other" })
+        searchParams: Promise.resolve({ runId: "run_older" })
       })
     );
 
-    expect(mocks.getRun).toHaveBeenCalledWith("run_other");
-    expect(mocks.getLatestRun).toHaveBeenCalledWith("outcome_123");
-    expect(mocks.getRunPlan).toHaveBeenCalledWith("run_latest");
-    expect(mocks.listApprovals).toHaveBeenCalledWith("ws_default");
-    expect(mocks.getRunArtifacts).toHaveBeenCalledWith("run_latest");
-    expect(mocks.getRunLogs).toHaveBeenCalledWith("run_latest");
-    expect(mocks.getRunAssistantMessages).toHaveBeenCalledWith("run_latest");
-    expect(mocks.listAuthProfiles).not.toHaveBeenCalled();
-    expect(mocks.getRunArtifactLineage).not.toHaveBeenCalled();
-    expect(mocks.getRunCheckpoints).not.toHaveBeenCalled();
-    expect(mocks.getCheckpoint).not.toHaveBeenCalled();
-    expect(mocks.getRunAudit).not.toHaveBeenCalled();
+    expect(mocks.getOutcomeThreadSnapshot).toHaveBeenCalledWith("outcome_123");
+    expect(mocks.getRun).not.toHaveBeenCalled();
+    expect(mocks.getLatestRun).not.toHaveBeenCalled();
+    expect(mocks.getRunPlan).not.toHaveBeenCalled();
     expect(observedConversationRun?.id).toBe("run_latest");
+    expect(observedConversationMessages).toEqual([
+      expect.objectContaining({
+        content: "Refine the final report for principals."
+      }),
+      expect.objectContaining({
+        content: "Now make it shorter for the district cabinet."
+      })
+    ]);
   });
 
   it("keeps the outcome page narrative-first even for messaging-triggered outcomes", async () => {
-    mocks.getOutcome.mockResolvedValue({
-      id: "outcome_123",
-      workspaceId: "ws_default",
-      userId: "user_default",
-      prompt: "Summarize the incident thread.",
-      source: "slack",
-      status: "running",
-      createdAt: "2026-03-18T14:00:00.000Z",
-      updatedAt: "2026-03-18T14:10:00.000Z"
+    mocks.getOutcomeThreadSnapshot.mockResolvedValue({
+      outcome: {
+        id: "outcome_123",
+        workspaceId: "ws_default",
+        userId: "user_default",
+        prompt: "Summarize the incident thread.",
+        source: "slack",
+        status: "running",
+        createdAt: "2026-03-18T14:00:00.000Z",
+        updatedAt: "2026-03-18T14:10:00.000Z"
+      },
+      messages: [],
+      plans: [],
+      runs: [],
+      assistantMessages: [],
+      artifacts: [],
+      logs: [],
+      pendingApprovals: []
     });
 
     render(
@@ -592,16 +729,32 @@ describe("OutcomeDetailPage", () => {
   });
 
   it("hydrates persisted follow-up messages even when the outcome has no run yet", async () => {
-    mocks.getLatestRun.mockResolvedValue(null);
-    mocks.getOutcome.mockResolvedValue({
-      id: "outcome_123",
-      workspaceId: "ws_default",
-      userId: "user_default",
-      prompt: "Resume the queued run from storage.",
-      source: "web",
-      status: "completed",
-      createdAt: "2026-03-11T00:00:00.000Z",
-      updatedAt: "2026-03-11T00:10:00.000Z"
+    mocks.getOutcomeThreadSnapshot.mockResolvedValue({
+      outcome: {
+        id: "outcome_123",
+        workspaceId: "ws_default",
+        userId: "user_default",
+        prompt: "Resume the queued run from storage.",
+        source: "web",
+        status: "completed",
+        createdAt: "2026-03-11T00:00:00.000Z",
+        updatedAt: "2026-03-11T00:10:00.000Z"
+      },
+      messages: [
+        {
+          id: "msg_123",
+          outcomeId: "outcome_123",
+          role: "user",
+          content: "Refine the final report for principals.",
+          createdAt: "2026-03-11T00:09:25.000Z"
+        }
+      ],
+      plans: [],
+      runs: [],
+      assistantMessages: [],
+      artifacts: [],
+      logs: [],
+      pendingApprovals: []
     });
 
     render(
@@ -611,10 +764,18 @@ describe("OutcomeDetailPage", () => {
       })
     );
 
-    expect(mocks.getPlan).toHaveBeenCalledWith("outcome_123");
+    expect(mocks.getOutcomeThreadSnapshot).toHaveBeenCalledWith("outcome_123");
+    expect(mocks.getPlan).not.toHaveBeenCalled();
     expect(mocks.getRunPlan).not.toHaveBeenCalled();
-    expect(mocks.getOutcomeMessages).toHaveBeenCalledWith("outcome_123");
+    expect(mocks.getOutcomeMessages).not.toHaveBeenCalled();
     expect(observedConversationRun).toBeNull();
+    expect(observedConversationThread).toEqual(
+      expect.objectContaining({
+        isHydrated: true,
+        plans: [],
+        runs: []
+      })
+    );
     expect(observedFollowUpDisabled).toBe(false);
     expect(observedConversationMessages).toEqual([
       expect.objectContaining({
@@ -625,18 +786,6 @@ describe("OutcomeDetailPage", () => {
   });
 
   it("does not fall back to the latest outcome plan when the selected run has no plan snapshot", async () => {
-    mocks.getRunPlan.mockResolvedValue(null);
-    mocks.getPlan.mockResolvedValue({
-      id: "plan_latest",
-      outcomeId: "outcome_123",
-      triggerMessageId: "msg_latest",
-      status: "draft",
-      createdAt: "2026-03-11T00:12:00.000Z",
-      updatedAt: "2026-03-11T00:12:00.000Z",
-      nodes: [],
-      edges: []
-    });
-
     render(
       await OutcomeDetailPage({
         params: Promise.resolve({ id: "outcome_123" }),
@@ -644,9 +793,12 @@ describe("OutcomeDetailPage", () => {
       })
     );
 
-    expect(mocks.getRunPlan).toHaveBeenCalledWith("run_latest");
     expect(mocks.getPlan).not.toHaveBeenCalled();
-    expect(observedConversationPlan).toBeNull();
+    expect(observedConversationPlan).toEqual(
+      expect.objectContaining({
+        id: "plan_run_latest"
+      })
+    );
   });
 
   it("continues the thread and redirects to the returned run id", async () => {
@@ -712,35 +864,46 @@ describe("OutcomeDetailPage", () => {
   });
 
   it("keeps the follow-up composer disabled when viewing an older run while the outcome is still active", async () => {
-    mocks.getOutcome.mockResolvedValue({
-      id: "outcome_123",
-      workspaceId: "ws_default",
-      userId: "user_default",
-      prompt: "Resume the queued run from storage.",
-      source: "web",
-      status: "running",
-      createdAt: "2026-03-11T00:00:00.000Z",
-      updatedAt: "2026-03-11T00:12:00.000Z"
-    });
-    mocks.getRun.mockResolvedValue({
-      id: "run_historical",
-      outcomeId: "outcome_123",
-      planId: "plan_historical",
-      triggerMessageId: "msg_historical",
-      status: "completed",
-      createdAt: "2026-03-11T00:08:00.000Z",
-      updatedAt: "2026-03-11T00:09:00.000Z",
-      steps: []
-    });
-    mocks.getRunPlan.mockResolvedValue({
-      id: "plan_historical",
-      outcomeId: "outcome_123",
-      triggerMessageId: "msg_historical",
-      status: "draft",
-      createdAt: "2026-03-11T00:08:00.000Z",
-      updatedAt: "2026-03-11T00:08:00.000Z",
-      nodes: [],
-      edges: []
+    mocks.getOutcomeThreadSnapshot.mockResolvedValue({
+      outcome: {
+        id: "outcome_123",
+        workspaceId: "ws_default",
+        userId: "user_default",
+        prompt: "Resume the queued run from storage.",
+        source: "web",
+        status: "running",
+        createdAt: "2026-03-11T00:00:00.000Z",
+        updatedAt: "2026-03-11T00:12:00.000Z"
+      },
+      messages: [],
+      plans: [
+        {
+          id: "plan_historical",
+          outcomeId: "outcome_123",
+          triggerMessageId: "msg_historical",
+          status: "draft",
+          createdAt: "2026-03-11T00:08:00.000Z",
+          updatedAt: "2026-03-11T00:08:00.000Z",
+          nodes: [],
+          edges: []
+        }
+      ],
+      runs: [
+        {
+          id: "run_historical",
+          outcomeId: "outcome_123",
+          planId: "plan_historical",
+          triggerMessageId: "msg_historical",
+          status: "completed",
+          createdAt: "2026-03-11T00:08:00.000Z",
+          updatedAt: "2026-03-11T00:09:00.000Z",
+          steps: []
+        }
+      ],
+      assistantMessages: [],
+      artifacts: [],
+      logs: [],
+      pendingApprovals: []
     });
 
     render(

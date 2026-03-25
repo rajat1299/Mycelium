@@ -5,18 +5,9 @@ import { OutcomeConversation } from "../../../components/outcomes/outcome-conver
 import { TasksPane } from "../../../components/outcomes/tasks-pane";
 import {
   continueOutcome,
-  getLatestRun,
+  getOutcomeThreadSnapshot,
   listOutcomes,
-  listApprovals,
   OutcomeContinueConflictError,
-  getOutcome,
-  getOutcomeMessages,
-  getPlan,
-  getRunPlan,
-  getRunArtifacts,
-  getRunAssistantMessages,
-  getRunLogs,
-  getRun
 } from "../../../lib/api";
 import { deriveOutcomeTitle } from "../../../lib/outcome-title";
 
@@ -33,26 +24,18 @@ function isActiveOutcomeStatus(status?: string) {
   return status ? ACTIVE_OUTCOME_STATUSES.has(status) : false;
 }
 
-async function resolveRunForOutcome(outcomeId: string, requestedRunId?: string) {
-  if (!requestedRunId) {
-    return getLatestRun(outcomeId);
-  }
+function resolveLatestRunId(runs: Array<{ createdAt: string; id: string }>) {
+  return [...runs]
+    .sort((left, right) => {
+      const createdDelta = left.createdAt.localeCompare(right.createdAt);
 
-  const requestedRun = await getRun(requestedRunId);
+      if (createdDelta !== 0) {
+        return createdDelta;
+      }
 
-  if (requestedRun?.outcomeId === outcomeId) {
-    return requestedRun;
-  }
-
-  return getLatestRun(outcomeId);
-}
-
-async function resolvePlanForOutcome(outcomeId: string, runId?: string | null) {
-  if (runId) {
-    return getRunPlan(runId);
-  }
-
-  return getPlan(outcomeId);
+      return left.id.localeCompare(right.id);
+    })
+    .at(-1)?.id ?? null;
 }
 
 export default async function OutcomeDetailPage({
@@ -76,40 +59,23 @@ export default async function OutcomeDetailPage({
     typeof bootstrapParam === "string" ? bootstrapParam : bootstrapParam?.[0] ?? null;
   const conflictState =
     typeof conflictParam === "string" ? conflictParam : conflictParam?.[0] ?? null;
-  const [outcome, run] = await Promise.all([
-    getOutcome(id),
-    resolveRunForOutcome(id, selectedRunId)
-  ]);
+  const threadSnapshot = await getOutcomeThreadSnapshot(id);
 
-  if (!outcome) {
+  if (!threadSnapshot) {
     notFound();
   }
 
-  const plan = await resolvePlanForOutcome(id, run?.id);
-
-  const outcomesPromise = listOutcomes(outcome.workspaceId);
-  const approvalsPromise = listApprovals(outcome.workspaceId);
-  const messagesPromise = getOutcomeMessages(id);
-  const [artifacts, logs, assistantMessages, messages, approvals, outcomes] = run
-    ? await Promise.all([
-        getRunArtifacts(run.id),
-        getRunLogs(run.id),
-        getRunAssistantMessages(run.id),
-        messagesPromise,
-        approvalsPromise,
-        outcomesPromise
-      ])
-    : [
-        [],
-        [],
-        [],
-        await messagesPromise,
-        await approvalsPromise,
-        await outcomesPromise
-      ];
-  const pendingApprovalsForRun = run
-    ? approvals.filter((approval) => approval.runId === run.id)
-    : [];
+  const outcome = threadSnapshot.outcome;
+  const outcomes = await listOutcomes(outcome.workspaceId);
+  const latestRunId = resolveLatestRunId(threadSnapshot.runs);
+  const latestRun =
+    (latestRunId
+      ? threadSnapshot.runs.find((run) => run.id === latestRunId)
+      : null) ?? null;
+  const latestPlan =
+    (latestRun
+      ? threadSnapshot.plans.find((plan) => plan.id === latestRun.planId)
+      : threadSnapshot.plans.at(-1) ?? null) ?? null;
   const workspaceOutcomes = [
     ...(outcomes.some((candidate) => candidate.id === outcome.id)
       ? outcomes
@@ -176,9 +142,9 @@ export default async function OutcomeDetailPage({
             <span className="rounded-full border border-panel-line/70 bg-surface-elevated/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
               {outcome.status}
             </span>
-            {run ? (
+            {latestRun ? (
               <span className="rounded-full border border-panel-line/70 bg-surface-elevated/70 px-3 py-1 text-[11px] font-semibold text-muted">
-                {run.steps.length} {run.steps.length === 1 ? "step" : "steps"}
+                {latestRun.steps.length} {latestRun.steps.length === 1 ? "step" : "steps"}
               </span>
             ) : null}
           </div>
@@ -210,13 +176,18 @@ export default async function OutcomeDetailPage({
               outcomeId={outcome.id}
               outcomePrompt={outcome.prompt}
               outcomeSource={outcome.source}
-              initialPlan={plan}
-              initialRun={run}
-              initialArtifacts={artifacts}
-              initialLogs={logs}
-              initialAssistantMessages={assistantMessages}
-              initialMessages={messages}
-              initialPendingApprovals={pendingApprovalsForRun}
+              initialPlan={latestPlan}
+              initialRun={latestRun}
+              initialThread={{
+                isHydrated: true,
+                plans: threadSnapshot.plans,
+                runs: threadSnapshot.runs
+              }}
+              initialArtifacts={threadSnapshot.artifacts}
+              initialLogs={threadSnapshot.logs}
+              initialAssistantMessages={threadSnapshot.assistantMessages}
+              initialMessages={threadSnapshot.messages}
+              initialPendingApprovals={threadSnapshot.pendingApprovals}
             />
           </div>
         </div>
@@ -224,7 +195,12 @@ export default async function OutcomeDetailPage({
         {/* ── Sticky follow-up input with gradient fade ───────────── */}
         <FollowUpInput
           action={appendMessageAction}
-          hasConversation={Boolean(run)}
+          hasConversation={
+            threadSnapshot.messages.length > 0 ||
+            threadSnapshot.assistantMessages.length > 0 ||
+            threadSnapshot.runs.length > 0 ||
+            threadSnapshot.artifacts.length > 0
+          }
           disabled={isActiveOutcomeStatus(outcome.status)}
         />
       </section>

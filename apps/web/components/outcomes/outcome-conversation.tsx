@@ -62,6 +62,11 @@ type OutcomeConversationProps = {
   outcomeSource: OutcomeSource;
   initialPlan: Plan | null;
   initialRun: RunDetail | null;
+  initialThread?: {
+    isHydrated?: boolean;
+    plans: Plan[];
+    runs: RunDetail[];
+  };
   initialArtifacts: Artifact[];
   initialLogs: RunLogData[];
   initialAssistantMessages: AssistantMessageSnapshot[];
@@ -270,6 +275,13 @@ function mergeConversationState(
 function buildInitialViewState(
   initialPlan: Plan | null,
   initialRun: RunDetail | null,
+  initialThread:
+    | {
+        isHydrated?: boolean;
+        plans: Plan[];
+        runs: RunDetail[];
+      }
+    | undefined,
   initialArtifacts: Artifact[],
   initialLogs: RunLogData[],
   initialAssistantMessages: AssistantMessageSnapshot[],
@@ -287,7 +299,10 @@ function buildInitialViewState(
   );
 
   return {
-    conversation
+    conversation: {
+      ...conversation,
+      ...(initialThread ? { thread: initialThread } : {})
+    }
   };
 }
 
@@ -358,6 +373,7 @@ export function OutcomeConversation({
   outcomeSource,
   initialPlan,
   initialRun,
+  initialThread,
   initialArtifacts,
   initialLogs,
   initialAssistantMessages,
@@ -368,6 +384,7 @@ export function OutcomeConversation({
     buildInitialViewState(
       initialPlan,
       initialRun,
+      initialThread,
       initialArtifacts,
       initialLogs,
       initialAssistantMessages,
@@ -386,6 +403,7 @@ export function OutcomeConversation({
     const nextState = buildInitialViewState(
       initialPlan,
       initialRun,
+      initialThread,
       initialArtifacts,
       initialLogs,
       initialAssistantMessages,
@@ -410,6 +428,7 @@ export function OutcomeConversation({
     outcomeId,
     initialPlan,
     initialRun,
+    initialThread,
     initialArtifacts,
     initialLogs,
     initialAssistantMessages,
