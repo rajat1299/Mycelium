@@ -820,6 +820,56 @@ describe("OutcomeConversation", () => {
     expect(screen.getAllByText("Refine the final report for principals.")).toHaveLength(1);
   });
 
+  it("consumes same-content optimistic follow-ups one-to-one when confirmed messages arrive", () => {
+    render(
+      <OutcomeConversation
+        outcomeId="outcome_123"
+        outcomePrompt="Draft the weekly update."
+        outcomeSource="web"
+        initialPlan={null}
+        initialRun={null}
+        initialArtifacts={[]}
+        initialLogs={[]}
+        initialAssistantMessages={[]}
+        initialMessages={[]}
+        optimisticMessages={[
+          {
+            id: "optimistic:first",
+            outcomeId: "outcome_123",
+            role: "user",
+            content: "Make it shorter.",
+            createdAt: "2026-03-19T00:02:58.000Z",
+            submittedAt: "2026-03-19T00:02:58.000Z",
+            knownMessageIdsAtSubmit: []
+          },
+          {
+            id: "optimistic:second",
+            outcomeId: "outcome_123",
+            role: "user",
+            content: "Make it shorter.",
+            createdAt: "2026-03-19T00:02:59.000Z",
+            submittedAt: "2026-03-19T00:02:59.000Z",
+            knownMessageIdsAtSubmit: []
+          }
+        ]}
+        initialPendingApprovals={[]}
+      />
+    );
+
+    emitOutcomeEvent({
+      type: "message.created",
+      data: {
+        id: "msg_456",
+        outcomeId: "outcome_123",
+        role: "user",
+        content: "Make it shorter.",
+        createdAt: "2026-03-19T00:03:00.000Z"
+      }
+    });
+
+    expect(screen.getAllByText("Make it shorter.")).toHaveLength(2);
+  });
+
   it("surfaces a completed result artifact as a dedicated delivery block", () => {
     render(
       <OutcomeConversation

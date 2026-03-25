@@ -436,12 +436,26 @@ function mergeRenderableOutcomeMessages(
     return confirmedMessages;
   }
 
-  const unresolvedOptimisticMessages = optimisticMessages.filter(
-    (optimistic) =>
-      !confirmedMessages.some((confirmed) =>
+  const matchedOptimisticIds = new Set<string>();
+
+  for (const confirmed of confirmedMessages) {
+    const nextMatch = optimisticMessages.find(
+      (optimistic) =>
+        !matchedOptimisticIds.has(optimistic.id) &&
         matchesConfirmedOptimisticMessage(optimistic, confirmed)
-      )
-  );
+    );
+
+    if (nextMatch) {
+      matchedOptimisticIds.add(nextMatch.id);
+    }
+  }
+
+  const unresolvedOptimisticMessages =
+    matchedOptimisticIds.size === 0
+      ? optimisticMessages
+      : optimisticMessages.filter(
+          (optimistic) => !matchedOptimisticIds.has(optimistic.id)
+        );
 
   if (unresolvedOptimisticMessages.length === 0) {
     return confirmedMessages;

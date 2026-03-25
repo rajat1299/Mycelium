@@ -58,11 +58,30 @@ function reconcileOptimisticMessages(
   optimisticMessages: OptimisticOutcomeMessage[],
   confirmedMessages: MessageCreatedData[]
 ) {
-  return optimisticMessages.filter(
-    (optimistic) =>
-      !confirmedMessages.some((confirmed) =>
+  if (optimisticMessages.length === 0 || confirmedMessages.length === 0) {
+    return optimisticMessages;
+  }
+
+  const matchedOptimisticIds = new Set<string>();
+
+  for (const confirmed of confirmedMessages) {
+    const nextMatch = optimisticMessages.find(
+      (optimistic) =>
+        !matchedOptimisticIds.has(optimistic.id) &&
         matchesConfirmedOptimisticMessage(optimistic, confirmed)
-      )
+    );
+
+    if (nextMatch) {
+      matchedOptimisticIds.add(nextMatch.id);
+    }
+  }
+
+  if (matchedOptimisticIds.size === 0) {
+    return optimisticMessages;
+  }
+
+  return optimisticMessages.filter(
+    (optimistic) => !matchedOptimisticIds.has(optimistic.id)
   );
 }
 

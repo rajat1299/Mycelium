@@ -358,4 +358,74 @@ describe("OutcomeThreadPageShell", () => {
       await Promise.resolve();
     });
   });
+
+  it("only reconciles one optimistic echo when the same follow-up is submitted twice", async () => {
+    let resolveFirstAction: (() => void) | null = null;
+    let resolveSecondAction: (() => void) | null = null;
+
+    const appendMessageAction = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveFirstAction = resolve;
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveSecondAction = resolve;
+          })
+      );
+
+    render(
+      <OutcomeThreadPageShell
+        {...buildProps()}
+        appendMessageAction={appendMessageAction}
+      />
+    );
+
+    const firstFormData = new FormData();
+    firstFormData.set("content", "Make it shorter.");
+
+    const secondFormData = new FormData();
+    secondFormData.set("content", "Make it shorter.");
+
+    await act(async () => {
+      void observedFollowUpAction?.(firstFormData);
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      void observedFollowUpAction?.(secondFormData);
+      await Promise.resolve();
+    });
+
+    expect(observedOptimisticMessages).toHaveLength(2);
+
+    act(() => {
+      for (const handler of eventStream.handlers) {
+        handler({
+          outcomeId: "outcome_123",
+          type: "message.created",
+          data: {
+            id: "msg_789",
+            outcomeId: "outcome_123",
+            role: "user",
+            content: "Make it shorter.",
+            createdAt: "2026-03-25T10:03:00.000Z"
+          }
+        });
+      }
+    });
+
+    expect(observedOptimisticMessages).toHaveLength(1);
+    expect(screen.getByText("Make it shorter.")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveFirstAction?.();
+      resolveSecondAction?.();
+      await Promise.resolve();
+    });
+  });
 });
