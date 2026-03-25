@@ -723,7 +723,16 @@ const OutcomeThreadTurnBlock = memo(function OutcomeThreadTurnBlock({
     ["running", "queued", "blocked"].includes(turn.latestRunStatus);
 
   return (
-    <Fragment>
+    <section
+      data-testid="outcome-thread-turn"
+      data-turn-key={turn.key}
+      data-live={isTurnLive ? "true" : "false"}
+      className={cn(
+        "relative flex flex-col gap-5 rounded-[1.75rem] border px-4 py-4 sm:px-5 sm:py-5",
+        "border-panel-line/45 bg-panel/35",
+        isTurnLive && "border-accent/20 bg-[linear-gradient(180deg,var(--accent-soft),rgba(255,255,255,0.22))]"
+      )}
+    >
       {turn.items.map((item, index) => {
         const isFromSSE = !(mountKeysRef.current?.has(item.key) ?? true);
         const delay = isFromSSE
@@ -890,7 +899,7 @@ const OutcomeThreadTurnBlock = memo(function OutcomeThreadTurnBlock({
             );
         }
       })}
-    </Fragment>
+    </section>
   );
 },
 function areEqualOutcomeThreadTurnBlockProps(
