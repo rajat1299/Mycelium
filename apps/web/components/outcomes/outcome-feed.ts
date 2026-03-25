@@ -78,14 +78,18 @@ export type OutcomeThreadTurn = {
     Exclude<OutcomeFeedItem, { type: "prompt" | "plan" | "loading" }>
   >;
   loadingItem: Extract<OutcomeFeedItem, { type: "loading" }> | null;
+  items: OutcomeFeedItem[];
+  latestRunStatus: RunDetail["status"] | null;
   runIds: string[];
   planIds: string[];
+  signature: string;
 };
 
 type OutcomeFeedInput = {
   outcomePrompt: string;
   outcomeSource: OutcomeSource;
   state: OutcomeConversationState;
+  previousTurns?: OutcomeThreadTurn[];
 };
 
 function sortArtifactsInternal(artifacts: Artifact[]) {
@@ -648,10 +652,123 @@ type TurnSeed = {
   additionalMessages: MessageCreatedData[];
 };
 
+function feedItemSignature(item: OutcomeFeedItem): string {
+  switch (item.type) {
+    case "prompt":
+      return `prompt:${item.prompt}`;
+    case "intent":
+      return `intent:${item.key}:${item.message}`;
+    case "assistant-message":
+      return [
+        "assistant-message",
+        item.message.id,
+        item.message.kind,
+        item.message.status,
+        item.message.updatedAt,
+        item.message.content
+      ].join(":");
+    case "plan":
+      return [
+        "plan",
+        item.key,
+        item.title,
+        ...item.items.map((entry) => `${entry.id}:${entry.status}:${entry.title}`)
+      ].join(":");
+    case "task":
+      return [
+        "task",
+        item.data.step.id,
+        item.data.step.status,
+        item.data.step.updatedAt,
+        item.data.step.routeModelId ?? "",
+        item.data.latestLog ? logKey(item.data.latestLog) : "",
+        item.data.primaryArtifact
+          ? [
+              item.data.primaryArtifact.id,
+              item.data.primaryArtifact.relativePath,
+              item.data.primaryArtifact.createdAt,
+              String(item.data.primaryArtifact.size),
+              readMetadataString(item.data.primaryArtifact, "summary") ?? "",
+              readMetadataString(item.data.primaryArtifact, "previewBody") ?? ""
+            ].join(":")
+          : "",
+        item.data.outputText ?? ""
+      ].join(":");
+    case "artifact-delivery":
+      return [
+        "artifact-delivery",
+        item.artifact.id,
+        item.artifact.relativePath,
+        item.artifact.createdAt,
+        item.workspacePath,
+        item.summary ?? "",
+        item.step?.id ?? ""
+      ].join(":");
+    case "delivery-note":
+      return `delivery-note:${item.key}:${item.message}`;
+    case "approval":
+      return [
+        "approval",
+        item.approval.id,
+        item.approval.status,
+        item.approval.requestedAt,
+        item.approval.title,
+        item.approval.instruction,
+        item.approval.artifactIds.join(",")
+      ].join(":");
+    case "message":
+      return [
+        "message",
+        item.message.id,
+        item.message.role,
+        item.message.createdAt,
+        item.message.content
+      ].join(":");
+    case "loading":
+      return `loading:${item.key}`;
+  }
+}
+
+function buildTurnSignature(
+  items: OutcomeFeedItem[],
+  runIds: string[],
+  planIds: string[],
+  latestRunStatus: RunDetail["status"] | null
+) {
+  return [
+    latestRunStatus ?? "idle",
+    runIds.join(","),
+    planIds.join(","),
+    ...items.map((item) => feedItemSignature(item))
+  ].join("|");
+}
+
+function reusePreviousTurns(
+  previousTurns: OutcomeThreadTurn[] | undefined,
+  nextTurns: OutcomeThreadTurn[]
+) {
+  if (!previousTurns || previousTurns.length === 0) {
+    return nextTurns;
+  }
+
+  const previousByKey = new Map(previousTurns.map((turn) => [turn.key, turn]));
+
+  return nextTurns.map((turn) => {
+    const previousTurn = previousByKey.get(turn.key);
+
+    if (!previousTurn) {
+      return turn;
+    }
+
+    return previousTurn.signature === turn.signature ? previousTurn : turn;
+  });
+}
+
 export function buildOutcomeThreadTurns({
   outcomePrompt,
   outcomeSource,
-  state
+  state,
+  previousTurns
 }: OutcomeFeedInput): OutcomeThreadTurn[] {
   const orderedMessages = sortMessagesInternal(state.messages);
   const orderedUserMessages = orderedMessages.filter((message) => message.role === "user");
@@ -731,7 +848,7 @@ export function buildOutcomeThreadTurns({
     targetTurn.additionalMessages.push(message);
   }
 
-  return orderedTurnSeeds.map((turn) => {
+  const nextTurns = orderedTurnSeeds.map((turn) => {
     const turnRuns = sortRunsInternal(turn.runs);
     const turnPlans = sortPlansInternal(turn.plans);
     const runIds = new Set(turnRuns.map((run) => run.id));
@@ -900,36 +1017,50 @@ export function buildOutcomeThreadTurns({
       return left.order - right.order;
     });
 
+    const planItems = turnPlans.map((plan) =>
+      buildPlanBlock(plan, selectRunForPlan(plan, turnRuns))
+    );
+    const loadingItem =
+      primaryRun && stepCards.length === 0
+        ? {
+            type: "loading" as const,
+            key: `loading:${turn.key}`
+          }
+        : null;
+    const items: OutcomeFeedItem[] = [
+      ...(turn.promptItem ? [turn.promptItem] : []),
+      ...(turn.messageItem ? [turn.messageItem] : []),
+      ...(leadItem ? [leadItem] : []),
+      ...planItems,
+      ...chronoEntries.map((entry) => entry.item),
+      ...(loadingItem ? [loadingItem] : [])
+    ];
+
     return {
       key: turn.key,
       triggerMessageId: turn.triggerMessageId,
       promptItem: turn.promptItem,
       messageItem: turn.messageItem,
       leadItem,
-      planItems: turnPlans.map((plan) =>
-        buildPlanBlock(plan, selectRunForPlan(plan, turnRuns))
-      ),
+      planItems,
       bodyItems: chronoEntries.map((entry) => entry.item),
-      loadingItem:
-        primaryRun && stepCards.length === 0
-          ? {
-              type: "loading",
-              key: `loading:${turn.key}`
-            }
-          : null,
+      loadingItem,
+      items,
+      latestRunStatus: primaryRun?.status ?? null,
       runIds: turnRuns.map((run) => run.id),
-      planIds: turnPlans.map((plan) => plan.id)
+      planIds: turnPlans.map((plan) => plan.id),
+      signature: buildTurnSignature(
+        items,
+        turnRuns.map((run) => run.id),
+        turnPlans.map((plan) => plan.id),
+        primaryRun?.status ?? null
+      )
     };
   });
+
+  return reusePreviousTurns(previousTurns, nextTurns);
 }
 
 export function buildOutcomeFeed(input: OutcomeFeedInput): OutcomeFeedItem[] {
-  return buildOutcomeThreadTurns(input).flatMap((turn) => [
-    ...(turn.promptItem ? [turn.promptItem] : []),
-    ...(turn.messageItem ? [turn.messageItem] : []),
-    ...(turn.leadItem ? [turn.leadItem] : []),
-    ...turn.planItems,
-    ...turn.bodyItems,
-    ...(turn.loadingItem ? [turn.loadingItem] : [])
-  ]);
+  return buildOutcomeThreadTurns(input).flatMap((turn) => turn.items);
 }

@@ -356,6 +356,41 @@ describe("buildOutcomeThreadTurns", () => {
       )
     ).toBe(false);
   });
+
+  it("reuses unchanged turn objects when only a later turn receives new activity", () => {
+    const state = buildMultiTurnState();
+    const initialTurns = buildOutcomeThreadTurns({
+      outcomePrompt: "Map the system architecture and propose a path forward.",
+      outcomeSource: "web",
+      state
+    });
+
+    const nextState: OutcomeConversationState = {
+      ...state,
+      logs: [
+        ...state.logs,
+        {
+          runId: "run_wednesday",
+          stepId: "step_wednesday",
+          stepTitle: "Prepare delivery packet",
+          level: "info",
+          message: "Adding the final risk summary to the packet.",
+          createdAt: "2026-03-19T09:14:45.000Z"
+        }
+      ]
+    };
+
+    const nextTurns = buildOutcomeThreadTurns({
+      outcomePrompt: "Map the system architecture and propose a path forward.",
+      outcomeSource: "web",
+      state: nextState,
+      previousTurns: initialTurns
+    });
+
+    expect(nextTurns[0]).toBe(initialTurns[0]);
+    expect(nextTurns[1]).toBe(initialTurns[1]);
+    expect(nextTurns[2]).not.toBe(initialTurns[2]);
+  });
 });
 
 describe("buildOutcomeFeed", () => {
