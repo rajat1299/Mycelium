@@ -89,6 +89,25 @@ function createOptimisticMessageId() {
   return `optimistic:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function deriveHasConversation(snapshot: {
+  initialMessages: MessageCreatedData[];
+  initialAssistantMessages: AssistantMessageSnapshot[];
+  initialThread: {
+    isHydrated?: boolean;
+    plans: Plan[];
+    runs: RunDetail[];
+  };
+  initialArtifacts: Artifact[];
+}) {
+  return (
+    snapshot.initialMessages.length > 0 ||
+    snapshot.initialAssistantMessages.length > 0 ||
+    snapshot.initialThread.plans.length > 0 ||
+    snapshot.initialThread.runs.length > 0 ||
+    snapshot.initialArtifacts.length > 0
+  );
+}
+
 type OutcomeThreadPageShellProps = {
   outcome: Outcome;
   outcomeTitle: string;
@@ -132,18 +151,41 @@ export function OutcomeThreadPageShell({
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticOutcomeMessage[]>(
     []
   );
+  const [liveHasConversation, setLiveHasConversation] = useState(() =>
+    deriveHasConversation({
+      initialMessages,
+      initialAssistantMessages,
+      initialThread,
+      initialArtifacts
+    })
+  );
   const knownMessageIdsRef = useRef<Set<string>>(new Set(initialMessages.map((m) => m.id)));
+  const previousOutcomeIdRef = useRef(outcome.id);
 
   useEffect(() => {
     setLiveOutcome(outcome);
   }, [outcome]);
 
   useEffect(() => {
+    const nextHasConversation = deriveHasConversation({
+      initialMessages,
+      initialAssistantMessages,
+      initialThread,
+      initialArtifacts
+    });
+
+    if (previousOutcomeIdRef.current !== outcome.id) {
+      previousOutcomeIdRef.current = outcome.id;
+      setLiveHasConversation(nextHasConversation);
+    } else if (nextHasConversation) {
+      setLiveHasConversation(true);
+    }
+
     knownMessageIdsRef.current = new Set(initialMessages.map((message) => message.id));
     setOptimisticMessages((current) =>
       reconcileOptimisticMessages(current, initialMessages)
     );
-  }, [initialMessages, outcome.id]);
+  }, [initialMessages, initialAssistantMessages, initialArtifacts, initialThread, outcome.id]);
 
   const appendOptimisticMessageAction = useCallback(
     async (formData: FormData) => {
@@ -166,6 +208,7 @@ export function OutcomeThreadPageShell({
       };
 
       setOptimisticMessages((current) => [...current, optimisticMessage]);
+      setLiveHasConversation(true);
 
       try {
         await appendMessageAction(formData);
@@ -191,22 +234,30 @@ export function OutcomeThreadPageShell({
 
         if (event.type === "message.created" && event.data.outcomeId === outcome.id) {
           knownMessageIdsRef.current.add(event.data.id);
+          setLiveHasConversation(true);
 
           if (event.data.role === "user") {
             setOptimisticMessages((current) =>
               reconcileOptimisticMessages(current, [event.data])
             );
           }
+
+          return;
+        }
+
+        if (
+          event.type === "assistant.message.started" ||
+          event.type === "assistant.message.delta" ||
+          event.type === "assistant.message.completed" ||
+          event.type === "plan.created" ||
+          event.type === "run.created" ||
+          event.type === "artifact.created"
+        ) {
+          setLiveHasConversation(true);
         }
       });
     });
   }, [outcome.id]);
-
-  const hasConversation =
-    initialMessages.length > 0 ||
-    initialAssistantMessages.length > 0 ||
-    initialThread.runs.length > 0 ||
-    initialArtifacts.length > 0;
 
   return (
     <>
@@ -215,7 +266,7 @@ export function OutcomeThreadPageShell({
           <h2 className="truncate text-sm font-semibold text-ink [text-wrap:balance]">
             {outcomeTitle}
           </h2>
-          {(liveOutcome.status === "running" || liveOutcome.status === "planning") && (
+          {isActiveOutcomeStatus(liveOutcome.status) && (
             <span
               data-testid="outcome-status-pulse"
               className="relative flex h-1.5 w-1.5 shrink-0"
@@ -248,7 +299,7 @@ export function OutcomeThreadPageShell({
         composer={
           <FollowUpInput
             action={appendOptimisticMessageAction}
-            hasConversation={hasConversation}
+            hasConversation={liveHasConversation}
             disabled={isActiveOutcomeStatus(liveOutcome.status)}
           />
         }
@@ -265,7 +316,7 @@ export function OutcomeThreadPageShell({
           </p>
         ) : null}
 
-        {conflictState === "active-run" ? (
+        {conflictState === "active-run" && isActiveOutcomeStatus(liveOutcome.status) ? (
           <p className="rounded-xl border border-amber-300/40 bg-amber-50/40 px-4 py-3 text-sm text-amber-800">
             Mycelium is still working on the current run. Wait for it to finish before
             sending a follow-up.

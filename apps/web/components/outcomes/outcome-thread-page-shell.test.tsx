@@ -11,6 +11,7 @@ const eventStream = vi.hoisted(() => ({
 let observedFollowUpAction: ((formData: FormData) => Promise<void>) | null = null;
 let observedConversationMessages: Array<{ id: string; content: string }> = [];
 let observedOptimisticMessages: Array<{ id: string; content: string }> = [];
+let observedHasConversation = false;
 
 vi.mock("../../lib/events", () => ({
   subscribeToOutcomeEvents: (
@@ -50,14 +51,22 @@ vi.mock("./outcome-conversation", () => ({
 vi.mock("./follow-up-input", () => ({
   FollowUpInput: ({
     action,
-    disabled
+    disabled,
+    hasConversation
   }: {
     action: (formData: FormData) => Promise<void>;
     disabled?: boolean;
+    hasConversation?: boolean;
   }) => {
     observedFollowUpAction = action;
+    observedHasConversation = Boolean(hasConversation);
 
-    return <textarea placeholder="Type a command..." disabled={disabled} />;
+    return (
+      <div>
+        <textarea placeholder="Type a command..." disabled={disabled} />
+        {hasConversation ? <span data-testid="follow-up-feedback-row" /> : null}
+      </div>
+    );
   }
 }));
 
@@ -124,6 +133,7 @@ describe("OutcomeThreadPageShell", () => {
     observedFollowUpAction = null;
     observedConversationMessages = [];
     observedOptimisticMessages = [];
+    observedHasConversation = false;
   });
 
   afterEach(() => {
@@ -132,6 +142,7 @@ describe("OutcomeThreadPageShell", () => {
     observedFollowUpAction = null;
     observedConversationMessages = [];
     observedOptimisticMessages = [];
+    observedHasConversation = false;
   });
 
   it("re-enables the follow-up composer and updates the header when the live outcome completes", () => {
@@ -163,6 +174,108 @@ describe("OutcomeThreadPageShell", () => {
     expect(screen.getByTestId("outcome-status-pill")).toHaveTextContent("completed");
     expect(screen.queryByTestId("outcome-status-pulse")).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText("Type a command...")).not.toBeDisabled();
+  });
+
+  it("clears the active-run conflict banner once live outcome status is no longer active", () => {
+    render(
+      <OutcomeThreadPageShell
+        {...buildProps()}
+        conflictState="active-run"
+      />
+    );
+
+    expect(
+      screen.getByText(/Mycelium is still working on the current run/i)
+    ).toBeInTheDocument();
+
+    act(() => {
+      for (const handler of eventStream.handlers) {
+        handler({
+          outcomeId: "outcome_123",
+          type: "outcome.updated",
+          data: {
+            ...buildProps().outcome,
+            status: "completed",
+            updatedAt: "2026-03-25T10:05:00.000Z"
+          }
+        });
+      }
+    });
+
+    expect(
+      screen.queryByText(/Mycelium is still working on the current run/i)
+    ).not.toBeInTheDocument();
+  });
+
+  it("treats queued and blocked outcomes as active shell states", () => {
+    const props = buildProps();
+    const { rerender } = render(
+      <OutcomeThreadPageShell
+        {...props}
+        outcome={{
+          ...props.outcome,
+          status: "queued"
+        }}
+      />
+    );
+
+    expect(screen.getByTestId("outcome-status-pill")).toHaveTextContent("queued");
+    expect(screen.getByTestId("outcome-status-pulse")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Type a command...")).toBeDisabled();
+
+    rerender(
+      <OutcomeThreadPageShell
+        {...props}
+        outcome={{
+          ...props.outcome,
+          status: "blocked_on_approval"
+        }}
+      />
+    );
+
+    expect(screen.getByTestId("outcome-status-pill")).toHaveTextContent(
+      "blocked_on_approval"
+    );
+    expect(screen.getByTestId("outcome-status-pulse")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Type a command...")).toBeDisabled();
+  });
+
+  it("turns on composer-adjacent conversation controls when live thread activity begins", () => {
+    render(
+      <OutcomeThreadPageShell
+        {...buildProps()}
+        initialRun={null}
+        initialThread={{
+          isHydrated: true,
+          plans: [],
+          runs: []
+        }}
+        initialAssistantMessages={[]}
+        initialMessages={[]}
+        initialArtifacts={[]}
+      />
+    );
+
+    expect(observedHasConversation).toBe(false);
+    expect(screen.queryByTestId("follow-up-feedback-row")).not.toBeInTheDocument();
+
+    act(() => {
+      for (const handler of eventStream.handlers) {
+        handler({
+          outcomeId: "outcome_123",
+          type: "assistant.message.started",
+          data: {
+            messageId: "assistant_1",
+            runId: "run_123",
+            kind: "acknowledgment",
+            createdAt: "2026-03-25T10:01:00.000Z"
+          }
+        });
+      }
+    });
+
+    expect(observedHasConversation).toBe(true);
+    expect(screen.getByTestId("follow-up-feedback-row")).toBeInTheDocument();
   });
 
   it("disables the composer again when a later outcome.updated event returns to an active state", () => {
