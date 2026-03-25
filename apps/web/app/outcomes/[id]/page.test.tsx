@@ -885,6 +885,66 @@ describe("OutcomeDetailPage", () => {
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
+  it("continues the thread even when the form post omits submissionId", async () => {
+    mocks.continueOutcome.mockResolvedValue({
+      outcome: {
+        id: "outcome_123",
+        workspaceId: "ws_default",
+        userId: "user_default",
+        prompt: "Resume the queued run from storage.",
+        source: "web",
+        status: "queued",
+        createdAt: "2026-03-11T00:00:00.000Z",
+        updatedAt: "2026-03-11T00:10:00.000Z"
+      },
+      triggerMessage: {
+        id: "msg_followup",
+        outcomeId: "outcome_123",
+        role: "user",
+        content: "Make it shorter.",
+        createdAt: "2026-03-11T00:11:00.000Z",
+        submissionId: "submit_generated"
+      },
+      plan: {
+        id: "plan_followup",
+        outcomeId: "outcome_123",
+        triggerMessageId: "msg_followup",
+        status: "draft",
+        createdAt: "2026-03-11T00:11:00.000Z",
+        updatedAt: "2026-03-11T00:11:00.000Z",
+        nodes: [],
+        edges: []
+      },
+      run: {
+        id: "run_followup",
+        outcomeId: "outcome_123",
+        planId: "plan_followup",
+        triggerMessageId: "msg_followup",
+        status: "queued",
+        createdAt: "2026-03-11T00:11:01.000Z",
+        updatedAt: "2026-03-11T00:11:01.000Z",
+        steps: []
+      }
+    });
+
+    render(
+      await OutcomeDetailPage({
+        params: Promise.resolve({ id: "outcome_123" }),
+        searchParams: Promise.resolve({})
+      })
+    );
+
+    const formData = new FormData();
+    formData.set("content", "Make it shorter.");
+
+    await observedFollowUpAction?.(formData);
+
+    expect(mocks.continueOutcome).toHaveBeenCalledWith("outcome_123", {
+      content: "Make it shorter.",
+      submissionId: expect.stringMatching(/^submit_/)
+    });
+  });
+
   it("keeps the follow-up composer disabled when viewing an older run while the outcome is still active", async () => {
     mocks.getOutcomeThreadSnapshot.mockResolvedValue({
       outcome: {

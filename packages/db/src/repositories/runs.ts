@@ -422,6 +422,12 @@ export class RunRepository {
     return found ? mapRunRow(found) : null;
   }
 
+  async getByTriggerMessageId(triggerMessageId: string): Promise<StoredRun | null> {
+    const rows = await this.db.select().from(outcomeRuns);
+    const found = rows.find((row) => row.triggerMessageId === triggerMessageId);
+    return found ? mapRunRow(found) : null;
+  }
+
   async getLatestByOutcome(outcomeId: string): Promise<StoredRun | null> {
     const rows = await this.db.select().from(outcomeRuns);
     const found = rows

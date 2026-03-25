@@ -93,6 +93,10 @@ type TurnPlanInput = {
   prompt: string;
 };
 
+type TurnTriggerMessage = TurnPlanInput["triggerMessage"] & {
+  submissionId?: string | null;
+};
+
 function createPrefixedId(idFactory: () => string, prefix: string) {
   return `${prefix}_${idFactory()}`;
 }
@@ -134,6 +138,74 @@ async function buildRunDetail(
   return RunDetailSchema.parse({
     ...run,
     steps
+  });
+}
+
+function normalizeSubmissionId(submissionId?: string | null) {
+  const normalized = submissionId?.trim();
+  return normalized && normalized.length > 0 ? normalized : null;
+}
+
+function asTurnTriggerMessage(
+  message:
+    | {
+        id: string;
+        outcomeId: string;
+        role: "user" | "assistant" | "system";
+        content: string;
+        createdAt: string;
+        submissionId?: string | null;
+      }
+    | null
+): TurnTriggerMessage | null {
+  if (!message || message.role !== "user") {
+    return null;
+  }
+
+  return {
+    id: message.id,
+    outcomeId: message.outcomeId,
+    role: "user",
+    content: message.content,
+    createdAt: message.createdAt,
+    submissionId: message.submissionId ?? null
+  };
+}
+
+async function buildExistingTurnResponse(
+  repositories: Repositories,
+  input: {
+    outcomeId: string;
+    triggerMessage: TurnTriggerMessage;
+  }
+): Promise<OutcomeTurnResponse | null> {
+  const [outcome, plan, run] = await Promise.all([
+    repositories.outcomes.getById(input.outcomeId),
+    repositories.plans.getByTriggerMessageId(input.triggerMessage.id),
+    repositories.runs.getByTriggerMessageId(input.triggerMessage.id)
+  ]);
+
+  if (!outcome || !plan || !run) {
+    return null;
+  }
+
+  const [planDetail, runDetail] = await Promise.all([
+    buildPlanDetail(repositories, plan.id),
+    buildRunDetail(repositories, run.id)
+  ]);
+
+  if (!planDetail || !runDetail) {
+    return null;
+  }
+
+  return OutcomeTurnResponseSchema.parse({
+    outcome,
+    triggerMessage: MessageCreatedDataSchema.parse({
+      ...input.triggerMessage,
+      submissionId: input.triggerMessage.submissionId ?? null
+    }),
+    plan: planDetail,
+    run: runDetail
   });
 }
 
@@ -554,17 +626,41 @@ export function createOutcomeTurnService(
       }
     },
     async continueThread(input) {
+      const submissionId =
+        normalizeSubmissionId(input.submissionId) ?? `submit_${idFactory()}`;
       const outcome = await options.repositories.outcomes.getById(input.outcomeId);
 
       if (!outcome) {
         throw new Error(`Outcome ${input.outcomeId} not found.`);
       }
 
+      let triggerMessage = asTurnTriggerMessage(
+        await options.repositories.outcomes.getMessageBySubmissionId(
+          outcome.id,
+          submissionId
+        )
+      );
+
+      if (triggerMessage) {
+        const replay = await buildExistingTurnResponse(options.repositories, {
+          outcomeId: outcome.id,
+          triggerMessage
+        });
+
+        if (replay) {
+          return replay;
+        }
+      }
+
       const latestRun = await options.repositories.runs.getLatestByOutcome(
         input.outcomeId
       );
 
-      if (latestRun && isActiveRunStatus(latestRun.status)) {
+      if (
+        latestRun &&
+        isActiveRunStatus(latestRun.status) &&
+        latestRun.triggerMessageId !== triggerMessage?.id
+      ) {
         throw new OutcomeTurnConflictError(
           input.outcomeId,
           latestRun.id,
@@ -572,14 +668,17 @@ export function createOutcomeTurnService(
         );
       }
 
-      const triggerMessage = {
+      const createdTriggerMessage = {
         id: createPrefixedId(idFactory, "msg"),
         outcomeId: outcome.id,
         role: "user",
         content: input.content,
-        submissionId: input.submissionId,
+        submissionId,
         createdAt: now().toISOString()
       } as const;
+      let createdMessage = false;
+      let createdPlan = false;
+      let createdRun = false;
 
       const originalOutcomeStatus = outcome.status;
       let plan: Awaited<ReturnType<typeof persistDraftPlan>> | null = null;
@@ -587,77 +686,201 @@ export function createOutcomeTurnService(
         null;
 
       try {
-        await options.repositories.outcomes.appendMessage(triggerMessage);
+        if (!triggerMessage) {
+          try {
+            await options.repositories.outcomes.appendMessage(createdTriggerMessage);
+            triggerMessage = createdTriggerMessage;
+            createdMessage = true;
+          } catch (error) {
+            triggerMessage = asTurnTriggerMessage(
+              await options.repositories.outcomes.getMessageBySubmissionId(
+                outcome.id,
+                submissionId
+              )
+            );
 
-        plan = await persistDraftPlan(
-          options,
-          {
-          outcome,
-          triggerMessage,
-          prompt: input.content
-          },
-          {
-            publishEvent: false
+            if (!triggerMessage) {
+              throw error;
+            }
           }
-        );
-        startedRun = await createQueuedRunFromPlan(
-          {
-            ...options,
-            now,
-            idFactory
-          },
-          {
-            outcome,
-            planId: plan.id,
-            triggerMessageId: triggerMessage.id,
-            createdAt: triggerMessage.createdAt
-          },
-          {
-            publishEvents: false,
-            startExecution: false
-          }
-        );
-
-        const useSimulatedExecution = isDevelopmentSimulationEnabled({
-          simulationMode: options.simulationMode ?? false,
-          outcomeSource: outcome.source
-        });
-
-        if (useSimulatedExecution) {
-          options.simulatedExecutionService.startRun(startedRun.run.id);
-        } else {
-          options.executionService.startRun(startedRun.run.id);
         }
 
-        options.eventBus.publish({
+        if (!triggerMessage) {
+          throw new Error(
+            `Failed to resolve trigger message for submission ${submissionId}.`
+          );
+        }
+
+        const replay = await buildExistingTurnResponse(options.repositories, {
           outcomeId: outcome.id,
-          type: "message.created",
-          data: MessageCreatedDataSchema.parse(triggerMessage)
+          triggerMessage
         });
 
-        options.eventBus.publish({
-          outcomeId: outcome.id,
-          type: "plan.created",
-          data: plan
-        });
+        if (replay) {
+          return replay;
+        }
 
-        options.eventBus.publish({
-          outcomeId: outcome.id,
-          type: "outcome.updated",
-          data: startedRun.outcome
-        });
-
-        await publishInitialRunEvents(
-          {
-            ...options,
-            now,
-            idFactory
-          },
-          {
-            outcomeId: outcome.id,
-            run: startedRun.run
-          }
+        const existingPlan = await options.repositories.plans.getByTriggerMessageId(
+          triggerMessage.id
         );
+
+        if (existingPlan) {
+          plan = await buildPlanDetail(options.repositories, existingPlan.id);
+        } else {
+          try {
+            plan = await persistDraftPlan(
+              options,
+              {
+                outcome,
+                triggerMessage,
+                prompt: input.content
+              },
+              {
+                publishEvent: false
+              }
+            );
+            createdPlan = true;
+          } catch (error) {
+            const existingPlanAfterRace =
+              await options.repositories.plans.getByTriggerMessageId(triggerMessage.id);
+
+            if (existingPlanAfterRace) {
+              plan = await buildPlanDetail(
+                options.repositories,
+                existingPlanAfterRace.id
+              );
+            } else {
+              const existing = await buildExistingTurnResponse(options.repositories, {
+                outcomeId: outcome.id,
+                triggerMessage
+              });
+
+              if (existing) {
+                return existing;
+              }
+
+              throw error;
+            }
+          }
+        }
+
+        if (!plan) {
+          throw new Error(`Failed to resolve plan for trigger message ${triggerMessage.id}.`);
+        }
+
+        const existingRun = await options.repositories.runs.getByTriggerMessageId(
+          triggerMessage.id
+        );
+
+        if (existingRun) {
+          const runDetail = await buildRunDetail(options.repositories, existingRun.id);
+
+          if (!runDetail) {
+            throw new Error(`Failed to resolve run ${existingRun.id}.`);
+          }
+
+          startedRun = {
+            outcome: (await options.repositories.outcomes.getById(outcome.id)) ?? outcome,
+            run: runDetail
+          };
+        } else {
+          try {
+            startedRun = await createQueuedRunFromPlan(
+              {
+                ...options,
+                now,
+                idFactory
+              },
+              {
+                outcome,
+                planId: plan.id,
+                triggerMessageId: triggerMessage.id,
+                createdAt: triggerMessage.createdAt
+              },
+              {
+                publishEvents: false,
+                startExecution: false
+              }
+            );
+            createdRun = true;
+          } catch (error) {
+            const existingRunAfterRace =
+              await options.repositories.runs.getByTriggerMessageId(triggerMessage.id);
+
+            if (existingRunAfterRace) {
+              const runDetail = await buildRunDetail(
+                options.repositories,
+                existingRunAfterRace.id
+              );
+
+              if (!runDetail) {
+                throw error;
+              }
+
+              startedRun = {
+                outcome:
+                  (await options.repositories.outcomes.getById(outcome.id)) ?? outcome,
+                run: runDetail
+              };
+            } else {
+              const existing = await buildExistingTurnResponse(options.repositories, {
+                outcomeId: outcome.id,
+                triggerMessage
+              });
+
+              if (existing) {
+                return existing;
+              }
+
+              throw error;
+            }
+          }
+        }
+
+        if (createdRun) {
+          const useSimulatedExecution = isDevelopmentSimulationEnabled({
+            simulationMode: options.simulationMode ?? false,
+            outcomeSource: outcome.source
+          });
+
+          if (useSimulatedExecution) {
+            options.simulatedExecutionService.startRun(startedRun.run.id);
+          } else {
+            options.executionService.startRun(startedRun.run.id);
+          }
+        }
+
+        if (createdMessage || createdPlan || createdRun) {
+          options.eventBus.publish({
+            outcomeId: outcome.id,
+            type: "message.created",
+            data: MessageCreatedDataSchema.parse(triggerMessage)
+          });
+
+          options.eventBus.publish({
+            outcomeId: outcome.id,
+            type: "plan.created",
+            data: plan
+          });
+
+          options.eventBus.publish({
+            outcomeId: outcome.id,
+            type: "outcome.updated",
+            data: startedRun.outcome
+          });
+
+          await publishInitialRunEvents(
+            {
+              ...options,
+              now,
+              idFactory
+            },
+            {
+              outcomeId: outcome.id,
+              run: startedRun.run
+            }
+          );
+        }
 
         return OutcomeTurnResponseSchema.parse({
           outcome: startedRun.outcome,
@@ -669,10 +892,13 @@ export function createOutcomeTurnService(
         await rollbackTurnCreation(options, {
           outcomeId: outcome.id,
           createdOutcome: false,
-          messageId: triggerMessage.id,
-          planId: plan?.id ?? undefined,
-          runId: startedRun?.run.id,
-          restoreOutcomeStatus: originalOutcomeStatus,
+          messageId: createdMessage ? triggerMessage?.id : undefined,
+          planId: createdPlan ? plan?.id ?? undefined : undefined,
+          runId: createdRun ? startedRun?.run.id : undefined,
+          restoreOutcomeStatus:
+            createdRun || originalOutcomeStatus !== outcome.status
+              ? originalOutcomeStatus
+              : undefined,
           restoredAt: now().toISOString()
         });
 

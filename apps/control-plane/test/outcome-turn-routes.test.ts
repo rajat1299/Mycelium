@@ -329,6 +329,25 @@ describe("outcome turn routes", () => {
       expect(continued.plan?.id).not.toBe(started.plan?.id);
       expect(continued.run?.id).not.toBe(started.run?.id);
       expect(continued.run?.triggerMessageId).toBe(continued.triggerMessage.id);
+
+      const replay = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${started.outcome.id}/continue`,
+        payload: {
+          content: "Add the rollout milestones.",
+          submissionId: "submit_123"
+        }
+      });
+
+      expect(replay.statusCode).toBe(201);
+      expect(OutcomeTurnResponseSchema.parse(replay.json())).toEqual(continued);
+
+      await expect(
+        harness.services.repositories.outcomes.listMessages(started.outcome.id)
+      ).resolves.toEqual([
+        started.triggerMessage,
+        continued.triggerMessage
+      ]);
     } finally {
       await harness.cleanup();
     }

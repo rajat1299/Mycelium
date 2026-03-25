@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import { OutcomeThreadPageShell } from "../../../components/outcomes/outcome-thread-page-shell";
@@ -75,9 +76,10 @@ export default async function OutcomeDetailPage({
     "use server";
 
     const content = String(formData.get("content") ?? "").trim();
-    const submissionId = String(formData.get("submissionId") ?? "").trim();
+    const submissionId =
+      String(formData.get("submissionId") ?? "").trim() || `submit_${randomUUID()}`;
 
-    if (!content || !submissionId) {
+    if (!content) {
       return;
     }
 

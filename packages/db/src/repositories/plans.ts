@@ -244,6 +244,12 @@ export class PlanRepository {
     return found ? mapPlanRow(found) : null;
   }
 
+  async getByTriggerMessageId(triggerMessageId: string): Promise<StoredPlan | null> {
+    const rows = await this.db.select().from(outcomePlans);
+    const found = rows.find((row) => row.triggerMessageId === triggerMessageId);
+    return found ? mapPlanRow(found) : null;
+  }
+
   async getByOutcome(outcomeId: string): Promise<StoredPlan | null> {
     return this.getLatestByOutcome(outcomeId);
   }

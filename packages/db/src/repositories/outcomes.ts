@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import type { DatabaseClient } from "../client";
 import {
   artifactLineageEdges,
@@ -139,6 +139,27 @@ export class OutcomeRepository {
       .select()
       .from(outcomeMessages)
       .where(eq(outcomeMessages.id, id));
+
+    if (!found) {
+      return null;
+    }
+
+    return mapOutcomeMessageRow(found);
+  }
+
+  async getMessageBySubmissionId(
+    outcomeId: string,
+    submissionId: string
+  ): Promise<StoredOutcomeMessage | null> {
+    const [found] = await this.db
+      .select()
+      .from(outcomeMessages)
+      .where(
+        and(
+          eq(outcomeMessages.outcomeId, outcomeId),
+          eq(outcomeMessages.submissionId, submissionId)
+        )
+      );
 
     if (!found) {
       return null;

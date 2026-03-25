@@ -298,6 +298,63 @@ describe("OutcomeTurnService", () => {
     expect(harness.simulatedExecutionService.startRun).not.toHaveBeenCalled();
   });
 
+  it("returns the original turn when continueThread is replayed with the same submission id", async () => {
+    const harness = createTurnServiceHarness();
+
+    const firstTurn = OutcomeTurnResponseSchema.parse(
+      await harness.service.startThread({
+        workspaceId: "ws_123",
+        userId: "user_123",
+        prompt: "Prepare the first draft.",
+        source: "web"
+      })
+    );
+
+    await harness.repositories.runs.updateStatus({
+      runId: firstTurn.run?.id ?? "",
+      status: "completed",
+      updatedAt: "2026-03-24T12:15:00.000Z"
+    });
+
+    harness.events.length = 0;
+
+    const firstReplay = OutcomeTurnResponseSchema.parse(
+      await harness.service.continueThread({
+        outcomeId: firstTurn.outcome.id,
+        content: "Incorporate the customer feedback.",
+        submissionId: "submit_replay"
+      })
+    );
+
+    harness.events.length = 0;
+
+    const secondReplay = OutcomeTurnResponseSchema.parse(
+      await harness.service.continueThread({
+        outcomeId: firstTurn.outcome.id,
+        content: "Incorporate the customer feedback.",
+        submissionId: "submit_replay"
+      })
+    );
+
+    expect(secondReplay).toEqual(firstReplay);
+    expect(harness.events).toEqual([]);
+    await expect(
+      harness.repositories.outcomes.listMessages(firstTurn.outcome.id)
+    ).resolves.toEqual([firstTurn.triggerMessage, firstReplay.triggerMessage]);
+    await expect(
+      harness.repositories.plans.listByOutcome(firstTurn.outcome.id)
+    ).resolves.toEqual([
+      expect.objectContaining({ id: firstTurn.plan?.id }),
+      expect.objectContaining({ id: firstReplay.plan?.id })
+    ]);
+    await expect(
+      harness.repositories.runs.listByOutcome(firstTurn.outcome.id)
+    ).resolves.toEqual([
+      expect.objectContaining({ id: firstTurn.run?.id }),
+      expect.objectContaining({ id: firstReplay.run?.id })
+    ]);
+  });
+
   it("rejects a follow-up turn while the latest run is still active", async () => {
     const harness = createTurnServiceHarness();
 
@@ -403,5 +460,18 @@ describe("OutcomeTurnService", () => {
         triggerMessageId: firstTurn.triggerMessage.id
       })
     ]);
+
+    const retryTurn = OutcomeTurnResponseSchema.parse(
+      await harness.service.continueThread({
+        outcomeId: firstTurn.outcome.id,
+        content: "Incorporate the customer feedback.",
+        submissionId: "submit_failure"
+      })
+    );
+
+    expect(retryTurn.triggerMessage.submissionId).toBe("submit_failure");
+    await expect(
+      harness.repositories.outcomes.listMessages(firstTurn.outcome.id)
+    ).resolves.toEqual([firstTurn.triggerMessage, retryTurn.triggerMessage]);
   });
 });

@@ -267,16 +267,25 @@ export const outcomes = pgTable("outcomes", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
 });
 
-export const outcomeMessages = pgTable("outcome_messages", {
-  id: text("id").primaryKey(),
-  outcomeId: text("outcome_id")
-    .notNull()
-    .references(() => outcomes.id),
-  role: text("role").notNull(),
-  content: text("content").notNull(),
-  submissionId: text("submission_id"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
-});
+export const outcomeMessages = pgTable(
+  "outcome_messages",
+  {
+    id: text("id").primaryKey(),
+    outcomeId: text("outcome_id")
+      .notNull()
+      .references(() => outcomes.id),
+    role: text("role").notNull(),
+    content: text("content").notNull(),
+    submissionId: text("submission_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    uniqueIndex("outcome_messages_outcome_submission_id_key").on(
+      table.outcomeId,
+      table.submissionId
+    )
+  ]
+);
 
 export const artifacts = pgTable("artifacts", {
   id: text("id").primaryKey(),
@@ -409,7 +418,10 @@ export const outcomePlans = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
   },
-  (table) => [index("outcome_plans_outcome_id_idx").on(table.outcomeId)]
+  (table) => [
+    index("outcome_plans_outcome_id_idx").on(table.outcomeId),
+    uniqueIndex("outcome_plans_trigger_message_id_key").on(table.triggerMessageId)
+  ]
 );
 
 export const planNodes = pgTable("plan_nodes", {
@@ -474,23 +486,27 @@ export const remoteWorkers = pgTable(
   (table) => [uniqueIndex("remote_workers_session_id_key").on(table.sessionId)]
 );
 
-export const outcomeRuns = pgTable("outcome_runs", {
-  id: text("id").primaryKey(),
-  outcomeId: text("outcome_id")
-    .notNull()
-    .references(() => outcomes.id),
-  planId: text("plan_id")
-    .notNull()
-    .references(() => outcomePlans.id),
-  triggerMessageId: text("trigger_message_id")
-    .notNull()
-    .references(() => outcomeMessages.id),
-  status: runStatusEnum("status").notNull().default("draft"),
-  latestCheckpointId: text("latest_checkpoint_id"),
-  resumable: boolean("resumable").notNull().default(false),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
-});
+export const outcomeRuns = pgTable(
+  "outcome_runs",
+  {
+    id: text("id").primaryKey(),
+    outcomeId: text("outcome_id")
+      .notNull()
+      .references(() => outcomes.id),
+    planId: text("plan_id")
+      .notNull()
+      .references(() => outcomePlans.id),
+    triggerMessageId: text("trigger_message_id")
+      .notNull()
+      .references(() => outcomeMessages.id),
+    status: runStatusEnum("status").notNull().default("draft"),
+    latestCheckpointId: text("latest_checkpoint_id"),
+    resumable: boolean("resumable").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [uniqueIndex("outcome_runs_trigger_message_id_key").on(table.triggerMessageId)]
+);
 
 export const runSteps = pgTable("run_steps", {
   id: text("id").primaryKey(),

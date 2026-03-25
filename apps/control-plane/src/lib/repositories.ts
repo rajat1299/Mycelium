@@ -86,6 +86,10 @@ export type OutcomeStore = {
   create(input: CreateStoredOutcomeInput): Promise<Outcome>;
   getById(id: string): Promise<Outcome | null>;
   getMessageById(id: string): Promise<StoredOutcomeMessage | null>;
+  getMessageBySubmissionId(
+    outcomeId: string,
+    submissionId: string
+  ): Promise<StoredOutcomeMessage | null>;
   listMessages(outcomeId: string): Promise<StoredOutcomeMessage[]>;
   listByWorkspace(workspaceId: string): Promise<Outcome[]>;
   updateStatus(input: UpdateOutcomeStatusInput): Promise<Outcome | null>;
@@ -97,6 +101,7 @@ export type OutcomeStore = {
 export type PlanStore = {
   create(input: CreatePlanInput): Promise<StoredPlan>;
   getById(id: string): Promise<StoredPlan | null>;
+  getByTriggerMessageId(triggerMessageId: string): Promise<StoredPlan | null>;
   getByOutcome(outcomeId: string): Promise<StoredPlan | null>;
   getLatestByOutcome(outcomeId: string): Promise<StoredPlan | null>;
   listByOutcome(outcomeId: string): Promise<StoredPlan[]>;
@@ -108,6 +113,7 @@ export type PlanStore = {
 export type RunStore = {
   createFromPlan(input: CreateRunFromPlanInput): Promise<StoredRun>;
   getById(id: string): Promise<StoredRun | null>;
+  getByTriggerMessageId(triggerMessageId: string): Promise<StoredRun | null>;
   getLatestByOutcome(outcomeId: string): Promise<StoredRun | null>;
   listByOutcome(outcomeId: string): Promise<StoredRun[]>;
   listByStatuses(statuses: StoredRun["status"][]): Promise<StoredRun[]>;
@@ -650,6 +656,15 @@ function createInMemoryRepositoriesState() {
     async getMessageById(id) {
       return outcomeMessagesById.get(id) ?? null;
     },
+    async getMessageBySubmissionId(outcomeId, submissionId) {
+      return (
+        Array.from(outcomeMessagesById.values()).find(
+          (message) =>
+            message.outcomeId === outcomeId &&
+            message.submissionId === submissionId
+        ) ?? null
+      );
+    },
     async listMessages(outcomeId) {
       return Array.from(outcomeMessagesById.values())
         .filter((message) => message.outcomeId === outcomeId)
@@ -683,6 +698,19 @@ function createInMemoryRepositoriesState() {
 
       if (outcomeMessagesById.has(input.id)) {
         throw new Error('duplicate key value violates unique constraint "outcome_messages_pkey"');
+      }
+
+      if (
+        input.submissionId &&
+        Array.from(outcomeMessagesById.values()).some(
+          (message) =>
+            message.outcomeId === input.outcomeId &&
+            message.submissionId === input.submissionId
+        )
+      ) {
+        throw new Error(
+          'duplicate key value violates unique constraint "outcome_messages_outcome_submission_id_key"'
+        );
       }
 
       outcomeMessagesById.set(input.id, input);
@@ -737,6 +765,16 @@ function createInMemoryRepositoriesState() {
     async create(input) {
       if (plansById.has(input.id)) {
         throw new Error('duplicate key value violates unique constraint "outcome_plans_pkey"');
+      }
+
+      if (
+        Array.from(plansById.values()).some(
+          (plan) => plan.triggerMessageId === input.triggerMessageId
+        )
+      ) {
+        throw new Error(
+          'duplicate key value violates unique constraint "outcome_plans_trigger_message_id_key"'
+        );
       }
 
       const triggerMessage = outcomeMessagesById.get(input.triggerMessageId);
@@ -811,6 +849,13 @@ function createInMemoryRepositoriesState() {
     async getById(id) {
       return plansById.get(id) ?? null;
     },
+    async getByTriggerMessageId(triggerMessageId) {
+      return (
+        Array.from(plansById.values()).find(
+          (plan) => plan.triggerMessageId === triggerMessageId
+        ) ?? null
+      );
+    },
     async getByOutcome(outcomeId) {
       return plansStore.getLatestByOutcome(outcomeId);
     },
@@ -850,6 +895,16 @@ function createInMemoryRepositoriesState() {
 
   const runsStore: RunStore = {
     async createFromPlan(input) {
+      if (
+        Array.from(runsById.values()).some(
+          (run) => run.triggerMessageId === input.triggerMessageId
+        )
+      ) {
+        throw new Error(
+          'duplicate key value violates unique constraint "outcome_runs_trigger_message_id_key"'
+        );
+      }
+
       const plan = plansById.get(input.planId);
 
       if (!plan) {
@@ -934,6 +989,13 @@ function createInMemoryRepositoriesState() {
     },
     async getById(id) {
       return runsById.get(id) ?? null;
+    },
+    async getByTriggerMessageId(triggerMessageId) {
+      return (
+        Array.from(runsById.values()).find(
+          (run) => run.triggerMessageId === triggerMessageId
+        ) ?? null
+      );
     },
     async getLatestByOutcome(outcomeId) {
       return (
