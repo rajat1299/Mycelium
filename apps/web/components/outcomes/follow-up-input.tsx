@@ -1,13 +1,23 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { BarsSpinner } from "../ui/bars-spinner";
 
 type FollowUpInputProps = {
   action: (formData: FormData) => Promise<void>;
+  initialSubmissionId: string;
   hasConversation?: boolean;
   disabled?: boolean;
 };
+
+function createSubmissionId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `submit_${crypto.randomUUID()}`;
+  }
+
+  return `submit_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
 
 function SubmitButton({ disabled }: { disabled?: boolean }) {
   const { pending } = useFormStatus();
@@ -89,9 +99,24 @@ function FeedbackActions({ disabled }: { disabled?: boolean }) {
 
 export function FollowUpInput({
   action,
+  initialSubmissionId,
   hasConversation = false,
   disabled = false
 }: FollowUpInputProps) {
+  const [submissionId, setSubmissionId] = useState(initialSubmissionId);
+
+  const submitAction = useCallback(
+    async (formData: FormData) => {
+      const currentSubmissionId =
+        String(formData.get("submissionId") ?? "").trim() || submissionId;
+      formData.set("submissionId", currentSubmissionId);
+
+      await action(formData);
+      setSubmissionId(createSubmissionId());
+    },
+    [action, submissionId]
+  );
+
   return (
     <div className="space-y-2">
       {/* Feedback icons row — visible when conversation has content */}
@@ -102,7 +127,7 @@ export function FollowUpInput({
       )}
 
       {/* Input container */}
-      <form action={action}>
+      <form action={submitAction}>
         <div
           className={[
             "rounded-2xl bg-panel shadow-card transition-shadow duration-200 focus-within:shadow-card-hover",
@@ -111,6 +136,7 @@ export function FollowUpInput({
         >
           {/* Textarea */}
           <fieldset disabled={disabled}>
+            <input type="hidden" name="submissionId" value={submissionId} readOnly />
             <textarea
               name="content"
               rows={1}

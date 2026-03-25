@@ -112,6 +112,7 @@ function deriveHasConversation(snapshot: {
 type OutcomeThreadPageShellProps = {
   outcome: Outcome;
   outcomeTitle: string;
+  initialSubmissionId: string;
   bootstrapState: string | null;
   conflictState: string | null;
   appendMessageAction: (formData: FormData) => Promise<void>;
@@ -134,6 +135,7 @@ type OutcomeThreadPageShellProps = {
 export function OutcomeThreadPageShell({
   outcome,
   outcomeTitle,
+  initialSubmissionId,
   bootstrapState,
   conflictState,
   appendMessageAction,
@@ -300,6 +302,7 @@ export function OutcomeThreadPageShell({
         composer={
           <FollowUpInput
             action={appendOptimisticMessageAction}
+            initialSubmissionId={initialSubmissionId}
             hasConversation={liveHasConversation}
             disabled={isActiveOutcomeStatus(liveOutcome.status)}
           />

@@ -355,6 +355,57 @@ describe("OutcomeTurnService", () => {
     ]);
   });
 
+  it("rejects a replay when the same submission id is reused with different content", async () => {
+    const harness = createTurnServiceHarness();
+
+    const firstTurn = OutcomeTurnResponseSchema.parse(
+      await harness.service.startThread({
+        workspaceId: "ws_123",
+        userId: "user_123",
+        prompt: "Prepare the first draft.",
+        source: "web"
+      })
+    );
+
+    await harness.repositories.runs.updateStatus({
+      runId: firstTurn.run?.id ?? "",
+      status: "completed",
+      updatedAt: "2026-03-24T12:15:00.000Z"
+    });
+
+    const continued = OutcomeTurnResponseSchema.parse(
+      await harness.service.continueThread({
+        outcomeId: firstTurn.outcome.id,
+        content: "Incorporate the customer feedback.",
+        submissionId: "submit_conflict_replay"
+      })
+    );
+
+    await expect(
+      harness.service.continueThread({
+        outcomeId: firstTurn.outcome.id,
+        content: "Actually turn it into bullets instead.",
+        submissionId: "submit_conflict_replay"
+      })
+    ).rejects.toThrow(/submission id .* already belongs to a different message/i);
+
+    await expect(
+      harness.repositories.outcomes.listMessages(firstTurn.outcome.id)
+    ).resolves.toEqual([firstTurn.triggerMessage, continued.triggerMessage]);
+    await expect(
+      harness.repositories.plans.listByOutcome(firstTurn.outcome.id)
+    ).resolves.toEqual([
+      expect.objectContaining({ id: firstTurn.plan?.id }),
+      expect.objectContaining({ id: continued.plan?.id })
+    ]);
+    await expect(
+      harness.repositories.runs.listByOutcome(firstTurn.outcome.id)
+    ).resolves.toEqual([
+      expect.objectContaining({ id: firstTurn.run?.id }),
+      expect.objectContaining({ id: continued.run?.id })
+    ]);
+  });
+
   it("rejects a follow-up turn while the latest run is still active", async () => {
     const harness = createTurnServiceHarness();
 

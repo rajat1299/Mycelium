@@ -42,6 +42,15 @@ export class OutcomeTurnConflictError extends Error {
   }
 }
 
+export class OutcomeTurnReplayConflictError extends Error {
+  constructor(outcomeId: string, submissionId: string) {
+    super(
+      `Outcome ${outcomeId} submission id ${submissionId} already belongs to a different message.`
+    );
+    this.name = "OutcomeTurnReplayConflictError";
+  }
+}
+
 export type StartThreadInput = StartOutcomeRequest;
 
 export type ContinueThreadInput = ContinueOutcomeRequest & {
@@ -170,6 +179,22 @@ function asTurnTriggerMessage(
     createdAt: message.createdAt,
     submissionId: message.submissionId ?? null
   };
+}
+
+function assertSubmissionReplayMatches(
+  input: {
+    outcomeId: string;
+    submissionId: string;
+    content: string;
+  },
+  triggerMessage: TurnTriggerMessage
+) {
+  if (triggerMessage.content !== input.content) {
+    throw new OutcomeTurnReplayConflictError(
+      input.outcomeId,
+      input.submissionId
+    );
+  }
 }
 
 async function buildExistingTurnResponse(
@@ -642,6 +667,15 @@ export function createOutcomeTurnService(
       );
 
       if (triggerMessage) {
+        assertSubmissionReplayMatches(
+          {
+            outcomeId: outcome.id,
+            submissionId,
+            content: input.content
+          },
+          triggerMessage
+        );
+
         const replay = await buildExistingTurnResponse(options.repositories, {
           outcomeId: outcome.id,
           triggerMessage
@@ -698,6 +732,17 @@ export function createOutcomeTurnService(
                 submissionId
               )
             );
+
+            if (triggerMessage) {
+              assertSubmissionReplayMatches(
+                {
+                  outcomeId: outcome.id,
+                  submissionId,
+                  content: input.content
+                },
+                triggerMessage
+              );
+            }
 
             if (!triggerMessage) {
               throw error;

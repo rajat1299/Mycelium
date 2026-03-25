@@ -390,6 +390,60 @@ describe("outcome turn routes", () => {
     }
   });
 
+  it("returns 409 when the same submission id is reused with different content", async () => {
+    const harness = await createExecutionHarness({
+      simulationMode: true
+    });
+
+    try {
+      const start = await harness.app.inject({
+        method: "POST",
+        url: "/api/outcomes/start",
+        payload: {
+          workspaceId: "ws_123",
+          userId: "user_123",
+          prompt: "Draft the kickoff brief.",
+          source: "web"
+        }
+      });
+
+      const started = OutcomeTurnResponseSchema.parse(start.json());
+
+      await harness.services.repositories.runs.updateStatus({
+        runId: started.run?.id ?? "",
+        status: "completed",
+        updatedAt: "2026-03-24T12:15:00.000Z"
+      });
+
+      const first = await harness.app.inject({
+        method: "POST",
+        url: `/api/outcomes/${started.outcome.id}/continue`,
+        payload: {
+          content: "Add the rollout milestones.",
+          submissionId: "submit_content_conflict"
+        }
+      });
+
+      expect(first.statusCode).toBe(201);
+
+      const replay = await harness.app.inject({
+        method: "POST",
+        url: `/api/outcomes/${started.outcome.id}/continue`,
+        payload: {
+          content: "Actually make it a slide outline.",
+          submissionId: "submit_content_conflict"
+        }
+      });
+
+      expect(replay.statusCode).toBe(409);
+      expect(replay.json()).toEqual({
+        error: expect.stringMatching(/submission id .* already belongs to a different message/i)
+      });
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   it("returns 404 when continuing a missing outcome", async () => {
     const app = createExecutionHarness({ simulationMode: true });
     const harness = await app;

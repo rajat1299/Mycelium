@@ -39,6 +39,7 @@ export default async function OutcomeDetailPage({
   }>;
 }) {
   const [{ id }, resolvedSearchParams] = await Promise.all([params, searchParams]);
+  const initialSubmissionId = `submit_${randomUUID()}`;
   const runIdParam = resolvedSearchParams.runId;
   const bootstrapParam = resolvedSearchParams.bootstrap;
   const conflictParam = resolvedSearchParams.conflict;
@@ -116,6 +117,7 @@ export default async function OutcomeDetailPage({
         <OutcomeThreadPageShell
           outcome={outcome}
           outcomeTitle={outcomeTitle}
+          initialSubmissionId={initialSubmissionId}
           bootstrapState={bootstrapState}
           conflictState={conflictState}
           appendMessageAction={appendMessageAction}

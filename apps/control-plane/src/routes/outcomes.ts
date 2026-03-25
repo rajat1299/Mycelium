@@ -17,6 +17,7 @@ import {
 import type { EventBus } from "../lib/event-bus";
 import {
   OutcomeTurnConflictError,
+  OutcomeTurnReplayConflictError,
   type OutcomeTurnService
 } from "../lib/outcome-turn-service";
 import type { Repositories } from "../lib/repositories";
@@ -191,6 +192,10 @@ export function registerOutcomeRoutes(
     } catch (error) {
       if (error instanceof Error) {
         if (error instanceof OutcomeTurnConflictError) {
+          return reply.code(409).send(badRequest(error.message));
+        }
+
+        if (error instanceof OutcomeTurnReplayConflictError) {
           return reply.code(409).send(badRequest(error.message));
         }
 

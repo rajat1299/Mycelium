@@ -55,10 +55,12 @@ vi.mock("./outcome-conversation", () => ({
 vi.mock("./follow-up-input", () => ({
   FollowUpInput: ({
     action,
+    initialSubmissionId,
     disabled,
     hasConversation
   }: {
     action: (formData: FormData) => Promise<void>;
+    initialSubmissionId: string;
     disabled?: boolean;
     hasConversation?: boolean;
   }) => {
@@ -67,6 +69,7 @@ vi.mock("./follow-up-input", () => ({
 
     return (
       <div>
+        <input type="hidden" value={initialSubmissionId} readOnly />
         <textarea placeholder="Type a command..." disabled={disabled} />
         {hasConversation ? <span data-testid="follow-up-feedback-row" /> : null}
       </div>
@@ -102,6 +105,7 @@ function buildProps() {
       updatedAt: "2026-03-25T10:00:00.000Z"
     },
     outcomeTitle: "AI in Schools",
+    initialSubmissionId: "submit_initial",
     bootstrapState: null,
     conflictState: null,
     appendMessageAction: vi.fn(async () => undefined),
