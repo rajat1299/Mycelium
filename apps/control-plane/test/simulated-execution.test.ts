@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AssistantMessageListResponseSchema,
   ArtifactListResponseSchema,
+  OutcomeThreadSnapshotSchema,
   OutcomeTurnResponseSchema,
   PlanSchema,
   RunDetailSchema,
@@ -219,6 +220,15 @@ describe("development simulation mode", () => {
       expect(new Set(firstPlan.edges.map((edge) => edge.id))).not.toEqual(
         new Set(secondPlan.edges.map((edge) => edge.id))
       );
+      expect(
+        new Set(
+          firstPlan.nodes.map((node) => node.expectedArtifactPath).filter(Boolean)
+        )
+      ).not.toEqual(
+        new Set(
+          secondPlan.nodes.map((node) => node.expectedArtifactPath).filter(Boolean)
+        )
+      );
     } finally {
       await harness.cleanup();
     }
@@ -359,10 +369,14 @@ describe("development simulation mode", () => {
       expect(artifacts).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            relativePath: "artifacts/context-and-preferences.md"
+            relativePath: expect.stringMatching(
+              /artifacts\/.+\/context-and-preferences\.md$/
+            )
           }),
           expect.objectContaining({
-            relativePath: "artifacts/ai-k12-education-report.pdf",
+            relativePath: expect.stringMatching(
+              /artifacts\/.+\/ai-k12-education-report\.pdf$/
+            ),
             metadata: expect.objectContaining({
               title: "The State of AI in K-12 Education",
               pageCount: 16
@@ -402,7 +416,9 @@ describe("development simulation mode", () => {
             typeof event.data === "object" &&
             event.data !== null &&
             "relativePath" in event.data &&
-            event.data.relativePath === "artifacts/ai-k12-education-report.pdf"
+            /artifacts\/.+\/ai-k12-education-report\.pdf$/.test(
+              String(event.data.relativePath)
+            )
         )
       ).toBe(true);
 
@@ -432,7 +448,9 @@ describe("development simulation mode", () => {
           typeof event.data === "object" &&
           event.data !== null &&
           "relativePath" in event.data &&
-          event.data.relativePath === "artifacts/ai-k12-education-report.pdf"
+          /artifacts\/.+\/ai-k12-education-report\.pdf$/.test(
+            String(event.data.relativePath)
+          )
       );
       const finalDeliveryIndex = events.findIndex(
         (event) =>
@@ -529,6 +547,136 @@ describe("development simulation mode", () => {
       expect(
         secondRunMessages.find((message) => message.kind === "delivery")?.content
       ).toContain("implementation risks");
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("keeps multiple simulated turns in one continuous thread with distinct delivered artifacts", async () => {
+    const harness = await createExecutionHarness({
+      simulationMode: true,
+      simulationTimeline: FAST_SIMULATION_TIMELINE
+    });
+
+    try {
+      const { app, services } = harness;
+      const startOutcome = await app.inject({
+        method: "POST",
+        url: "/api/outcomes/start",
+        payload: {
+          workspaceId: "ws_simulation",
+          userId: "user_simulation",
+          prompt: "Draft a district AI adoption report with rollout guidance.",
+          source: "web"
+        }
+      });
+
+      expect(startOutcome.statusCode).toBe(201);
+      const firstTurn = OutcomeTurnResponseSchema.parse(startOutcome.json());
+      await services.simulatedExecutionService.waitForRun(firstTurn.run?.id ?? "");
+
+      const secondTurnResponse = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${firstTurn.outcome.id}/continue`,
+        payload: {
+          content:
+            "Make it shorter for school principals and focus on implementation risks."
+        }
+      });
+
+      expect(secondTurnResponse.statusCode).toBe(201);
+      const secondTurn = OutcomeTurnResponseSchema.parse(secondTurnResponse.json());
+      await services.simulatedExecutionService.waitForRun(secondTurn.run?.id ?? "");
+
+      const thirdTurnResponse = await app.inject({
+        method: "POST",
+        url: `/api/outcomes/${firstTurn.outcome.id}/continue`,
+        payload: {
+          content: "Turn the same work into a board-ready briefing with headline bullets."
+        }
+      });
+
+      expect(thirdTurnResponse.statusCode).toBe(201);
+      const thirdTurn = OutcomeTurnResponseSchema.parse(thirdTurnResponse.json());
+      await services.simulatedExecutionService.waitForRun(thirdTurn.run?.id ?? "");
+
+      const readThread = await app.inject({
+        method: "GET",
+        url: `/api/outcomes/${firstTurn.outcome.id}/thread`
+      });
+
+      expect(readThread.statusCode).toBe(200);
+      const thread = OutcomeThreadSnapshotSchema.parse(readThread.json());
+
+      expect(thread.messages.map((message) => message.content)).toEqual([
+        "Draft a district AI adoption report with rollout guidance.",
+        "Make it shorter for school principals and focus on implementation risks.",
+        "Turn the same work into a board-ready briefing with headline bullets."
+      ]);
+
+      expect(thread.runs.map((run) => run.id)).toEqual([
+        firstTurn.run?.id,
+        secondTurn.run?.id,
+        thirdTurn.run?.id
+      ]);
+      expect(thread.plans.map((plan) => plan.id)).toEqual([
+        firstTurn.plan?.id,
+        secondTurn.plan?.id,
+        thirdTurn.plan?.id
+      ]);
+
+      const assistantMessagesByRun = new Map<string, string[]>();
+      const deliveryByRun = new Map<string, string>();
+
+      for (const message of thread.assistantMessages) {
+        const current = assistantMessagesByRun.get(message.runId) ?? [];
+        current.push(message.kind);
+        assistantMessagesByRun.set(message.runId, current);
+
+        if (message.kind === "delivery") {
+          deliveryByRun.set(message.runId, message.content);
+        }
+      }
+
+      expect(assistantMessagesByRun.get(firstTurn.run?.id ?? "")).toEqual([
+        "acknowledgment",
+        "transition",
+        "transition",
+        "delivery"
+      ]);
+      expect(assistantMessagesByRun.get(secondTurn.run?.id ?? "")).toEqual([
+        "acknowledgment",
+        "transition",
+        "transition",
+        "delivery"
+      ]);
+      expect(assistantMessagesByRun.get(thirdTurn.run?.id ?? "")).toEqual([
+        "acknowledgment",
+        "transition",
+        "transition",
+        "delivery"
+      ]);
+      expect(deliveryByRun.get(firstTurn.run?.id ?? "")).toContain(
+        "district AI adoption report with rollout guidance"
+      );
+      expect(deliveryByRun.get(secondTurn.run?.id ?? "")).toContain(
+        "implementation risks"
+      );
+      expect(deliveryByRun.get(thirdTurn.run?.id ?? "")).toContain(
+        "board-ready briefing"
+      );
+
+      const deliveredArtifacts = thread.artifacts.filter(
+        (artifact) => artifact.kind === "result"
+      );
+
+      expect(deliveredArtifacts).toHaveLength(3);
+      expect(new Set(deliveredArtifacts.map((artifact) => artifact.relativePath)).size).toBe(3);
+      expect(deliveredArtifacts.map((artifact) => artifact.runId)).toEqual([
+        firstTurn.run?.id,
+        secondTurn.run?.id,
+        thirdTurn.run?.id
+      ]);
     } finally {
       await harness.cleanup();
     }

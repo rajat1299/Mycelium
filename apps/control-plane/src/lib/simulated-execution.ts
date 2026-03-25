@@ -157,13 +157,20 @@ export function createSimulatedDraftPlan(input: {
   updatedAt: string;
 }) {
   const planId = `plan_${input.outcomeId}_${input.triggerMessageId}`;
+  const artifactRoot = buildSimulatedArtifactRoot(
+    input.prompt,
+    input.triggerMessageId
+  );
   const nodes = MOCK_PLAN_BLUEPRINT.map((node) => ({
     id: `${planId}:${node.idSuffix}`,
     kind: node.kind,
     title: node.title,
     capability: node.capability,
     instruction: node.instruction,
-    expectedArtifactPath: node.expectedArtifactPath,
+    expectedArtifactPath: namespaceArtifactPath(
+      artifactRoot,
+      node.expectedArtifactPath
+    ),
     expectedArtifactKind: node.expectedArtifactKind,
     position: node.position
   }));
@@ -221,6 +228,27 @@ export function createSimulatedDraftPlan(input: {
       }
     ]
   });
+}
+
+function buildSimulatedArtifactRoot(prompt: string, triggerMessageId: string) {
+  const promptSlug = prompt
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32);
+  const idSuffix = triggerMessageId.replace(/[^a-zA-Z0-9]+/g, "").slice(-8);
+  const slug = promptSlug.length > 0 ? promptSlug : "turn";
+  const uniqueSuffix = idSuffix.length > 0 ? idSuffix : "message";
+
+  return `artifacts/${slug}-${uniqueSuffix}`;
+}
+
+function namespaceArtifactPath(artifactRoot: string, expectedArtifactPath: string) {
+  const segments = expectedArtifactPath.split("/");
+  const filename = segments.at(-1) ?? expectedArtifactPath;
+
+  return `${artifactRoot}/${filename}`;
 }
 
 export function resolveSimulatedRoute(input: {
