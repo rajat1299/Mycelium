@@ -122,6 +122,18 @@ describe("OutcomeThreadSnapshotSchema", () => {
           resolution: null,
           resolutionNote: null
         }
+      ],
+      presentationHints: [
+        {
+          id: "hint_123",
+          outcomeId: "outcome_123",
+          entityType: "artifact",
+          entityId: "artifact_123",
+          phaseId: "phase_delivery",
+          seq: 30,
+          laneId: "lane_delivery",
+          createdAt: "2026-03-24T12:05:00.000Z"
+        }
       ]
     });
 
@@ -167,9 +179,40 @@ describe("OutcomeThreadSnapshotSchema", () => {
           expect.objectContaining({
             id: "approval_123"
           })
+        ]),
+        presentationHints: expect.arrayContaining([
+          expect.objectContaining({
+            id: "hint_123",
+            entityType: "artifact",
+            phaseId: "phase_delivery"
+          })
         ])
       })
     );
+  });
+
+  it("defaults presentationHints to an empty array when omitted", () => {
+    const parsed = OutcomeThreadSnapshotSchema.parse({
+      outcome: {
+        id: "outcome_123",
+        workspaceId: "ws_123",
+        userId: "user_123",
+        prompt: "Research AI tools for district planning",
+        source: "web",
+        status: "running",
+        createdAt: "2026-03-24T12:00:00.000Z",
+        updatedAt: "2026-03-24T12:05:00.000Z"
+      },
+      messages: [],
+      plans: [],
+      runs: [],
+      assistantMessages: [],
+      artifacts: [],
+      logs: [],
+      pendingApprovals: []
+    });
+
+    expect(parsed.presentationHints).toEqual([]);
   });
 
   it("rejects non-pending approvals in pendingApprovals", () => {

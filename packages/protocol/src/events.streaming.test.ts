@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   AssistantMessageListResponseSchema,
+  OutcomePresentationHintSchema,
   OutcomeStreamEventSchema
 } from "./index";
 
@@ -47,6 +48,36 @@ describe("assistant streaming event contracts", () => {
     expect(started.type).toBe("assistant.message.started");
     expect(delta.type).toBe("assistant.message.delta");
     expect(completed.type).toBe("assistant.message.completed");
+  });
+
+  it("accepts authored presentation hint events", () => {
+    const hint = OutcomePresentationHintSchema.parse({
+      id: "hint_123",
+      outcomeId: "outcome_123",
+      entityType: "assistant-message",
+      entityId: "assistant_msg_1",
+      phaseId: "phase_1",
+      seq: 10,
+      laneId: "lane_primary",
+      createdAt: "2026-03-22T00:00:00.000Z"
+    });
+
+    const event = OutcomeStreamEventSchema.parse({
+      outcomeId: "outcome_123",
+      type: "presentation.hint",
+      data: hint
+    });
+
+    expect(event.type).toBe("presentation.hint");
+    expect(event.data).toMatchObject({
+      id: "hint_123",
+      outcomeId: "outcome_123",
+      entityType: "assistant-message",
+      entityId: "assistant_msg_1",
+      phaseId: "phase_1",
+      seq: 10,
+      laneId: "lane_primary"
+    });
   });
 
   it("accepts assistant message snapshots for initial hydration", () => {

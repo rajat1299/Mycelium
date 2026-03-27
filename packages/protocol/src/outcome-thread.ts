@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ApprovalSchema } from "./approval";
 import { ArtifactSchema } from "./artifact";
 import {
+  OutcomePresentationHintSchema,
   AssistantMessageSnapshotSchema,
   RunLogDataSchema
 } from "./events";
@@ -24,7 +25,8 @@ export const OutcomeThreadSnapshotSchema = z.object({
   assistantMessages: z.array(AssistantMessageSnapshotSchema),
   artifacts: z.array(ArtifactSchema),
   logs: z.array(RunLogDataSchema),
-  pendingApprovals: z.array(PendingOutcomeThreadApprovalSchema)
+  pendingApprovals: z.array(PendingOutcomeThreadApprovalSchema),
+  presentationHints: z.array(OutcomePresentationHintSchema).default([])
 });
 
 export type OutcomeThreadSnapshot = z.infer<

@@ -26,6 +26,7 @@ export const EventTypeSchema = z.enum([
   "assistant.message.started",
   "assistant.message.delta",
   "assistant.message.completed",
+  "presentation.hint",
   "run.created",
   "run.step.updated",
   "run.updated",
@@ -98,6 +99,24 @@ export const OutcomeMessageListResponseSchema = z.object({
   messages: z.array(MessageCreatedDataSchema)
 });
 
+export const OutcomePresentationHintEntityTypeSchema = z.enum([
+  "assistant-message",
+  "step",
+  "artifact",
+  "approval"
+]);
+
+export const OutcomePresentationHintSchema = z.object({
+  id: z.string(),
+  outcomeId: z.string(),
+  entityType: OutcomePresentationHintEntityTypeSchema,
+  entityId: z.string(),
+  phaseId: z.string(),
+  seq: z.number().int(),
+  laneId: z.string().optional(),
+  createdAt: z.string().datetime()
+});
+
 export const EventEnvelopeSchema = z.object({
   type: EventTypeSchema,
   data: z.unknown()
@@ -137,6 +156,12 @@ export const AssistantMessageCompletedEventSchema = z.object({
   outcomeId: z.string(),
   type: z.literal("assistant.message.completed"),
   data: AssistantMessageCompletedDataSchema
+});
+
+export const PresentationHintEventSchema = z.object({
+  outcomeId: z.string(),
+  type: z.literal("presentation.hint"),
+  data: OutcomePresentationHintSchema
 });
 
 export const RunCreatedEventSchema = z.object({
@@ -261,6 +286,7 @@ export const OutcomeStreamEventSchema = z.discriminatedUnion("type", [
   AssistantMessageStartedEventSchema,
   AssistantMessageDeltaEventSchema,
   AssistantMessageCompletedEventSchema,
+  PresentationHintEventSchema,
   RunCreatedEventSchema,
   RunStepUpdatedEventSchema,
   RunUpdatedEventSchema,
@@ -284,6 +310,12 @@ export type EventType = z.infer<typeof EventTypeSchema>;
 export type EventEnvelope = z.infer<typeof EventEnvelopeSchema>;
 export type { MessageCreatedData } from "./outcome-message";
 export type AssistantMessageKind = z.infer<typeof AssistantMessageKindSchema>;
+export type OutcomePresentationHintEntityType = z.infer<
+  typeof OutcomePresentationHintEntityTypeSchema
+>;
+export type OutcomePresentationHint = z.infer<
+  typeof OutcomePresentationHintSchema
+>;
 export type AssistantMessageStartedData = z.infer<
   typeof AssistantMessageStartedDataSchema
 >;
@@ -309,6 +341,7 @@ export type AssistantMessageDeltaEvent = z.infer<
 export type AssistantMessageCompletedEvent = z.infer<
   typeof AssistantMessageCompletedEventSchema
 >;
+export type PresentationHintEvent = z.infer<typeof PresentationHintEventSchema>;
 export type RunCreatedEvent = z.infer<typeof RunCreatedEventSchema>;
 export type RunStepUpdatedEvent = z.infer<typeof RunStepUpdatedEventSchema>;
 export type RunUpdatedEvent = z.infer<typeof RunUpdatedEventSchema>;
