@@ -786,7 +786,7 @@ describe("buildOutcomeFeed", () => {
     });
   });
 
-  it("falls back to createdAt ordering for lead selection when assistant hint coverage is partial", () => {
+  it("uses partial assistant hints to influence lead selection through phase anchors", () => {
     const state = buildPresentationOrderingState([
       {
         id: "hint_transition",
@@ -796,7 +796,7 @@ describe("buildOutcomeFeed", () => {
         phaseId: "phase_delivery",
         seq: 10,
         laneId: "lane_delivery",
-        createdAt: "2026-03-27T09:00:30.000Z"
+        createdAt: "2026-03-27T09:00:00.000Z"
       }
     ]);
 
@@ -809,18 +809,18 @@ describe("buildOutcomeFeed", () => {
     expect(turns[0]?.leadItem).toMatchObject({
       type: "assistant-message",
       message: expect.objectContaining({
-        id: "assistant_lead"
+        id: "assistant_transition"
       })
     });
-    expect(turns[0]?.bodyItems.at(-1)).toMatchObject({
+    expect(turns[0]?.bodyItems[0]).toMatchObject({
       type: "assistant-message",
       message: expect.objectContaining({
-        id: "assistant_transition"
+        id: "assistant_lead"
       })
     });
   });
 
-  it("does not let hinted later phases leapfrog unhinted body items when hint coverage is partial", () => {
+  it("uses the same mixed hinted ordering rule for lead selection and body ordering", () => {
     const state = buildPresentationOrderingState([
       {
         id: "hint_transition",
@@ -830,7 +830,7 @@ describe("buildOutcomeFeed", () => {
         phaseId: "phase_delivery",
         seq: 10,
         laneId: "lane_delivery",
-        createdAt: "2026-03-27T09:00:30.000Z"
+        createdAt: "2026-03-27T09:00:00.000Z"
       },
       {
         id: "hint_step",
@@ -840,7 +840,7 @@ describe("buildOutcomeFeed", () => {
         phaseId: "phase_delivery",
         seq: 20,
         laneId: "lane_delivery",
-        createdAt: "2026-03-27T09:00:30.000Z"
+        createdAt: "2026-03-27T09:00:00.000Z"
       },
       {
         id: "hint_artifact",
@@ -850,7 +850,7 @@ describe("buildOutcomeFeed", () => {
         phaseId: "phase_delivery",
         seq: 30,
         laneId: "lane_delivery",
-        createdAt: "2026-03-27T09:00:30.000Z"
+        createdAt: "2026-03-27T09:00:00.000Z"
       }
     ]);
 
@@ -871,14 +871,26 @@ describe("buildOutcomeFeed", () => {
       state
     });
 
+    expect(turns[0]?.leadItem).toMatchObject({
+      type: "assistant-message",
+      message: expect.objectContaining({
+        id: "assistant_transition"
+      })
+    });
     expect(turns[0]?.bodyItems.map((item) => item.type)).toEqual([
       "task",
-      "message",
       "artifact-delivery",
       "delivery-note",
-      "assistant-message"
+      "assistant-message",
+      "message"
     ]);
-    expect(turns[0]?.bodyItems[1]).toMatchObject({
+    expect(turns[0]?.bodyItems[3]).toMatchObject({
+      type: "assistant-message",
+      message: expect.objectContaining({
+        id: "assistant_lead"
+      })
+    });
+    expect(turns[0]?.bodyItems[4]).toMatchObject({
       type: "message",
       message: expect.objectContaining({
         id: "msg_system_progress"

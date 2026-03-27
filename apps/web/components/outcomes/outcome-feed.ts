@@ -368,6 +368,51 @@ function comparePresentationPlacements(
   return left.entityId.localeCompare(right.entityId);
 }
 
+type TimedComparableEntry = {
+  timestamp: string;
+  order: number;
+  key: string;
+  presentation: EntryPresentationPlacement | null;
+};
+
+function compareTimedComparableEntries(
+  left: TimedComparableEntry,
+  right: TimedComparableEntry
+) {
+  const leftAnchor = left.presentation?.phaseCreatedAt ?? left.timestamp;
+  const rightAnchor = right.presentation?.phaseCreatedAt ?? right.timestamp;
+  const anchorDelta = leftAnchor.localeCompare(rightAnchor);
+
+  if (anchorDelta !== 0) {
+    return anchorDelta;
+  }
+
+  if (left.presentation && right.presentation) {
+    const presentationDelta = comparePresentationPlacements(
+      left.presentation,
+      right.presentation
+    );
+
+    if (presentationDelta !== 0) {
+      return presentationDelta;
+    }
+  }
+
+  const timestampDelta = left.timestamp.localeCompare(right.timestamp);
+
+  if (timestampDelta !== 0) {
+    return timestampDelta;
+  }
+
+  const orderDelta = left.order - right.order;
+
+  if (orderDelta !== 0) {
+    return orderDelta;
+  }
+
+  return left.key.localeCompare(right.key);
+}
+
 function sortAssistantMessagesForTurn(
   messages: AssistantNarrativeMessage[],
   lookups: TurnHintLookups
@@ -378,25 +423,25 @@ function sortAssistantMessagesForTurn(
       toEntryPresentationPlacement(lookups.assistantMessages.get(message.id), lookups)
     ])
   );
-  const hasFullPresentationCoverage =
-    messages.length > 0 &&
-    messages.every((message) => Boolean(placements.get(message.id)));
 
   return [...messages].sort((left, right) => {
     const leftPlacement = placements.get(left.id) ?? null;
     const rightPlacement = placements.get(right.id) ?? null;
 
-    if (hasFullPresentationCoverage && leftPlacement && rightPlacement) {
-      return comparePresentationPlacements(leftPlacement, rightPlacement);
-    }
-
-    const createdDelta = left.createdAt.localeCompare(right.createdAt);
-
-    if (createdDelta !== 0) {
-      return createdDelta;
-    }
-
-    return left.id.localeCompare(right.id);
+    return compareTimedComparableEntries(
+      {
+        timestamp: left.createdAt,
+        order: 0,
+        key: left.id,
+        presentation: leftPlacement
+      },
+      {
+        timestamp: right.createdAt,
+        order: 0,
+        key: right.id,
+        presentation: rightPlacement
+      }
+    );
   });
 }
 
@@ -1244,32 +1289,21 @@ export function buildOutcomeThreadTurns({
       });
     }
 
-    const usePresentationOrdering =
-      chronoEntries.length > 0 &&
-      chronoEntries.every((entry) => entry.presentation !== null);
-
     chronoEntries.sort((left, right) => {
-      if (
-        usePresentationOrdering &&
-        left.presentation &&
-        right.presentation
-      ) {
-        return comparePresentationPlacements(left.presentation, right.presentation);
-      }
-
-      const timestampDelta = left.timestamp.localeCompare(right.timestamp);
-
-      if (timestampDelta !== 0) {
-        return timestampDelta;
-      }
-
-      const orderDelta = left.order - right.order;
-
-      if (orderDelta !== 0) {
-        return orderDelta;
-      }
-
-      return left.item.key.localeCompare(right.item.key);
+      return compareTimedComparableEntries(
+        {
+          timestamp: left.timestamp,
+          order: left.order,
+          key: left.item.key,
+          presentation: left.presentation
+        },
+        {
+          timestamp: right.timestamp,
+          order: right.order,
+          key: right.item.key,
+          presentation: right.presentation
+        }
+      );
     });
 
     const planItems = turnPlans.map((plan) =>
