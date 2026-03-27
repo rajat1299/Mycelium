@@ -1,6 +1,13 @@
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OutcomeConversation, StreamingText } from "./outcome-conversation";
 
@@ -125,6 +132,121 @@ function renderRunningStepConversation() {
       initialMessages={[]}
       optimisticMessages={[]}
       initialPendingApprovals={[]}
+    />
+  );
+}
+
+function renderQueuedPhaseConversation() {
+  return render(
+    <OutcomeConversation
+      outcomeId="outcome_queued"
+      outcomePrompt="Prepare the district packet."
+      outcomeSource="web"
+      initialPlan={{
+        id: "plan_queue",
+        outcomeId: "outcome_queued",
+        triggerMessageId: "msg_queue",
+        status: "draft",
+        createdAt: "2026-03-27T10:00:00.000Z",
+        updatedAt: "2026-03-27T10:00:00.000Z",
+        nodes: [
+          {
+            id: "node_research",
+            kind: "task",
+            title: "Research district context",
+            capability: "research",
+            position: 0
+          },
+          {
+            id: "node_outline",
+            kind: "task",
+            title: "Outline principal summary",
+            capability: "document",
+            position: 1
+          }
+        ],
+        edges: []
+      }}
+      initialRun={{
+        id: "run_queue",
+        outcomeId: "outcome_queued",
+        planId: "plan_queue",
+        triggerMessageId: "msg_queue",
+        status: "running",
+        createdAt: "2026-03-27T10:00:00.000Z",
+        updatedAt: "2026-03-27T10:00:30.000Z",
+        steps: [
+          {
+            id: "step_research",
+            runId: "run_queue",
+            planNodeId: "node_research",
+            title: "Research district context",
+            kind: "task",
+            capability: "research",
+            status: "ready",
+            position: 0,
+            createdAt: "2026-03-27T10:00:30.000Z",
+            updatedAt: "2026-03-27T10:00:30.000Z"
+          },
+          {
+            id: "step_outline",
+            runId: "run_queue",
+            planNodeId: "node_outline",
+            title: "Outline principal summary",
+            kind: "task",
+            capability: "document",
+            status: "pending",
+            position: 1,
+            createdAt: "2026-03-27T10:00:31.000Z",
+            updatedAt: "2026-03-27T10:00:31.000Z"
+          }
+        ]
+      }}
+      initialArtifacts={[]}
+      initialLogs={[]}
+      initialAssistantMessages={[
+        {
+          id: "assistant_queue_transition",
+          runId: "run_queue",
+          kind: "transition",
+          content: "I'll split this into research and packaging tracks first.",
+          createdAt: "2026-03-27T10:00:05.000Z",
+          updatedAt: "2026-03-27T10:00:06.000Z",
+          status: "completed"
+        }
+      ]}
+      initialMessages={[]}
+      optimisticMessages={[]}
+      initialPendingApprovals={[]}
+      initialPresentationHints={[
+        {
+          id: "hint_queue_transition",
+          outcomeId: "outcome_queued",
+          entityType: "assistant-message",
+          entityId: "assistant_queue_transition",
+          phaseId: "phase_queue",
+          seq: 10,
+          createdAt: "2026-03-27T10:00:05.000Z"
+        },
+        {
+          id: "hint_step_research",
+          outcomeId: "outcome_queued",
+          entityType: "step",
+          entityId: "step_research",
+          phaseId: "phase_queue",
+          seq: 20,
+          createdAt: "2026-03-27T10:00:05.000Z"
+        },
+        {
+          id: "hint_step_outline",
+          outcomeId: "outcome_queued",
+          entityType: "step",
+          entityId: "step_outline",
+          phaseId: "phase_queue",
+          seq: 30,
+          createdAt: "2026-03-27T10:00:05.000Z"
+        }
+      ]}
     />
   );
 }
@@ -1644,6 +1766,28 @@ describe("OutcomeConversation", () => {
       "Now make it shorter for the district cabinet.",
       "I’m trimming it down even further for cabinet review."
     );
+  });
+
+  it("renders queued steps inside the transition phase group when authored grouping exists", () => {
+    renderQueuedPhaseConversation();
+
+    const phaseGroup = screen.getByTestId("phase-group");
+
+    expect(
+      within(phaseGroup).getByText(
+        "I'll split this into research and packaging tracks first."
+      )
+    ).toBeInTheDocument();
+    expect(
+      within(phaseGroup).getByText("Ready to start.")
+    ).toBeInTheDocument();
+    expect(within(phaseGroup).getByText("Queued to start.")).toBeInTheDocument();
+    expect(
+      within(phaseGroup).getAllByText("Research district context").length
+    ).toBeGreaterThan(0);
+    expect(
+      within(phaseGroup).getAllByText("Outline principal summary").length
+    ).toBeGreaterThan(0);
   });
 
   it("continues step streaming from the current visible progress when new text appends", async () => {

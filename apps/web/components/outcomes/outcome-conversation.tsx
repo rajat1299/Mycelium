@@ -59,6 +59,7 @@ import {
   upsertStep
 } from "./outcome-feed";
 import { BlockRenderer } from "./block-renderer";
+import { PhaseGroup } from "./phase-group";
 
 /* ── Types ──────────────────────────────────────────────────────────── */
 
@@ -431,6 +432,77 @@ function buildThreadRenderEntries(
 
     return entry;
   });
+}
+
+type TurnRenderGroup =
+  | { key: string; type: "item"; items: [OutcomeFeedItem] }
+  | {
+      key: string;
+      type: "phase-group";
+      kind: "transition";
+      phaseId: string;
+      items: OutcomeFeedItem[];
+    };
+
+function getFeedItemPhaseId(item: OutcomeFeedItem) {
+  switch (item.type) {
+    case "assistant-message":
+    case "task":
+    case "artifact-delivery":
+    case "delivery-note":
+    case "approval":
+      return item.phaseId ?? null;
+    default:
+      return null;
+  }
+}
+
+function buildTurnRenderGroups(items: OutcomeFeedItem[]): TurnRenderGroup[] {
+  const groups: TurnRenderGroup[] = [];
+
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    const phaseId =
+      item.type === "assistant-message" && item.message.kind === "transition"
+        ? item.phaseId ?? null
+        : null;
+
+    if (!phaseId) {
+      groups.push({
+        key: item.key,
+        type: "item",
+        items: [item]
+      });
+      continue;
+    }
+
+    const phaseItems: OutcomeFeedItem[] = [item];
+    let nextIndex = index + 1;
+
+    while (nextIndex < items.length) {
+      const nextItem = items[nextIndex]!;
+      const nextPhaseId = getFeedItemPhaseId(nextItem);
+
+      if (nextItem.type === "plan" || nextPhaseId === phaseId) {
+        phaseItems.push(nextItem);
+        nextIndex += 1;
+        continue;
+      }
+
+      break;
+    }
+
+    groups.push({
+      key: `phase:${phaseId}:${item.key}`,
+      type: "phase-group",
+      kind: "transition",
+      phaseId,
+      items: phaseItems
+    });
+    index = nextIndex - 1;
+  }
+
+  return groups;
 }
 
 function sortRenderableMessages(messages: MessageCreatedData[]) {
@@ -849,62 +921,79 @@ const OutcomeThreadTurnBlock = memo(function OutcomeThreadTurnBlock({
   const isTurnLive =
     turn.latestRunStatus !== null &&
     ["running", "queued", "blocked"].includes(turn.latestRunStatus);
+  const renderGroups = buildTurnRenderGroups(turn.items);
+  let itemIndex = 0;
 
   return (
     <Fragment>
-      {turn.items.map((item, index) => {
-        const isFromSSE = !(mountKeysRef.current?.has(item.key) ?? true);
-        const delay = isFromSSE
-          ? 0
-          : Math.min((startIndex + index) * 0.06, 0.5);
+      {renderGroups.map((group) => {
+        const groupStartIndex = itemIndex;
+        itemIndex += group.items.length;
 
-        return (
-          <BlockRenderer
-            key={item.key}
-            item={item}
-            delay={delay}
-            ease={ease}
-            isFromSSE={isFromSSE}
-            isTurnLive={isTurnLive}
-            outcomePrompt={outcomePrompt}
-            promptPreview={promptPreview}
-            showFullPrompt={showFullPrompt}
-            setShowFullPrompt={setShowFullPrompt}
-            renderIntentText={(message) => <StreamingText text={message} />}
-            renderPlan={(planItem) => (
-              <ActionGroup
-                key={planItem.key}
-                title={planItem.title}
-                items={planItem.items}
-                delay={delay}
-              />
-            )}
-            renderTask={(taskItem) => (
-              <SubtaskOutputCard
-                key={taskItem.key}
-                data={taskItem.data}
-                delay={delay}
-              />
-            )}
-            renderArtifactDelivery={(artifactItem) => (
-              <ArtifactDeliveryCard
-                key={artifactItem.key}
-                title={artifactItem.title}
-                workspacePath={artifactItem.workspacePath}
-                artifact={artifactItem.artifact}
-                step={artifactItem.step}
-                delay={delay}
-              />
-            )}
-            renderApproval={(approvalItem) => (
-              <InlineApprovalCard
-                key={approvalItem.key}
-                approval={approvalItem.approval}
-                artifacts={approvalItem.artifacts}
-              />
-            )}
-          />
-        );
+        const renderedItems = group.items.map((item, innerIndex) => {
+          const isFromSSE = !(mountKeysRef.current?.has(item.key) ?? true);
+          const delay = isFromSSE
+            ? 0
+            : Math.min((startIndex + groupStartIndex + innerIndex) * 0.06, 0.5);
+
+          return (
+            <BlockRenderer
+              key={item.key}
+              item={item}
+              delay={delay}
+              ease={ease}
+              isFromSSE={isFromSSE}
+              isTurnLive={isTurnLive}
+              outcomePrompt={outcomePrompt}
+              promptPreview={promptPreview}
+              showFullPrompt={showFullPrompt}
+              setShowFullPrompt={setShowFullPrompt}
+              renderIntentText={(message) => <StreamingText text={message} />}
+              renderPlan={(planItem) => (
+                <ActionGroup
+                  key={planItem.key}
+                  title={planItem.title}
+                  items={planItem.items}
+                  delay={delay}
+                />
+              )}
+              renderTask={(taskItem) => (
+                <SubtaskOutputCard
+                  key={taskItem.key}
+                  data={taskItem.data}
+                  delay={delay}
+                />
+              )}
+              renderArtifactDelivery={(artifactItem) => (
+                <ArtifactDeliveryCard
+                  key={artifactItem.key}
+                  title={artifactItem.title}
+                  workspacePath={artifactItem.workspacePath}
+                  artifact={artifactItem.artifact}
+                  step={artifactItem.step}
+                  delay={delay}
+                />
+              )}
+              renderApproval={(approvalItem) => (
+                <InlineApprovalCard
+                  key={approvalItem.key}
+                  approval={approvalItem.approval}
+                  artifacts={approvalItem.artifacts}
+                />
+              )}
+            />
+          );
+        });
+
+        if (group.type === "phase-group") {
+          return (
+            <PhaseGroup key={group.key} kind={group.kind}>
+              {renderedItems}
+            </PhaseGroup>
+          );
+        }
+
+        return renderedItems[0] ?? null;
       })}
     </Fragment>
   );
@@ -1114,6 +1203,7 @@ function SubtaskOutputCard({
   delay: number;
 }) {
   const { step, latestLog, primaryArtifact, outputText } = data;
+  const isQueued = step.status === "pending" || step.status === "ready";
   const isRunning = step.status === "running" || step.status === "claimed";
   const isDone = step.status === "completed";
   const isFailed = step.status === "failed";
@@ -1168,13 +1258,17 @@ function SubtaskOutputCard({
       initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
       animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
       transition={{ duration: 0.4, ease, delay }}
+      data-step-status={step.status}
       className={cn(
-        "overflow-hidden rounded-2xl transition-shadow duration-300",
-        isRunning
+        "overflow-hidden rounded-2xl border transition-shadow duration-300",
+        isQueued
+          ? "border-panel-line/60 bg-surface/70 shadow-none"
+          : isRunning
           ? "shadow-card-active"
           : isFailed
             ? "shadow-card-error"
-            : "shadow-card hover:shadow-card-hover"
+            : "shadow-card hover:shadow-card-hover",
+        !isQueued && "border-transparent"
       )}
     >
       <div className="flex items-center gap-3 px-5 py-3.5">
@@ -1184,7 +1278,7 @@ function SubtaskOutputCard({
         </h4>
 
         <AnimatePresence>
-          {step.routeModelId && (
+          {!isQueued && step.routeModelId && (
             <motion.div
               initial={modelIsNew ? { opacity: 0, scale: 0.92 } : false}
               animate={{ opacity: 1, scale: 1 }}
@@ -1198,7 +1292,7 @@ function SubtaskOutputCard({
         </AnimatePresence>
 
         <AnimatePresence>
-          {isDone && (
+          {isDone && !isQueued && (
             <motion.span
               initial={doneIsNew ? { opacity: 0 } : false}
               animate={{ opacity: 1 }}
@@ -1213,7 +1307,7 @@ function SubtaskOutputCard({
 
       <div className="px-5 py-4 shadow-[inset_0_1px_0_var(--panel-line)]">
         <AnimatePresence>
-          {fileInfo && (
+          {!isQueued && fileInfo && (
             <motion.p
               initial={artifactIsNew ? { opacity: 0, y: -4 } : false}
               animate={{ opacity: 1, y: 0 }}
@@ -1241,7 +1335,18 @@ function SubtaskOutputCard({
         </AnimatePresence>
 
         <AnimatePresence mode="wait">
-          {promotesResultDelivery ? (
+          {isQueued ? (
+            <motion.div
+              key="queued"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.2 }}
+            >
+              <p className="text-sm leading-6 text-muted/80">
+                {step.status === "ready" ? "Ready to start." : "Queued to start."}
+              </p>
+            </motion.div>
+          ) : promotesResultDelivery ? (
             <motion.div
               key="delivery-handoff"
               initial={{ opacity: 0 }}

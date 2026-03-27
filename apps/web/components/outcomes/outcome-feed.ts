@@ -49,9 +49,14 @@ export type ActionGroupItemData = {
 export type OutcomeFeedItem =
   | { type: "prompt"; key: string; prompt: string }
   | { type: "intent"; key: string; message: string }
-  | { type: "assistant-message"; key: string; message: AssistantNarrativeMessage }
+  | {
+      type: "assistant-message";
+      key: string;
+      message: AssistantNarrativeMessage;
+      phaseId?: string;
+    }
   | { type: "plan"; key: string; title: string; items: ActionGroupItemData[] }
-  | { type: "task"; key: string; data: StepCardData }
+  | { type: "task"; key: string; data: StepCardData; phaseId?: string }
   | {
       type: "artifact-delivery";
       key: string;
@@ -60,9 +65,16 @@ export type OutcomeFeedItem =
       title: string;
       summary: string | null;
       workspacePath: string;
+      phaseId?: string;
     }
-  | { type: "delivery-note"; key: string; message: string }
-  | { type: "approval"; key: string; approval: Approval; artifacts: Artifact[] }
+  | { type: "delivery-note"; key: string; message: string; phaseId?: string }
+  | {
+      type: "approval";
+      key: string;
+      approval: Approval;
+      artifacts: Artifact[];
+      phaseId?: string;
+    }
   | { type: "message"; key: string; message: MessageCreatedData }
   | { type: "loading"; key: string };
 
@@ -799,8 +811,16 @@ function buildArtifactDeliveryNote(
   };
 }
 
-function shouldRenderStepCard(step: RunStep) {
-  return !["pending", "ready"].includes(step.status);
+function shouldRenderStepCard(
+  step: RunStep,
+  hint: OutcomePresentationHint | undefined,
+  transitionPhaseIds: ReadonlySet<string>
+) {
+  if (!["pending", "ready"].includes(step.status)) {
+    return true;
+  }
+
+  return Boolean(hint?.phaseId && transitionPhaseIds.has(hint.phaseId));
 }
 
 function buildMessageItem(
@@ -908,6 +928,7 @@ function feedItemSignature(item: OutcomeFeedItem): string {
       return [
         "assistant-message",
         item.message.id,
+        item.phaseId ?? "",
         item.message.kind,
         item.message.status,
         item.message.updatedAt,
@@ -924,6 +945,7 @@ function feedItemSignature(item: OutcomeFeedItem): string {
       return [
         "task",
         item.data.step.id,
+        item.phaseId ?? "",
         item.data.step.status,
         item.data.step.updatedAt,
         item.data.step.routeModelId ?? "",
@@ -944,6 +966,7 @@ function feedItemSignature(item: OutcomeFeedItem): string {
       return [
         "artifact-delivery",
         item.artifact.id,
+        item.phaseId ?? "",
         item.artifact.relativePath,
         item.artifact.createdAt,
         item.workspacePath,
@@ -951,11 +974,12 @@ function feedItemSignature(item: OutcomeFeedItem): string {
         item.step?.id ?? ""
       ].join(":");
     case "delivery-note":
-      return `delivery-note:${item.key}:${item.message}`;
+      return `delivery-note:${item.key}:${item.phaseId ?? ""}:${item.message}`;
     case "approval":
       return [
         "approval",
         item.approval.id,
+        item.phaseId ?? "",
         item.approval.status,
         item.approval.requestedAt,
         item.approval.title,
@@ -1111,31 +1135,35 @@ export function buildOutcomeThreadTurns({
     const runApprovals = [...state.pendingApprovals]
       .filter((approval) => runIds.has(approval.runId))
       .sort((left, right) => left.requestedAt.localeCompare(right.requestedAt));
-    const visibleAssistantMessages = sortAssistantMessagesForTurn(
-      state.assistantMessages.filter(
-        (message) => runIds.has(message.runId) && message.content.length > 0
-      ),
-      collectTurnHintLookups(state.presentationHints ?? [], {
-        assistantMessageIds: new Set(
-          state.assistantMessages
-            .filter((message) => runIds.has(message.runId) && message.content.length > 0)
-            .map((message) => message.id)
-        ),
-        stepIds: new Set(turnSteps.map((step) => step.id)),
-        artifactIds: new Set(turnArtifacts.map((artifact) => artifact.id)),
-        approvalIds: new Set(runApprovals.map((approval) => approval.id))
-      })
+    const turnAssistantMessages = state.assistantMessages.filter(
+      (message) => runIds.has(message.runId) && message.content.length > 0
     );
-    const stepsById = new Map(turnSteps.map((step) => [step.id, step]));
-    const stepCards = turnSteps
-      .filter((step) => shouldRenderStepCard(step))
-      .map((step) => buildStepCardData(step, turnLogs, state.artifacts));
     const turnHints = collectTurnHintLookups(state.presentationHints ?? [], {
-      assistantMessageIds: new Set(visibleAssistantMessages.map((message) => message.id)),
+      assistantMessageIds: new Set(turnAssistantMessages.map((message) => message.id)),
       stepIds: new Set(turnSteps.map((step) => step.id)),
       artifactIds: new Set(turnArtifacts.map((artifact) => artifact.id)),
       approvalIds: new Set(runApprovals.map((approval) => approval.id))
     });
+    const visibleAssistantMessages = sortAssistantMessagesForTurn(
+      turnAssistantMessages,
+      turnHints
+    );
+    const transitionPhaseIds = new Set(
+      visibleAssistantMessages
+        .filter((message) => message.kind === "transition")
+        .map((message) => turnHints.assistantMessages.get(message.id)?.phaseId)
+        .filter((phaseId): phaseId is string => Boolean(phaseId))
+    );
+    const stepsById = new Map(turnSteps.map((step) => [step.id, step]));
+    const stepCards = turnSteps
+      .filter((step) =>
+        shouldRenderStepCard(
+          step,
+          turnHints.steps.get(step.id),
+          transitionPhaseIds
+        )
+      )
+      .map((step) => buildStepCardData(step, turnLogs, state.artifacts));
     const leadAssistantMessage = visibleAssistantMessages[0] ?? null;
     const trailingAssistantMessages = visibleAssistantMessages.slice(1);
     const primaryIntentLog = promotedIntentLogs[0] ?? null;
@@ -1151,7 +1179,8 @@ export function buildOutcomeThreadTurns({
       ? {
           type: "assistant-message" as const,
           key: `assistant-message:${leadAssistantMessage.id}`,
-          message: leadAssistantMessage
+          message: leadAssistantMessage,
+          phaseId: turnHints.assistantMessages.get(leadAssistantMessage.id)?.phaseId
         }
       : primaryIntentLog
         ? {
@@ -1207,7 +1236,8 @@ export function buildOutcomeThreadTurns({
         item: {
           type: "assistant-message",
           key: `assistant-message:${assistantMessage.id}`,
-          message: assistantMessage
+          message: assistantMessage,
+          phaseId: turnHints.assistantMessages.get(assistantMessage.id)?.phaseId
         }
       });
     }
@@ -1223,7 +1253,8 @@ export function buildOutcomeThreadTurns({
         item: {
           type: "task",
           key: `step:${card.step.id}`,
-          data: card
+          data: card,
+          phaseId: turnHints.steps.get(card.step.id)?.phaseId
         }
       });
     }
@@ -1242,10 +1273,13 @@ export function buildOutcomeThreadTurns({
         timestamp: artifact.createdAt,
         order: 30,
         presentation: artifactPresentation,
-        item: buildArtifactDeliveryBlock(
-          artifact,
-          stepsById.get(artifact.stepId ?? "") ?? null
-        )
+        item: {
+          ...buildArtifactDeliveryBlock(
+            artifact,
+            stepsById.get(artifact.stepId ?? "") ?? null
+          ),
+          phaseId: turnHints.artifacts.get(artifact.id)?.phaseId
+        }
       });
 
       const deliveryNote = hasAssistantDeliveryNarrative
@@ -1264,7 +1298,10 @@ export function buildOutcomeThreadTurns({
                   suborder: 1
                 }
               : null,
-          item: deliveryNote
+          item: {
+            ...deliveryNote,
+            phaseId: turnHints.artifacts.get(artifact.id)?.phaseId
+          }
         });
       }
     }
@@ -1281,6 +1318,7 @@ export function buildOutcomeThreadTurns({
           type: "approval",
           key: `approval:${approval.id}`,
           approval,
+          phaseId: turnHints.approvals.get(approval.id)?.phaseId,
           artifacts: turnArtifacts.filter((artifact) =>
             approval.artifactIds.includes(artifact.id)
           )

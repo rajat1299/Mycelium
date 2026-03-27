@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { RunStep } from "@computer-oss/protocol";
 import {
   buildOutcomeFeed,
   buildOutcomeThreadTurns,
@@ -378,6 +379,102 @@ function buildPresentationOrderingState(
         content: "Now I'll package the delivery packet.",
         createdAt: "2026-03-27T09:05:00.000Z",
         updatedAt: "2026-03-27T09:05:02.000Z",
+        status: "completed"
+      }
+    ],
+    presentationHints
+  };
+}
+
+function buildQueuedPhaseState({
+  stepStatuses,
+  presentationHints
+}: {
+  stepStatuses: [RunStep["status"], RunStep["status"]];
+  presentationHints: Array<{
+    id: string;
+    outcomeId: string;
+    entityType: "assistant-message" | "step" | "artifact" | "approval";
+    entityId: string;
+    phaseId: string;
+    seq: number;
+    laneId?: string;
+    createdAt: string;
+  }>;
+}): OutcomeConversationState {
+  return {
+    plan: {
+      id: "plan_queue",
+      outcomeId: "outcome_queued",
+      triggerMessageId: "msg_queue",
+      status: "draft",
+      createdAt: "2026-03-27T10:00:00.000Z",
+      updatedAt: "2026-03-27T10:00:00.000Z",
+      nodes: [
+        {
+          id: "node_research",
+          kind: "task",
+          title: "Research district context",
+          capability: "research",
+          position: 0
+        },
+        {
+          id: "node_outline",
+          kind: "task",
+          title: "Outline principal summary",
+          capability: "document",
+          position: 1
+        }
+      ],
+      edges: []
+    },
+    run: {
+      id: "run_queue",
+      outcomeId: "outcome_queued",
+      planId: "plan_queue",
+      triggerMessageId: "msg_queue",
+      status: "running",
+      createdAt: "2026-03-27T10:00:00.000Z",
+      updatedAt: "2026-03-27T10:01:00.000Z",
+      steps: [
+        {
+          id: "step_research",
+          runId: "run_queue",
+          planNodeId: "node_research",
+          title: "Research district context",
+          kind: "task",
+          capability: "research",
+          status: stepStatuses[0],
+          position: 0,
+          createdAt: "2026-03-27T10:00:30.000Z",
+          updatedAt: "2026-03-27T10:00:30.000Z"
+        },
+        {
+          id: "step_outline",
+          runId: "run_queue",
+          planNodeId: "node_outline",
+          title: "Outline principal summary",
+          kind: "task",
+          capability: "document",
+          status: stepStatuses[1],
+          position: 1,
+          createdAt: "2026-03-27T10:00:31.000Z",
+          updatedAt: "2026-03-27T10:00:31.000Z"
+        }
+      ]
+    },
+    artifacts: [],
+    logs: [],
+    pendingApprovals: [],
+    messages: [],
+    assistantMessages: [
+      {
+        id: "assistant_queue_transition",
+        runId: "run_queue",
+        kind: "transition",
+        content: "I'll split this into research and packaging tracks first.",
+        createdAt: "2026-03-27T10:00:05.000Z",
+        updatedAt: "2026-03-27T10:00:06.000Z",
         status: "completed"
       }
     ],
@@ -973,5 +1070,142 @@ describe("buildOutcomeFeed", () => {
         id: "msg_same_anchor"
       })
     });
+  });
+
+  it("renders queued phase steps immediately when stable authored grouping exists", () => {
+    const turns = buildOutcomeThreadTurns({
+      outcomePrompt: "Prepare the district packet.",
+      outcomeSource: "web",
+      state: buildQueuedPhaseState({
+        stepStatuses: ["ready", "pending"],
+        presentationHints: [
+          {
+            id: "hint_queue_transition",
+            outcomeId: "outcome_queued",
+            entityType: "assistant-message",
+            entityId: "assistant_queue_transition",
+            phaseId: "phase_queue",
+            seq: 10,
+            createdAt: "2026-03-27T10:00:05.000Z"
+          },
+          {
+            id: "hint_step_research",
+            outcomeId: "outcome_queued",
+            entityType: "step",
+            entityId: "step_research",
+            phaseId: "phase_queue",
+            seq: 20,
+            createdAt: "2026-03-27T10:00:05.000Z"
+          },
+          {
+            id: "hint_step_outline",
+            outcomeId: "outcome_queued",
+            entityType: "step",
+            entityId: "step_outline",
+            phaseId: "phase_queue",
+            seq: 30,
+            createdAt: "2026-03-27T10:00:05.000Z"
+          }
+        ]
+      })
+    });
+
+    expect(turns[0]?.leadItem).toMatchObject({
+      type: "assistant-message",
+      message: expect.objectContaining({
+        id: "assistant_queue_transition"
+      })
+    });
+    expect(
+      turns[0]?.bodyItems.filter((item) => item.type === "task").map((item) => item.data.step.id)
+    ).toEqual(["step_research", "step_outline"]);
+  });
+
+  it("keeps queued phase steps hidden when stable authored grouping metadata is absent", () => {
+    const turns = buildOutcomeThreadTurns({
+      outcomePrompt: "Prepare the district packet.",
+      outcomeSource: "web",
+      state: buildQueuedPhaseState({
+        stepStatuses: ["ready", "pending"],
+        presentationHints: []
+      })
+    });
+
+    expect(turns[0]?.bodyItems.some((item) => item.type === "task")).toBe(false);
+  });
+
+  it("keeps queued step order stable as hinted steps move to running and completed", () => {
+    const presentationHints = [
+      {
+        id: "hint_queue_transition",
+        outcomeId: "outcome_queued",
+        entityType: "assistant-message" as const,
+        entityId: "assistant_queue_transition",
+        phaseId: "phase_queue",
+        seq: 10,
+        createdAt: "2026-03-27T10:00:05.000Z"
+      },
+      {
+        id: "hint_step_research",
+        outcomeId: "outcome_queued",
+        entityType: "step" as const,
+        entityId: "step_research",
+        phaseId: "phase_queue",
+        seq: 20,
+        createdAt: "2026-03-27T10:00:05.000Z"
+      },
+      {
+        id: "hint_step_outline",
+        outcomeId: "outcome_queued",
+        entityType: "step" as const,
+        entityId: "step_outline",
+        phaseId: "phase_queue",
+        seq: 30,
+        createdAt: "2026-03-27T10:00:05.000Z"
+      }
+    ];
+
+    const queuedTurns = buildOutcomeThreadTurns({
+      outcomePrompt: "Prepare the district packet.",
+      outcomeSource: "web",
+      state: buildQueuedPhaseState({
+        stepStatuses: ["ready", "pending"],
+        presentationHints
+      })
+    });
+    const runningTurns = buildOutcomeThreadTurns({
+      outcomePrompt: "Prepare the district packet.",
+      outcomeSource: "web",
+      state: buildQueuedPhaseState({
+        stepStatuses: ["running", "running"],
+        presentationHints
+      })
+    });
+    const completedTurns = buildOutcomeThreadTurns({
+      outcomePrompt: "Prepare the district packet.",
+      outcomeSource: "web",
+      state: buildQueuedPhaseState({
+        stepStatuses: ["completed", "completed"],
+        presentationHints
+      })
+    });
+
+    const getTaskOrder = (items: NonNullable<(typeof queuedTurns)[0]>["bodyItems"]) =>
+      items
+        .filter((item) => item.type === "task")
+        .map((item) => item.data.step.id);
+
+    expect(getTaskOrder(queuedTurns[0]?.bodyItems ?? [])).toEqual([
+      "step_research",
+      "step_outline"
+    ]);
+    expect(getTaskOrder(runningTurns[0]?.bodyItems ?? [])).toEqual([
+      "step_research",
+      "step_outline"
+    ]);
+    expect(getTaskOrder(completedTurns[0]?.bodyItems ?? [])).toEqual([
+      "step_research",
+      "step_outline"
+    ]);
   });
 });

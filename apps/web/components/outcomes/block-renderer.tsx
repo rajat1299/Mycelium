@@ -8,7 +8,6 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "../ui/cn";
 import { AssistantNarrativeBlock } from "./assistant-narrative-block";
-import { PhaseGroup } from "./phase-group";
 
 type BlockRendererProps = {
   item: OutcomeFeedItem;
@@ -99,8 +98,6 @@ export function BlockRenderer({
       );
 
     case "assistant-message": {
-      const content = <AssistantNarrativeBlock message={item.message} />;
-
       return (
         <motion.div
           key={item.key}
@@ -108,11 +105,7 @@ export function BlockRenderer({
           animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
           transition={{ duration: 0.5, ease, delay }}
         >
-          {item.message.kind === "transition" ? (
-            <PhaseGroup kind="transition">{content}</PhaseGroup>
-          ) : (
-            content
-          )}
+          <AssistantNarrativeBlock message={item.message} />
         </motion.div>
       );
     }
