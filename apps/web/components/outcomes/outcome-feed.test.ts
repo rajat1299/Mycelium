@@ -785,4 +785,104 @@ describe("buildOutcomeFeed", () => {
       })
     });
   });
+
+  it("falls back to createdAt ordering for lead selection when assistant hint coverage is partial", () => {
+    const state = buildPresentationOrderingState([
+      {
+        id: "hint_transition",
+        outcomeId: "outcome_123",
+        entityType: "assistant-message",
+        entityId: "assistant_transition",
+        phaseId: "phase_delivery",
+        seq: 10,
+        laneId: "lane_delivery",
+        createdAt: "2026-03-27T09:00:30.000Z"
+      }
+    ]);
+
+    const turns = buildOutcomeThreadTurns({
+      outcomePrompt: "Prepare the delivery packet.",
+      outcomeSource: "web",
+      state
+    });
+
+    expect(turns[0]?.leadItem).toMatchObject({
+      type: "assistant-message",
+      message: expect.objectContaining({
+        id: "assistant_lead"
+      })
+    });
+    expect(turns[0]?.bodyItems.at(-1)).toMatchObject({
+      type: "assistant-message",
+      message: expect.objectContaining({
+        id: "assistant_transition"
+      })
+    });
+  });
+
+  it("does not let hinted later phases leapfrog unhinted body items when hint coverage is partial", () => {
+    const state = buildPresentationOrderingState([
+      {
+        id: "hint_transition",
+        outcomeId: "outcome_123",
+        entityType: "assistant-message",
+        entityId: "assistant_transition",
+        phaseId: "phase_delivery",
+        seq: 10,
+        laneId: "lane_delivery",
+        createdAt: "2026-03-27T09:00:30.000Z"
+      },
+      {
+        id: "hint_step",
+        outcomeId: "outcome_123",
+        entityType: "step",
+        entityId: "step_delivery",
+        phaseId: "phase_delivery",
+        seq: 20,
+        laneId: "lane_delivery",
+        createdAt: "2026-03-27T09:00:30.000Z"
+      },
+      {
+        id: "hint_artifact",
+        outcomeId: "outcome_123",
+        entityType: "artifact",
+        entityId: "artifact_delivery",
+        phaseId: "phase_delivery",
+        seq: 30,
+        laneId: "lane_delivery",
+        createdAt: "2026-03-27T09:00:30.000Z"
+      }
+    ]);
+
+    state.messages = [
+      {
+        id: "msg_system_progress",
+        outcomeId: "outcome_123",
+        role: "assistant",
+        content: "System note: delivery checks are still running.",
+        createdAt: "2026-03-27T09:01:30.000Z",
+        submissionId: null
+      }
+    ];
+
+    const turns = buildOutcomeThreadTurns({
+      outcomePrompt: "Prepare the delivery packet.",
+      outcomeSource: "web",
+      state
+    });
+
+    expect(turns[0]?.bodyItems.map((item) => item.type)).toEqual([
+      "task",
+      "message",
+      "artifact-delivery",
+      "delivery-note",
+      "assistant-message"
+    ]);
+    expect(turns[0]?.bodyItems[1]).toMatchObject({
+      type: "message",
+      message: expect.objectContaining({
+        id: "msg_system_progress"
+      })
+    });
+  });
 });

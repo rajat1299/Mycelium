@@ -372,17 +372,21 @@ function sortAssistantMessagesForTurn(
   messages: AssistantNarrativeMessage[],
   lookups: TurnHintLookups
 ) {
-  return [...messages].sort((left, right) => {
-    const leftPlacement = toEntryPresentationPlacement(
-      lookups.assistantMessages.get(left.id),
-      lookups
-    );
-    const rightPlacement = toEntryPresentationPlacement(
-      lookups.assistantMessages.get(right.id),
-      lookups
-    );
+  const placements = new Map(
+    messages.map((message) => [
+      message.id,
+      toEntryPresentationPlacement(lookups.assistantMessages.get(message.id), lookups)
+    ])
+  );
+  const hasFullPresentationCoverage =
+    messages.length > 0 &&
+    messages.every((message) => Boolean(placements.get(message.id)));
 
-    if (leftPlacement && rightPlacement) {
+  return [...messages].sort((left, right) => {
+    const leftPlacement = placements.get(left.id) ?? null;
+    const rightPlacement = placements.get(right.id) ?? null;
+
+    if (hasFullPresentationCoverage && leftPlacement && rightPlacement) {
       return comparePresentationPlacements(leftPlacement, rightPlacement);
     }
 
@@ -1240,19 +1244,17 @@ export function buildOutcomeThreadTurns({
       });
     }
 
+    const usePresentationOrdering =
+      chronoEntries.length > 0 &&
+      chronoEntries.every((entry) => entry.presentation !== null);
+
     chronoEntries.sort((left, right) => {
-      if (left.presentation && right.presentation) {
+      if (
+        usePresentationOrdering &&
+        left.presentation &&
+        right.presentation
+      ) {
         return comparePresentationPlacements(left.presentation, right.presentation);
-      }
-
-      if (left.presentation || right.presentation) {
-        const leftAnchor = left.presentation?.phaseCreatedAt ?? left.timestamp;
-        const rightAnchor = right.presentation?.phaseCreatedAt ?? right.timestamp;
-        const anchorDelta = leftAnchor.localeCompare(rightAnchor);
-
-        if (anchorDelta !== 0) {
-          return anchorDelta;
-        }
       }
 
       const timestampDelta = left.timestamp.localeCompare(right.timestamp);
