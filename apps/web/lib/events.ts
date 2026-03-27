@@ -9,6 +9,7 @@ import {
   MessagingDeliverySchema,
   MessageCreatedDataSchema,
   OutcomeSchema,
+  OutcomePresentationHintSchema,
   PlanSchema,
   RemoteStepLifecycleEventDataSchema,
   RemoteWorkerSchema,
@@ -80,6 +81,9 @@ export function subscribeToOutcomeEvents(
     );
     registerListener("assistant.message.completed", (payload) =>
       AssistantMessageCompletedDataSchema.parse(payload)
+    );
+    registerListener("presentation.hint", (payload) =>
+      OutcomePresentationHintSchema.parse(payload)
     );
     registerListener("run.created", (payload) => RunSchema.parse(payload));
     registerListener("run.updated", (payload) => RunSchema.parse(payload));

@@ -144,6 +144,40 @@ describe("subscribeToOutcomeEvents", () => {
     unsubscribe();
   });
 
+  it("forwards presentation hint SSE events to subscribers", () => {
+    vi.stubGlobal("EventSource", FakeEventSource as unknown as typeof EventSource);
+
+    const handler = vi.fn();
+    const unsubscribe = subscribeToOutcomeEvents("outcome_presentation", handler);
+
+    FakeEventSource.instances[0]?.emit("presentation.hint", {
+      id: "hint_123",
+      outcomeId: "outcome_123",
+      entityType: "assistant-message",
+      entityId: "assistant_123",
+      phaseId: "phase_delivery",
+      seq: 10,
+      laneId: "lane_delivery",
+      createdAt: "2026-03-27T00:00:00.000Z"
+    });
+
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcomeId: "outcome_presentation",
+        type: "presentation.hint",
+        data: expect.objectContaining({
+          id: "hint_123",
+          entityType: "assistant-message",
+          phaseId: "phase_delivery",
+          seq: 10,
+          laneId: "lane_delivery"
+        })
+      })
+    );
+
+    unsubscribe();
+  });
+
   it("forwards checkpoint and resume lifecycle SSE events to subscribers", () => {
     vi.stubGlobal("EventSource", FakeEventSource as unknown as typeof EventSource);
 

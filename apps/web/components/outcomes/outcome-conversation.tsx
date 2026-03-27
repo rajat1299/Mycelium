@@ -17,6 +17,7 @@ import type {
   AssistantMessageSnapshot,
   Artifact,
   MessageCreatedData,
+  OutcomePresentationHint,
   OutcomeSource,
   Plan,
   RunDetail,
@@ -78,6 +79,7 @@ type OutcomeConversationProps = {
   initialMessages: MessageCreatedData[];
   optimisticMessages?: OptimisticOutcomeMessage[];
   initialPendingApprovals: Approval[];
+  initialPresentationHints?: OutcomePresentationHint[];
 };
 
 export type OptimisticOutcomeMessage = MessageCreatedData & {
@@ -224,6 +226,34 @@ function mergeThreadRuns(current: RunDetail[], incoming: RunDetail[]) {
   });
 }
 
+function mergePresentationHints(
+  current: OutcomePresentationHint[],
+  incoming: OutcomePresentationHint[]
+) {
+  const next = [...current];
+
+  for (const hint of incoming) {
+    const index = next.findIndex((entry) => entry.id === hint.id);
+
+    if (index >= 0) {
+      next[index] = hint;
+      continue;
+    }
+
+    next.push(hint);
+  }
+
+  return [...next].sort((left, right) => {
+    const createdDelta = left.createdAt.localeCompare(right.createdAt);
+
+    if (createdDelta !== 0) {
+      return createdDelta;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+}
+
 function toRunDetail(incoming: RunEventSnapshot, fallbackSteps: RunStep[] = []): RunDetail {
   return {
     ...incoming,
@@ -279,6 +309,10 @@ function mergeConversationState(
     run: incoming.run ?? current.run,
     artifacts: incoming.artifacts.reduce(upsertArtifact, current.artifacts),
     logs: incoming.logs.reduce(appendLog, current.logs),
+    presentationHints: mergePresentationHints(
+      current.presentationHints ?? [],
+      incoming.presentationHints ?? []
+    ),
     pendingApprovals: mergePendingApprovals(
       current.pendingApprovals,
       incoming.pendingApprovals,
@@ -325,7 +359,8 @@ function buildInitialViewState(
   initialLogs: RunLogData[],
   initialAssistantMessages: AssistantMessageSnapshot[],
   initialMessages: MessageCreatedData[],
-  initialPendingApprovals: Approval[]
+  initialPendingApprovals: Approval[],
+  initialPresentationHints: OutcomePresentationHint[]
 ): OutcomeConversationViewState {
   const conversation = buildInitialOutcomeConversationState(
     initialPlan,
@@ -334,7 +369,8 @@ function buildInitialViewState(
     initialLogs,
     initialAssistantMessages,
     initialMessages,
-    initialPendingApprovals
+    initialPendingApprovals,
+    initialPresentationHints
   );
 
   return {
@@ -471,7 +507,8 @@ export function OutcomeConversation({
   initialAssistantMessages,
   initialMessages,
   optimisticMessages = [],
-  initialPendingApprovals
+  initialPendingApprovals,
+  initialPresentationHints = []
 }: OutcomeConversationProps) {
   const [viewState, setViewState] = useState<OutcomeConversationViewState>(() =>
     buildInitialViewState(
@@ -482,7 +519,8 @@ export function OutcomeConversation({
       initialLogs,
       initialAssistantMessages,
       initialMessages,
-      initialPendingApprovals
+      initialPendingApprovals,
+      initialPresentationHints
     )
   );
   const [showFullPrompt, setShowFullPrompt] = useState(false);
@@ -504,7 +542,8 @@ export function OutcomeConversation({
       initialLogs,
       initialAssistantMessages,
       initialMessages,
-      initialPendingApprovals
+      initialPendingApprovals,
+      initialPresentationHints
     );
 
     setViewState((current) => {
@@ -539,7 +578,8 @@ export function OutcomeConversation({
     initialLogs,
     initialAssistantMessages,
     initialMessages,
-    initialPendingApprovals
+    initialPendingApprovals,
+    initialPresentationHints
   ]);
 
   useEffect(() => {
@@ -592,6 +632,16 @@ export function OutcomeConversation({
                   assistantMessages: completeAssistantMessage(
                     conversation.assistantMessages,
                     event.data
+                  )
+                }
+              };
+            case "presentation.hint":
+              return {
+                conversation: {
+                  ...conversation,
+                  presentationHints: mergePresentationHints(
+                    conversation.presentationHints ?? [],
+                    [event.data]
                   )
                 }
               };

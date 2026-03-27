@@ -4,6 +4,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import type {
   Approval,
   Artifact,
+  OutcomePresentationHint,
   Plan,
   RunDetail
 } from "@computer-oss/protocol";
@@ -65,6 +66,7 @@ let observedConversationLogs: Array<{ message: string; level: string }> = [];
 let observedConversationAssistantMessages: Array<{ content: string; kind: string }> = [];
 let observedConversationMessages: Array<{ content: string; role: string }> = [];
 let observedConversationPendingApprovals: Approval[] = [];
+let observedConversationPresentationHints: OutcomePresentationHint[] = [];
 let observedConversationSource: string | null = null;
 let observedFollowUpAction: ((formData: FormData) => Promise<void>) | null = null;
 let observedFollowUpDisabled: boolean | null = null;
@@ -110,7 +112,8 @@ vi.mock("../../../components/outcomes/outcome-conversation", () => ({
     initialLogs,
     initialAssistantMessages,
     initialMessages,
-    initialPendingApprovals
+    initialPendingApprovals,
+    initialPresentationHints = []
   }: {
     initialPlan: Plan | null;
     outcomeSource: string;
@@ -121,6 +124,7 @@ vi.mock("../../../components/outcomes/outcome-conversation", () => ({
     initialAssistantMessages: Array<{ content: string; kind: string }>;
     initialMessages: Array<{ content: string; role: string }>;
     initialPendingApprovals: Approval[];
+    initialPresentationHints?: OutcomePresentationHint[];
   }) => {
     observedConversationPlan = initialPlan;
     observedConversationRun = initialRun;
@@ -130,6 +134,7 @@ vi.mock("../../../components/outcomes/outcome-conversation", () => ({
     observedConversationAssistantMessages = initialAssistantMessages;
     observedConversationMessages = initialMessages;
     observedConversationPendingApprovals = initialPendingApprovals;
+    observedConversationPresentationHints = initialPresentationHints;
     observedConversationSource = outcomeSource;
     return <div data-testid="outcome-conversation" />;
   }
@@ -230,6 +235,7 @@ describe("OutcomeDetailPage", () => {
     observedConversationAssistantMessages = [];
     observedConversationMessages = [];
     observedConversationPendingApprovals = [];
+    observedConversationPresentationHints = [];
     observedConversationSource = null;
     observedFollowUpAction = null;
     observedFollowUpDisabled = null;
@@ -366,6 +372,18 @@ describe("OutcomeDetailPage", () => {
           resolvedAt: null,
           resolution: null,
           resolutionNote: null
+        }
+      ],
+      presentationHints: [
+        {
+          id: "hint_123",
+          outcomeId: "outcome_123",
+          entityType: "assistant-message",
+          entityId: "assistant_456",
+          phaseId: "phase_delivery",
+          seq: 10,
+          laneId: "lane_delivery",
+          createdAt: "2026-03-11T00:11:10.000Z"
         }
       ]
     });
@@ -674,6 +692,15 @@ describe("OutcomeDetailPage", () => {
       expect.objectContaining({
         id: "approval_123",
         runId: "run_latest"
+      })
+    ]);
+    expect(observedConversationPresentationHints).toEqual([
+      expect.objectContaining({
+        id: "hint_123",
+        entityType: "assistant-message",
+        entityId: "assistant_456",
+        phaseId: "phase_delivery",
+        seq: 10
       })
     ]);
     expect(observedFollowUpDisabled).toBe(true);

@@ -135,6 +135,7 @@ export default async function OutcomeDetailPage({
           initialAssistantMessages={threadSnapshot.assistantMessages}
           initialMessages={threadSnapshot.messages}
           initialPendingApprovals={threadSnapshot.pendingApprovals}
+          initialPresentationHints={threadSnapshot.presentationHints}
           outcomePrompt={outcome.prompt}
           outcomeSource={outcome.source}
         />

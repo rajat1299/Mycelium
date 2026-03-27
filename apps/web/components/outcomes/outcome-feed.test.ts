@@ -289,6 +289,102 @@ function buildMultiTurnState(): OutcomeConversationState {
   };
 }
 
+function buildPresentationOrderingState(
+  presentationHints: Array<{
+    id: string;
+    outcomeId: string;
+    entityType: "assistant-message" | "step" | "artifact" | "approval";
+    entityId: string;
+    phaseId: string;
+    seq: number;
+    laneId?: string;
+    createdAt: string;
+  }>
+): OutcomeConversationState {
+  return {
+    plan: {
+      id: "plan_123",
+      outcomeId: "outcome_123",
+      triggerMessageId: "msg_123",
+      status: "draft",
+      createdAt: "2026-03-27T09:00:00.000Z",
+      updatedAt: "2026-03-27T09:00:00.000Z",
+      nodes: [
+        {
+          id: "node_delivery",
+          kind: "synthesis",
+          title: "Prepare delivery packet",
+          capability: "document",
+          position: 0
+        }
+      ],
+      edges: []
+    },
+    run: {
+      id: "run_123",
+      outcomeId: "outcome_123",
+      planId: "plan_123",
+      triggerMessageId: "msg_123",
+      status: "completed",
+      createdAt: "2026-03-27T09:00:00.000Z",
+      updatedAt: "2026-03-27T09:10:00.000Z",
+      steps: [
+        {
+          id: "step_delivery",
+          runId: "run_123",
+          planNodeId: "node_delivery",
+          title: "Prepare delivery packet",
+          kind: "synthesis",
+          capability: "document",
+          status: "completed",
+          position: 0,
+          createdAt: "2026-03-27T09:00:30.000Z",
+          updatedAt: "2026-03-27T09:01:00.000Z"
+        }
+      ]
+    },
+    artifacts: [
+      {
+        id: "artifact_delivery",
+        outcomeId: "outcome_123",
+        runId: "run_123",
+        stepId: "step_delivery",
+        kind: "result",
+        relativePath: "artifacts/delivery.pdf",
+        size: 2048,
+        metadata: {
+          summary: "Delivery packet ready."
+        },
+        createdAt: "2026-03-27T09:02:00.000Z"
+      }
+    ],
+    logs: [],
+    pendingApprovals: [],
+    messages: [],
+    assistantMessages: [
+      {
+        id: "assistant_lead",
+        runId: "run_123",
+        kind: "acknowledgment",
+        content: "I'll start by loading context.",
+        createdAt: "2026-03-27T09:00:05.000Z",
+        updatedAt: "2026-03-27T09:00:06.000Z",
+        status: "completed"
+      },
+      {
+        id: "assistant_transition",
+        runId: "run_123",
+        kind: "transition",
+        content: "Now I'll package the delivery packet.",
+        createdAt: "2026-03-27T09:05:00.000Z",
+        updatedAt: "2026-03-27T09:05:02.000Z",
+        status: "completed"
+      }
+    ],
+    presentationHints
+  };
+}
+
 describe("buildOutcomeThreadTurns", () => {
   it("groups multi-turn work by trigger message instead of one global run", () => {
     const turns = buildOutcomeThreadTurns({
@@ -579,5 +675,114 @@ describe("buildOutcomeFeed", () => {
 
     expect(artifactIndex).toBeGreaterThan(-1);
     expect(deliveryNoteIndex).toBeGreaterThan(artifactIndex);
+  });
+
+  it("prefers authored presentation ordering when hints exist", () => {
+    const turns = buildOutcomeThreadTurns({
+      outcomePrompt: "Prepare the delivery packet.",
+      outcomeSource: "web",
+      state: buildPresentationOrderingState([
+        {
+          id: "hint_transition",
+          outcomeId: "outcome_123",
+          entityType: "assistant-message",
+          entityId: "assistant_transition",
+          phaseId: "phase_delivery",
+          seq: 10,
+          laneId: "lane_delivery",
+          createdAt: "2026-03-27T09:00:30.000Z"
+        },
+        {
+          id: "hint_step",
+          outcomeId: "outcome_123",
+          entityType: "step",
+          entityId: "step_delivery",
+          phaseId: "phase_delivery",
+          seq: 20,
+          laneId: "lane_delivery",
+          createdAt: "2026-03-27T09:00:30.000Z"
+        },
+        {
+          id: "hint_artifact",
+          outcomeId: "outcome_123",
+          entityType: "artifact",
+          entityId: "artifact_delivery",
+          phaseId: "phase_delivery",
+          seq: 30,
+          laneId: "lane_delivery",
+          createdAt: "2026-03-27T09:00:30.000Z"
+        }
+      ])
+    });
+
+    expect(turns[0]?.leadItem).toMatchObject({
+      type: "assistant-message",
+      message: expect.objectContaining({
+        id: "assistant_lead"
+      })
+    });
+    expect(turns[0]?.bodyItems.map((item) => item.type)).toEqual([
+      "assistant-message",
+      "task",
+      "artifact-delivery",
+      "delivery-note"
+    ]);
+  });
+
+  it("falls back to chrono ordering when presentation hints are absent", () => {
+    const turns = buildOutcomeThreadTurns({
+      outcomePrompt: "Prepare the delivery packet.",
+      outcomeSource: "web",
+      state: buildPresentationOrderingState([])
+    });
+
+    expect(turns[0]?.bodyItems.map((item) => item.type)).toEqual([
+      "task",
+      "artifact-delivery",
+      "delivery-note",
+      "assistant-message"
+    ]);
+  });
+
+  it("uses authored hint order when choosing the lead assistant message", () => {
+    const turns = buildOutcomeThreadTurns({
+      outcomePrompt: "Prepare the delivery packet.",
+      outcomeSource: "web",
+      state: buildPresentationOrderingState([
+        {
+          id: "hint_transition",
+          outcomeId: "outcome_123",
+          entityType: "assistant-message",
+          entityId: "assistant_transition",
+          phaseId: "phase_delivery",
+          seq: 10,
+          laneId: "lane_delivery",
+          createdAt: "2026-03-27T09:00:30.000Z"
+        },
+        {
+          id: "hint_lead",
+          outcomeId: "outcome_123",
+          entityType: "assistant-message",
+          entityId: "assistant_lead",
+          phaseId: "phase_delivery",
+          seq: 20,
+          laneId: "lane_delivery",
+          createdAt: "2026-03-27T09:00:30.000Z"
+        }
+      ])
+    });
+
+    expect(turns[0]?.leadItem).toMatchObject({
+      type: "assistant-message",
+      message: expect.objectContaining({
+        id: "assistant_transition"
+      })
+    });
+    expect(turns[0]?.bodyItems[0]).toMatchObject({
+      type: "assistant-message",
+      message: expect.objectContaining({
+        id: "assistant_lead"
+      })
+    });
   });
 });

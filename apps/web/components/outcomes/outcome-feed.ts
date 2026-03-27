@@ -6,6 +6,7 @@ import type {
   AssistantMessageStartedData,
   Artifact,
   MessageCreatedData,
+  OutcomePresentationHint,
   OutcomeSource,
   Plan,
   RunDetail,
@@ -19,6 +20,7 @@ export type OutcomeConversationState = {
   artifacts: Artifact[];
   logs: RunLogData[];
   pendingApprovals: Approval[];
+  presentationHints?: OutcomePresentationHint[];
   messages: MessageCreatedData[];
   assistantMessages: AssistantNarrativeMessage[];
   thread?: {
@@ -90,6 +92,26 @@ type OutcomeFeedInput = {
   outcomeSource: OutcomeSource;
   state: OutcomeConversationState;
   previousTurns?: OutcomeThreadTurn[];
+};
+
+type HintEntityType = OutcomePresentationHint["entityType"];
+
+type TurnHintLookups = {
+  assistantMessages: Map<string, OutcomePresentationHint>;
+  steps: Map<string, OutcomePresentationHint>;
+  artifacts: Map<string, OutcomePresentationHint>;
+  approvals: Map<string, OutcomePresentationHint>;
+  earliestCreatedAtByPhase: Map<string, string>;
+};
+
+type EntryPresentationPlacement = {
+  phaseId: string;
+  seq: number;
+  laneId?: string;
+  entityType: HintEntityType;
+  entityId: string;
+  phaseCreatedAt: string;
+  suborder?: number;
 };
 
 function sortArtifactsInternal(artifacts: Artifact[]) {
@@ -203,6 +225,171 @@ function sortAssistantMessagesInternal(messages: AssistantNarrativeMessage[]) {
 
     if (timestampDelta !== 0) {
       return timestampDelta;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+}
+
+function compareHintEntityType(
+  left: HintEntityType,
+  right: HintEntityType
+) {
+  const priority: Record<HintEntityType, number> = {
+    "assistant-message": 0,
+    step: 1,
+    artifact: 2,
+    approval: 3
+  };
+
+  return priority[left] - priority[right];
+}
+
+function collectTurnHintLookups(
+  hints: OutcomePresentationHint[],
+  input: {
+    assistantMessageIds: ReadonlySet<string>;
+    stepIds: ReadonlySet<string>;
+    artifactIds: ReadonlySet<string>;
+    approvalIds: ReadonlySet<string>;
+  }
+): TurnHintLookups {
+  const assistantMessages = new Map<string, OutcomePresentationHint>();
+  const steps = new Map<string, OutcomePresentationHint>();
+  const artifacts = new Map<string, OutcomePresentationHint>();
+  const approvals = new Map<string, OutcomePresentationHint>();
+  const earliestCreatedAtByPhase = new Map<string, string>();
+
+  for (const hint of hints) {
+    const phaseCreatedAt = earliestCreatedAtByPhase.get(hint.phaseId);
+
+    if (!phaseCreatedAt || hint.createdAt.localeCompare(phaseCreatedAt) < 0) {
+      earliestCreatedAtByPhase.set(hint.phaseId, hint.createdAt);
+    }
+
+    switch (hint.entityType) {
+      case "assistant-message":
+        if (input.assistantMessageIds.has(hint.entityId)) {
+          assistantMessages.set(hint.entityId, hint);
+        }
+        break;
+      case "step":
+        if (input.stepIds.has(hint.entityId)) {
+          steps.set(hint.entityId, hint);
+        }
+        break;
+      case "artifact":
+        if (input.artifactIds.has(hint.entityId)) {
+          artifacts.set(hint.entityId, hint);
+        }
+        break;
+      case "approval":
+        if (input.approvalIds.has(hint.entityId)) {
+          approvals.set(hint.entityId, hint);
+        }
+        break;
+    }
+  }
+
+  return {
+    assistantMessages,
+    steps,
+    artifacts,
+    approvals,
+    earliestCreatedAtByPhase
+  };
+}
+
+function toEntryPresentationPlacement(
+  hint: OutcomePresentationHint | undefined,
+  lookups: TurnHintLookups,
+  overrides?: {
+    entityType?: HintEntityType;
+    entityId?: string;
+    suborder?: number;
+  }
+): EntryPresentationPlacement | null {
+  if (!hint) {
+    return null;
+  }
+
+  return {
+    phaseId: hint.phaseId,
+    seq: hint.seq,
+    ...(hint.laneId ? { laneId: hint.laneId } : {}),
+    entityType: overrides?.entityType ?? hint.entityType,
+    entityId: overrides?.entityId ?? hint.entityId,
+    phaseCreatedAt:
+      lookups.earliestCreatedAtByPhase.get(hint.phaseId) ?? hint.createdAt,
+    ...(overrides?.suborder !== undefined ? { suborder: overrides.suborder } : {})
+  };
+}
+
+function comparePresentationPlacements(
+  left: EntryPresentationPlacement,
+  right: EntryPresentationPlacement
+) {
+  const phaseCreatedAtDelta = left.phaseCreatedAt.localeCompare(right.phaseCreatedAt);
+
+  if (phaseCreatedAtDelta !== 0) {
+    return phaseCreatedAtDelta;
+  }
+
+  const phaseDelta = left.phaseId.localeCompare(right.phaseId);
+
+  if (phaseDelta !== 0) {
+    return phaseDelta;
+  }
+
+  const seqDelta = left.seq - right.seq;
+
+  if (seqDelta !== 0) {
+    return seqDelta;
+  }
+
+  const laneDelta = (left.laneId ?? "").localeCompare(right.laneId ?? "");
+
+  if (laneDelta !== 0) {
+    return laneDelta;
+  }
+
+  const entityTypeDelta = compareHintEntityType(left.entityType, right.entityType);
+
+  if (entityTypeDelta !== 0) {
+    return entityTypeDelta;
+  }
+
+  const suborderDelta = (left.suborder ?? 0) - (right.suborder ?? 0);
+
+  if (suborderDelta !== 0) {
+    return suborderDelta;
+  }
+
+  return left.entityId.localeCompare(right.entityId);
+}
+
+function sortAssistantMessagesForTurn(
+  messages: AssistantNarrativeMessage[],
+  lookups: TurnHintLookups
+) {
+  return [...messages].sort((left, right) => {
+    const leftPlacement = toEntryPresentationPlacement(
+      lookups.assistantMessages.get(left.id),
+      lookups
+    );
+    const rightPlacement = toEntryPresentationPlacement(
+      lookups.assistantMessages.get(right.id),
+      lookups
+    );
+
+    if (leftPlacement && rightPlacement) {
+      return comparePresentationPlacements(leftPlacement, rightPlacement);
+    }
+
+    const createdDelta = left.createdAt.localeCompare(right.createdAt);
+
+    if (createdDelta !== 0) {
+      return createdDelta;
     }
 
     return left.id.localeCompare(right.id);
@@ -325,7 +512,8 @@ export function buildInitialOutcomeConversationState(
   initialLogs: RunLogData[],
   initialAssistantMessages: AssistantNarrativeMessage[],
   initialMessages: MessageCreatedData[],
-  initialPendingApprovals: Approval[]
+  initialPendingApprovals: Approval[],
+  initialPresentationHints: OutcomePresentationHint[]
 ): OutcomeConversationState {
   return {
     plan: initialPlan,
@@ -333,6 +521,7 @@ export function buildInitialOutcomeConversationState(
     artifacts: sortArtifactsInternal(initialArtifacts),
     logs: sortLogsInternal(initialLogs),
     pendingApprovals: initialPendingApprovals,
+    presentationHints: initialPresentationHints,
     messages: sortMessagesInternal(initialMessages),
     assistantMessages: sortAssistantMessagesInternal(initialAssistantMessages)
   };
@@ -855,11 +1044,41 @@ export function buildOutcomeThreadTurns({
     const turnLogs = sortLogsInternal(state.logs.filter((log) => runIds.has(log.runId)));
     const systemLogs = turnLogs.filter((log) => !log.stepId);
     const promotedIntentLogs = collectPromotedIntentLogs(systemLogs);
-    const visibleAssistantMessages = sortAssistantMessagesInternal(
-      state.assistantMessages.filter(
-        (message) => runIds.has(message.runId) && message.content.length > 0
+    const turnSteps = sortSteps(turnRuns.flatMap((run) => run.steps));
+    const turnArtifacts = sortArtifactsInternal(
+      state.artifacts.filter(
+        (artifact) =>
+          (artifact.runId ? runIds.has(artifact.runId) : turn.key === promptTurn.key)
       )
     );
+    const runApprovals = [...state.pendingApprovals]
+      .filter((approval) => runIds.has(approval.runId))
+      .sort((left, right) => left.requestedAt.localeCompare(right.requestedAt));
+    const visibleAssistantMessages = sortAssistantMessagesForTurn(
+      state.assistantMessages.filter(
+        (message) => runIds.has(message.runId) && message.content.length > 0
+      ),
+      collectTurnHintLookups(state.presentationHints ?? [], {
+        assistantMessageIds: new Set(
+          state.assistantMessages
+            .filter((message) => runIds.has(message.runId) && message.content.length > 0)
+            .map((message) => message.id)
+        ),
+        stepIds: new Set(turnSteps.map((step) => step.id)),
+        artifactIds: new Set(turnArtifacts.map((artifact) => artifact.id)),
+        approvalIds: new Set(runApprovals.map((approval) => approval.id))
+      })
+    );
+    const stepsById = new Map(turnSteps.map((step) => [step.id, step]));
+    const stepCards = turnSteps
+      .filter((step) => shouldRenderStepCard(step))
+      .map((step) => buildStepCardData(step, turnLogs, state.artifacts));
+    const turnHints = collectTurnHintLookups(state.presentationHints ?? [], {
+      assistantMessageIds: new Set(visibleAssistantMessages.map((message) => message.id)),
+      stepIds: new Set(turnSteps.map((step) => step.id)),
+      artifactIds: new Set(turnArtifacts.map((artifact) => artifact.id)),
+      approvalIds: new Set(runApprovals.map((approval) => approval.id))
+    });
     const leadAssistantMessage = visibleAssistantMessages[0] ?? null;
     const trailingAssistantMessages = visibleAssistantMessages.slice(1);
     const primaryIntentLog = promotedIntentLogs[0] ?? null;
@@ -891,17 +1110,6 @@ export function buildOutcomeThreadTurns({
             }
           : null;
 
-    const turnSteps = sortSteps(turnRuns.flatMap((run) => run.steps));
-    const stepCards = turnSteps
-      .filter((step) => shouldRenderStepCard(step))
-      .map((step) => buildStepCardData(step, turnLogs, state.artifacts));
-    const stepsById = new Map(turnSteps.map((step) => [step.id, step]));
-    const turnArtifacts = sortArtifactsInternal(
-      state.artifacts.filter(
-        (artifact) =>
-          (artifact.runId ? runIds.has(artifact.runId) : turn.key === promptTurn.key)
-      )
-    );
     const promotedDeliveryIds = promotedDeliveryArtifactIds(turnSteps, turnArtifacts);
     const hasAssistantDeliveryNarrative = visibleAssistantMessages.some(
       (message) => message.kind === "delivery"
@@ -910,6 +1118,7 @@ export function buildOutcomeThreadTurns({
     type ChronoEntry = {
       timestamp: string;
       order: number;
+      presentation: EntryPresentationPlacement | null;
       item: Exclude<OutcomeFeedItem, { type: "prompt" | "plan" | "loading" }>;
     };
 
@@ -920,6 +1129,7 @@ export function buildOutcomeThreadTurns({
         chronoEntries.push({
           timestamp: intentLog.createdAt,
           order: 10,
+          presentation: null,
           item: {
             type: "intent",
             key: `intent:${logKey(intentLog)}`,
@@ -933,6 +1143,10 @@ export function buildOutcomeThreadTurns({
       chronoEntries.push({
         timestamp: assistantMessage.createdAt,
         order: 15,
+        presentation: toEntryPresentationPlacement(
+          turnHints.assistantMessages.get(assistantMessage.id),
+          turnHints
+        ),
         item: {
           type: "assistant-message",
           key: `assistant-message:${assistantMessage.id}`,
@@ -945,6 +1159,10 @@ export function buildOutcomeThreadTurns({
       chronoEntries.push({
         timestamp: card.step.createdAt,
         order: 20,
+        presentation: toEntryPresentationPlacement(
+          turnHints.steps.get(card.step.id),
+          turnHints
+        ),
         item: {
           type: "task",
           key: `step:${card.step.id}`,
@@ -958,9 +1176,15 @@ export function buildOutcomeThreadTurns({
         continue;
       }
 
+      const artifactPresentation = toEntryPresentationPlacement(
+        turnHints.artifacts.get(artifact.id),
+        turnHints
+      );
+
       chronoEntries.push({
         timestamp: artifact.createdAt,
         order: 30,
+        presentation: artifactPresentation,
         item: buildArtifactDeliveryBlock(
           artifact,
           stepsById.get(artifact.stepId ?? "") ?? null
@@ -975,19 +1199,27 @@ export function buildOutcomeThreadTurns({
         chronoEntries.push({
           timestamp: artifact.createdAt,
           order: 35,
+          presentation:
+            artifactPresentation
+              ? {
+                  ...artifactPresentation,
+                  entityId: `${artifact.id}:delivery-note`,
+                  suborder: 1
+                }
+              : null,
           item: deliveryNote
         });
       }
     }
 
-    const runApprovals = [...state.pendingApprovals]
-      .filter((approval) => runIds.has(approval.runId))
-      .sort((left, right) => left.requestedAt.localeCompare(right.requestedAt));
-
     for (const approval of runApprovals) {
       chronoEntries.push({
         timestamp: approval.requestedAt,
         order: 40,
+        presentation: toEntryPresentationPlacement(
+          turnHints.approvals.get(approval.id),
+          turnHints
+        ),
         item: {
           type: "approval",
           key: `approval:${approval.id}`,
@@ -1003,18 +1235,39 @@ export function buildOutcomeThreadTurns({
       chronoEntries.push({
         timestamp: message.createdAt,
         order: 50,
+        presentation: null,
         item: buildMessageItem(message)
       });
     }
 
     chronoEntries.sort((left, right) => {
+      if (left.presentation && right.presentation) {
+        return comparePresentationPlacements(left.presentation, right.presentation);
+      }
+
+      if (left.presentation || right.presentation) {
+        const leftAnchor = left.presentation?.phaseCreatedAt ?? left.timestamp;
+        const rightAnchor = right.presentation?.phaseCreatedAt ?? right.timestamp;
+        const anchorDelta = leftAnchor.localeCompare(rightAnchor);
+
+        if (anchorDelta !== 0) {
+          return anchorDelta;
+        }
+      }
+
       const timestampDelta = left.timestamp.localeCompare(right.timestamp);
 
       if (timestampDelta !== 0) {
         return timestampDelta;
       }
 
-      return left.order - right.order;
+      const orderDelta = left.order - right.order;
+
+      if (orderDelta !== 0) {
+        return orderDelta;
+      }
+
+      return left.item.key.localeCompare(right.item.key);
     });
 
     const planItems = turnPlans.map((plan) =>

@@ -7,6 +7,7 @@ import type {
   Artifact,
   MessageCreatedData,
   Outcome,
+  OutcomePresentationHint,
   OutcomeSource,
   Plan,
   RunDetail,
@@ -128,6 +129,7 @@ type OutcomeThreadPageShellProps = {
   initialAssistantMessages: AssistantMessageSnapshot[];
   initialMessages: MessageCreatedData[];
   initialPendingApprovals: Approval[];
+  initialPresentationHints?: OutcomePresentationHint[];
   outcomePrompt: string;
   outcomeSource: OutcomeSource;
 };
@@ -147,6 +149,7 @@ export function OutcomeThreadPageShell({
   initialAssistantMessages,
   initialMessages,
   initialPendingApprovals,
+  initialPresentationHints = [],
   outcomePrompt,
   outcomeSource
 }: OutcomeThreadPageShellProps) {
@@ -347,6 +350,7 @@ export function OutcomeThreadPageShell({
           initialMessages={initialMessages}
           optimisticMessages={optimisticMessages}
           initialPendingApprovals={initialPendingApprovals}
+          initialPresentationHints={initialPresentationHints}
         />
       </OutcomeTranscriptViewport>
     </>

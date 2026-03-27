@@ -19,7 +19,7 @@ function initialEntry(outcome: Outcome): ActivityEntry {
   };
 }
 
-function createEntryFromEvent(event: OutcomeStreamEvent): ActivityEntry {
+function createEntryFromEvent(event: OutcomeStreamEvent): ActivityEntry | null {
   switch (event.type) {
     case "outcome.updated":
       return {
@@ -240,6 +240,8 @@ function createEntryFromEvent(event: OutcomeStreamEvent): ActivityEntry {
         timestamp: event.data.sentAt ?? event.data.lastAttemptAt,
         tone: event.data.status === "failed" ? "warning" : "success"
       };
+    case "presentation.hint":
+      return null;
   }
 
   const exhaustive: never = event;
@@ -256,6 +258,10 @@ export function OutcomeActivity({ outcome }: OutcomeActivityProps) {
       startTransition(() => {
         setEntries((current) => {
           const nextEntry = createEntryFromEvent(event);
+
+          if (!nextEntry) {
+            return current;
+          }
 
           return [nextEntry, ...current].slice(0, 12);
         });
