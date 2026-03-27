@@ -387,6 +387,14 @@ function compareTimedComparableEntries(
     return anchorDelta;
   }
 
+  const leftPresentationRank = left.presentation ? 0 : 1;
+  const rightPresentationRank = right.presentation ? 0 : 1;
+  const presentationRankDelta = leftPresentationRank - rightPresentationRank;
+
+  if (presentationRankDelta !== 0) {
+    return presentationRankDelta;
+  }
+
   if (left.presentation && right.presentation) {
     const presentationDelta = comparePresentationPlacements(
       left.presentation,

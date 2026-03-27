@@ -897,4 +897,81 @@ describe("buildOutcomeFeed", () => {
       })
     });
   });
+
+  it("uses hinted-before-unhinted precedence when mixed entries share the same anchor", () => {
+    const state = buildPresentationOrderingState([
+      {
+        id: "hint_transition",
+        outcomeId: "outcome_123",
+        entityType: "assistant-message",
+        entityId: "assistant_transition",
+        phaseId: "phase_delivery",
+        seq: 10,
+        laneId: "lane_delivery",
+        createdAt: "2026-03-27T09:00:05.000Z"
+      },
+      {
+        id: "hint_step",
+        outcomeId: "outcome_123",
+        entityType: "step",
+        entityId: "step_delivery",
+        phaseId: "phase_delivery",
+        seq: 20,
+        laneId: "lane_delivery",
+        createdAt: "2026-03-27T09:00:05.000Z"
+      }
+    ]);
+
+    state.messages = [
+      {
+        id: "msg_same_anchor",
+        outcomeId: "outcome_123",
+        role: "assistant",
+        content: "System note that shares the same anchor.",
+        createdAt: "2026-03-27T09:00:05.000Z",
+        submissionId: null
+      }
+    ];
+
+    const turns = buildOutcomeThreadTurns({
+      outcomePrompt: "Prepare the delivery packet.",
+      outcomeSource: "web",
+      state
+    });
+
+    expect(turns[0]?.leadItem).toMatchObject({
+      type: "assistant-message",
+      message: expect.objectContaining({
+        id: "assistant_transition"
+      })
+    });
+    expect(turns[0]?.bodyItems.map((item) => item.type)).toEqual([
+      "task",
+      "assistant-message",
+      "message",
+      "artifact-delivery",
+      "delivery-note"
+    ]);
+    expect(turns[0]?.bodyItems[3]).toMatchObject({
+      type: "artifact-delivery",
+      artifact: expect.objectContaining({
+        id: "artifact_delivery"
+      })
+    });
+    expect(turns[0]?.bodyItems[4]).toMatchObject({
+      type: "delivery-note"
+    });
+    expect(turns[0]?.bodyItems[1]).toMatchObject({
+      type: "assistant-message",
+      message: expect.objectContaining({
+        id: "assistant_lead"
+      })
+    });
+    expect(turns[0]?.bodyItems[2]).toMatchObject({
+      type: "message",
+      message: expect.objectContaining({
+        id: "msg_same_anchor"
+      })
+    });
+  });
 });
