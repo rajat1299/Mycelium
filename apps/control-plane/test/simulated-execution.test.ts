@@ -455,6 +455,145 @@ describe("development simulation mode", () => {
         expect.arrayContaining(liveHintIds.filter((hintId): hintId is string => Boolean(hintId)))
       );
 
+      const firstAssistantHint = presentationHintEvents.find(
+        (event) =>
+          typeof event.data === "object" &&
+          event.data !== null &&
+          "entityType" in event.data &&
+          event.data.entityType === "assistant-message"
+      );
+      const firstStepHint = presentationHintEvents.find(
+        (event) =>
+          typeof event.data === "object" &&
+          event.data !== null &&
+          "entityType" in event.data &&
+          event.data.entityType === "step"
+      );
+      const firstArtifactHint = presentationHintEvents.find(
+        (event) =>
+          typeof event.data === "object" &&
+          event.data !== null &&
+          "entityType" in event.data &&
+          event.data.entityType === "artifact"
+      );
+      const firstApprovalHint = presentationHintEvents.find(
+        (event) =>
+          typeof event.data === "object" &&
+          event.data !== null &&
+          "entityType" in event.data &&
+          event.data.entityType === "approval"
+      );
+
+      expect(firstAssistantHint).toBeDefined();
+      expect(firstStepHint).toBeDefined();
+      expect(firstArtifactHint).toBeDefined();
+      expect(firstApprovalHint).toBeDefined();
+
+      const assistantHintEntityId =
+        firstAssistantHint &&
+        typeof firstAssistantHint.data === "object" &&
+        firstAssistantHint.data !== null &&
+        "entityId" in firstAssistantHint.data
+          ? String(firstAssistantHint.data.entityId)
+          : "";
+      const stepHintEntityId =
+        firstStepHint &&
+        typeof firstStepHint.data === "object" &&
+        firstStepHint.data !== null &&
+        "entityId" in firstStepHint.data
+          ? String(firstStepHint.data.entityId)
+          : "";
+      const artifactHintEntityId =
+        firstArtifactHint &&
+        typeof firstArtifactHint.data === "object" &&
+        firstArtifactHint.data !== null &&
+        "entityId" in firstArtifactHint.data
+          ? String(firstArtifactHint.data.entityId)
+          : "";
+      const approvalHintEntityId =
+        firstApprovalHint &&
+        typeof firstApprovalHint.data === "object" &&
+        firstApprovalHint.data !== null &&
+        "entityId" in firstApprovalHint.data
+          ? String(firstApprovalHint.data.entityId)
+          : "";
+
+      const assistantHintIndex = events.findIndex(
+        (event) =>
+          event.type === "presentation.hint" &&
+          typeof event.data === "object" &&
+          event.data !== null &&
+          "entityId" in event.data &&
+          event.data.entityId === assistantHintEntityId
+      );
+      const assistantStartedIndex = events.findIndex(
+        (event) =>
+          event.type === "assistant.message.started" &&
+          typeof event.data === "object" &&
+          event.data !== null &&
+          "messageId" in event.data &&
+          event.data.messageId === assistantHintEntityId
+      );
+      const stepHintIndex = events.findIndex(
+        (event) =>
+          event.type === "presentation.hint" &&
+          typeof event.data === "object" &&
+          event.data !== null &&
+          "entityId" in event.data &&
+          event.data.entityId === stepHintEntityId
+      );
+      const stepStartedIndex = events.findIndex(
+        (event) =>
+          event.type === "run.step.updated" &&
+          typeof event.data === "object" &&
+          event.data !== null &&
+          "id" in event.data &&
+          event.data.id === stepHintEntityId &&
+          "status" in event.data &&
+          event.data.status === "running"
+      );
+      const artifactHintIndex = events.findIndex(
+        (event) =>
+          event.type === "presentation.hint" &&
+          typeof event.data === "object" &&
+          event.data !== null &&
+          "entityId" in event.data &&
+          event.data.entityId === artifactHintEntityId
+      );
+      const artifactCreatedIndex = events.findIndex(
+        (event) =>
+          event.type === "artifact.created" &&
+          typeof event.data === "object" &&
+          event.data !== null &&
+          "id" in event.data &&
+          event.data.id === artifactHintEntityId
+      );
+      const approvalHintIndex = events.findIndex(
+        (event) =>
+          event.type === "presentation.hint" &&
+          typeof event.data === "object" &&
+          event.data !== null &&
+          "entityId" in event.data &&
+          event.data.entityId === approvalHintEntityId
+      );
+      const approvalRequestedIndex = events.findIndex(
+        (event) =>
+          event.type === "approval.requested" &&
+          typeof event.data === "object" &&
+          event.data !== null &&
+          "id" in event.data &&
+          event.data.id === approvalHintEntityId
+      );
+
+      expect(assistantHintIndex).toBeGreaterThanOrEqual(0);
+      expect(stepHintIndex).toBeGreaterThanOrEqual(0);
+      expect(artifactHintIndex).toBeGreaterThanOrEqual(0);
+      expect(approvalHintIndex).toBeGreaterThanOrEqual(0);
+      expect(assistantHintIndex).toBeLessThan(assistantStartedIndex);
+      expect(stepHintIndex).toBeLessThan(stepStartedIndex);
+      expect(artifactHintIndex).toBeLessThan(artifactCreatedIndex);
+      expect(approvalHintIndex).toBeLessThan(approvalRequestedIndex);
+
       expect(events.some((event) => event.type === "run.updated")).toBe(true);
       expect(events.some((event) => event.type === "assistant.message.started")).toBe(true);
       expect(events.some((event) => event.type === "assistant.message.delta")).toBe(true);

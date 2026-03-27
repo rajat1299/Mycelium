@@ -59,20 +59,37 @@ export async function emitOutcomePresentationHint(
 }
 
 export function buildOutcomePresentationHintsFromEvents(events: StoredRunEvent[]) {
-  return events
+  const hints = events
     .filter((event) => event.eventType === "presentation.hint")
-    .map((event) => OutcomePresentationHintSchema.parse(event.payload))
-    .sort(compareOutcomePresentationHints);
+    .map((event) => OutcomePresentationHintSchema.parse(event.payload));
+  const earliestCreatedAtByPhase = new Map<string, string>();
+
+  for (const hint of hints) {
+    const currentEarliest = earliestCreatedAtByPhase.get(hint.phaseId);
+
+    if (!currentEarliest || hint.createdAt.localeCompare(currentEarliest) < 0) {
+      earliestCreatedAtByPhase.set(hint.phaseId, hint.createdAt);
+    }
+  }
+
+  return hints.sort((left, right) =>
+    compareOutcomePresentationHints(left, right, earliestCreatedAtByPhase)
+  );
 }
 
 function compareOutcomePresentationHints(
   left: OutcomePresentationHint,
-  right: OutcomePresentationHint
+  right: OutcomePresentationHint,
+  earliestCreatedAtByPhase: Map<string, string>
 ) {
-  const createdAtDelta = left.createdAt.localeCompare(right.createdAt);
+  const leftPhaseCreatedAt =
+    earliestCreatedAtByPhase.get(left.phaseId) ?? left.createdAt;
+  const rightPhaseCreatedAt =
+    earliestCreatedAtByPhase.get(right.phaseId) ?? right.createdAt;
+  const phaseCreatedAtDelta = leftPhaseCreatedAt.localeCompare(rightPhaseCreatedAt);
 
-  if (createdAtDelta !== 0) {
-    return createdAtDelta;
+  if (phaseCreatedAtDelta !== 0) {
+    return phaseCreatedAtDelta;
   }
 
   const phaseDelta = left.phaseId.localeCompare(right.phaseId);
@@ -85,6 +102,12 @@ function compareOutcomePresentationHints(
 
   if (seqDelta !== 0) {
     return seqDelta;
+  }
+
+  const laneDelta = (left.laneId ?? "").localeCompare(right.laneId ?? "");
+
+  if (laneDelta !== 0) {
+    return laneDelta;
   }
 
   const entityTypeDelta = compareHintEntityType(left.entityType, right.entityType);

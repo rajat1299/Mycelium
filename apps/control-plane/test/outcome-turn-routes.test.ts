@@ -401,6 +401,95 @@ describe("outcome turn routes", () => {
     }
   });
 
+  it("hydrates presentation hints in authored order within each phase", async () => {
+    const harness = await createExecutionHarness({
+      simulationMode: false
+    });
+
+    harness.services.executionService.startRun = async () => undefined;
+
+    try {
+      const start = await harness.app.inject({
+        method: "POST",
+        url: "/api/outcomes/start",
+        payload: {
+          workspaceId: "ws_123",
+          userId: "user_123",
+          prompt: "Draft the kickoff brief.",
+          source: "web"
+        }
+      });
+
+      expect(start.statusCode).toBe(201);
+      const started = OutcomeTurnResponseSchema.parse(start.json());
+
+      await harness.services.repositories.runs.appendEvent({
+        id: "evt_phase_alpha_late_seq",
+        runId: started.run?.id ?? "",
+        eventType: "presentation.hint",
+        payload: {
+          id: "hint_alpha_seq30",
+          outcomeId: started.outcome.id,
+          entityType: "artifact",
+          entityId: "artifact_alpha_seq30",
+          phaseId: "phase_alpha",
+          seq: 30,
+          laneId: "lane_b",
+          createdAt: "2026-03-24T12:00:00.000Z"
+        },
+        createdAt: "2026-03-24T12:00:00.000Z"
+      });
+      await harness.services.repositories.runs.appendEvent({
+        id: "evt_phase_beta",
+        runId: started.run?.id ?? "",
+        eventType: "presentation.hint",
+        payload: {
+          id: "hint_beta_seq10",
+          outcomeId: started.outcome.id,
+          entityType: "assistant-message",
+          entityId: "assistant_beta_seq10",
+          phaseId: "phase_beta",
+          seq: 10,
+          laneId: "lane_a",
+          createdAt: "2026-03-24T12:05:00.000Z"
+        },
+        createdAt: "2026-03-24T12:05:00.000Z"
+      });
+      await harness.services.repositories.runs.appendEvent({
+        id: "evt_phase_alpha_early_seq",
+        runId: started.run?.id ?? "",
+        eventType: "presentation.hint",
+        payload: {
+          id: "hint_alpha_seq10",
+          outcomeId: started.outcome.id,
+          entityType: "step",
+          entityId: "step_alpha_seq10",
+          phaseId: "phase_alpha",
+          seq: 10,
+          laneId: "lane_a",
+          createdAt: "2026-03-24T12:20:00.000Z"
+        },
+        createdAt: "2026-03-24T12:20:00.000Z"
+      });
+
+      const response = await harness.app.inject({
+        method: "GET",
+        url: `/api/outcomes/${started.outcome.id}/thread`
+      });
+
+      expect(response.statusCode).toBe(200);
+      const snapshot = OutcomeThreadSnapshotSchema.parse(response.json());
+
+      expect(snapshot.presentationHints.map((hint) => hint.id)).toEqual([
+        "hint_alpha_seq10",
+        "hint_alpha_seq30",
+        "hint_beta_seq10"
+      ]);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   it("returns 409 when continuing while the latest run is still active", async () => {
     const harness = await createExecutionHarness({
       simulationMode: true

@@ -685,7 +685,6 @@ async function runStepScenario(
     return null;
   }
 
-  await emitRunStepUpdated(options, input.outcome.id, runningStep);
   if (input.presentation) {
     await emitOutcomePresentationHint(options, {
       runId: input.run.id,
@@ -700,6 +699,7 @@ async function runStepScenario(
       createdAt: runningStep.updatedAt
     });
   }
+  await emitRunStepUpdated(options, input.outcome.id, runningStep);
   await emitRunLog(options, {
     outcomeId: input.outcome.id,
     runId: input.run.id,
@@ -812,7 +812,6 @@ async function createArtifactForStep(
     createdAt: options.now().toISOString()
   });
 
-  await emitArtifactCreated(options, input.outcome.id, artifact);
   if (input.presentation) {
     await emitOutcomePresentationHint(options, {
       runId: input.runId,
@@ -825,6 +824,7 @@ async function createArtifactForStep(
       createdAt: artifact.createdAt
     });
   }
+  await emitArtifactCreated(options, input.outcome.id, artifact);
   return artifact;
 }
 
@@ -856,7 +856,6 @@ async function createSimulatedApprovalGate(
     requestedAt: options.now().toISOString()
   });
 
-  await emitApprovalRequested(options, input.outcome.id, approval);
   await emitOutcomePresentationHint(options, {
     runId: input.run.id,
     outcomeId: input.outcome.id,
@@ -867,6 +866,7 @@ async function createSimulatedApprovalGate(
     ...(input.presentation.laneId ? { laneId: input.presentation.laneId } : {}),
     createdAt: approval.requestedAt
   });
+  await emitApprovalRequested(options, input.outcome.id, approval);
 
   const cancelledApproval = await options.repositories.approvals.cancel({
     approvalId: approval.id,
@@ -1269,12 +1269,6 @@ async function streamAssistantMessage(
   const messageId = `assistant_${randomUUID()}`;
   const createdAt = options.now().toISOString();
 
-  await emitAssistantMessageStarted(options, input.outcomeId, {
-    messageId,
-    runId: input.runId,
-    kind: input.kind,
-    createdAt
-  });
   if (input.presentation) {
     await emitOutcomePresentationHint(options, {
       runId: input.runId,
@@ -1287,6 +1281,12 @@ async function streamAssistantMessage(
       createdAt
     });
   }
+  await emitAssistantMessageStarted(options, input.outcomeId, {
+    messageId,
+    runId: input.runId,
+    kind: input.kind,
+    createdAt
+  });
 
   let content = "";
   const chunks = chunkAssistantContent(input.content);
