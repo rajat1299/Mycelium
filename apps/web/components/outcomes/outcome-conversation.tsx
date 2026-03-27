@@ -57,6 +57,7 @@ import {
   upsertArtifact,
   upsertStep
 } from "./outcome-feed";
+import { BlockRenderer } from "./block-renderer";
 
 /* ── Types ──────────────────────────────────────────────────────────── */
 
@@ -807,165 +808,53 @@ const OutcomeThreadTurnBlock = memo(function OutcomeThreadTurnBlock({
           ? 0
           : Math.min((startIndex + index) * 0.06, 0.5);
 
-        switch (item.type) {
-          case "prompt":
-            return (
-              <motion.div
-                key={item.key}
-                initial={{ opacity: 0, x: 12, filter: "blur(4px)" }}
-                animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
-                transition={{ duration: 0.4, ease }}
-                className="flex justify-end"
-              >
-                <div className="max-w-[85%] rounded-2xl rounded-br-lg bg-accent-soft px-5 py-3.5">
-                  <p className="text-[15px] leading-relaxed text-ink whitespace-pre-wrap [text-wrap:pretty]">
-                    {promptPreview}
-                  </p>
-                  {outcomePrompt.length > 280 && (
-                    <button
-                      type="button"
-                      onClick={() => setShowFullPrompt((current) => !current)}
-                      className="mt-2 flex items-center gap-1 text-xs font-medium text-muted transition-colors hover:text-ink"
-                    >
-                      {showFullPrompt ? "Show less" : "Show more"}
-                      <ChevronDown
-                        className={cn(
-                          "h-3 w-3 transition-transform duration-200",
-                          showFullPrompt && "rotate-180"
-                        )}
-                      />
-                    </button>
-                  )}
-                </div>
-              </motion.div>
-            );
-
-          case "intent":
-            return (
-              <motion.div
-                key={item.key}
-                initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                transition={{ duration: 0.5, ease, delay }}
-              >
-                <p className="font-serif text-lg leading-[1.65] text-ink sm:text-xl [text-wrap:pretty]">
-                  {isTurnLive && isFromSSE ? (
-                    <StreamingText text={item.message} />
-                  ) : (
-                    item.message
-                  )}
-                </p>
-              </motion.div>
-            );
-
-          case "assistant-message":
-            return (
-              <motion.div
-                key={item.key}
-                initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                transition={{ duration: 0.5, ease, delay }}
-              >
-                <AssistantNarrativeBlock message={item.message} />
-              </motion.div>
-            );
-
-          case "plan":
-            return (
+        return (
+          <BlockRenderer
+            key={item.key}
+            item={item}
+            delay={delay}
+            ease={ease}
+            isFromSSE={isFromSSE}
+            isTurnLive={isTurnLive}
+            outcomePrompt={outcomePrompt}
+            promptPreview={promptPreview}
+            showFullPrompt={showFullPrompt}
+            setShowFullPrompt={setShowFullPrompt}
+            renderIntentText={(message) => <StreamingText text={message} />}
+            renderPlan={(planItem) => (
               <ActionGroup
-                key={item.key}
-                title={item.title}
-                items={item.items}
+                key={planItem.key}
+                title={planItem.title}
+                items={planItem.items}
                 delay={delay}
               />
-            );
-
-          case "task":
-            return (
+            )}
+            renderTask={(taskItem) => (
               <SubtaskOutputCard
-                key={item.key}
-                data={item.data}
+                key={taskItem.key}
+                data={taskItem.data}
                 delay={delay}
               />
-            );
-
-          case "artifact-delivery":
-            return (
+            )}
+            renderArtifactDelivery={(artifactItem) => (
               <ArtifactDeliveryCard
-                key={item.key}
-                title={item.title}
-                workspacePath={item.workspacePath}
-                artifact={item.artifact}
-                step={item.step}
+                key={artifactItem.key}
+                title={artifactItem.title}
+                workspacePath={artifactItem.workspacePath}
+                artifact={artifactItem.artifact}
+                step={artifactItem.step}
                 delay={delay}
               />
-            );
-
-          case "delivery-note":
-            return (
-              <motion.div
-                key={item.key}
-                initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                transition={{ duration: 0.5, ease, delay }}
-              >
-                <div className="prose-feed">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {item.message}
-                  </ReactMarkdown>
-                </div>
-              </motion.div>
-            );
-
-          case "approval":
-            return (
+            )}
+            renderApproval={(approvalItem) => (
               <InlineApprovalCard
-                key={item.key}
-                approval={item.approval}
-                artifacts={item.artifacts}
+                key={approvalItem.key}
+                approval={approvalItem.approval}
+                artifacts={approvalItem.artifacts}
               />
-            );
-
-          case "message":
-            return (
-              <motion.div
-                key={item.key}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.35, ease }}
-              >
-                {item.message.role === "user" ? (
-                  <div className="flex justify-end">
-                    <div className="max-w-[85%] rounded-2xl rounded-br-lg bg-accent-soft px-5 py-3.5">
-                      <p className="text-[15px] leading-relaxed text-ink whitespace-pre-wrap [text-wrap:pretty]">
-                        {item.message.content}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="prose-feed">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {item.message.content}
-                    </ReactMarkdown>
-                  </div>
-                )}
-              </motion.div>
-            );
-
-          case "loading":
-            return (
-              <motion.div
-                key={item.key}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.3, ease }}
-                className="flex items-center gap-2 py-6 text-sm text-muted"
-              >
-                <Loader2 className="h-4 w-4 animate-spin text-accent" />
-                <span>Preparing steps&hellip;</span>
-              </motion.div>
-            );
-        }
+            )}
+          />
+        );
       })}
     </Fragment>
   );
@@ -1067,34 +956,6 @@ function ActionGroup({
         )}
       </AnimatePresence>
     </motion.div>
-  );
-}
-
-function AssistantNarrativeBlock({
-  message
-}: {
-  message: AssistantMessageSnapshot;
-}) {
-  if (message.status === "streaming") {
-    return (
-      <div className="prose-feed">
-        <p className="whitespace-pre-wrap [text-wrap:pretty]">
-          {message.content}
-          <span
-            className="ml-0.5 inline-block h-[1.1em] w-[2px] bg-accent align-text-bottom"
-            style={{ animation: "blink-cursor 1s step-end infinite" }}
-          />
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="prose-feed">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-        {message.content}
-      </ReactMarkdown>
-    </div>
   );
 }
 

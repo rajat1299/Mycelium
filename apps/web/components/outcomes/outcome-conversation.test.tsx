@@ -1118,6 +1118,11 @@ describe("OutcomeConversation", () => {
         "Here’s your report — a 16-page PDF covering tools in use, effectiveness research, risks, and emerging trends."
       )
     ).toBeInTheDocument();
+    expect(screen.getByText("Delivery")).toBeInTheDocument();
+    expectTextOrder(
+      "I’ll start by loading relevant context and then break the work into four research tracks.",
+      "Here’s your report — a 16-page PDF covering tools in use, effectiveness research, risks, and emerging trends."
+    );
     expect(
       screen.queryByText(
         "I'll start by loading relevant context and shaping the work into focused subtasks."
