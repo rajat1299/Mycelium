@@ -16,3 +16,4 @@ coverage/
 
 # Local runtime data (checkpoints, workspaces)
 .mycelium/
+.worktrees/
