@@ -477,14 +477,23 @@ function buildTurnRenderGroups(items: OutcomeFeedItem[]): TurnRenderGroup[] {
     }
 
     const phaseItems: OutcomeFeedItem[] = [item];
+    const trailingPlanItems: OutcomeFeedItem[] = [];
     let nextIndex = index + 1;
+    let sawPhaseFollower = false;
 
     while (nextIndex < items.length) {
       const nextItem = items[nextIndex]!;
       const nextPhaseId = getFeedItemPhaseId(nextItem);
 
+      if (nextItem.type === "plan" && !sawPhaseFollower) {
+        trailingPlanItems.push(nextItem);
+        nextIndex += 1;
+        continue;
+      }
+
       if (nextPhaseId === phaseId) {
         phaseItems.push(nextItem);
+        sawPhaseFollower = true;
         nextIndex += 1;
         continue;
       }
@@ -499,6 +508,13 @@ function buildTurnRenderGroups(items: OutcomeFeedItem[]): TurnRenderGroup[] {
       phaseId,
       items: phaseItems
     });
+    for (const trailingPlanItem of trailingPlanItems) {
+      groups.push({
+        key: trailingPlanItem.key,
+        type: "item",
+        items: [trailingPlanItem]
+      });
+    }
     index = nextIndex - 1;
   }
 

@@ -1362,19 +1362,11 @@ export function buildOutcomeThreadTurns({
             key: `loading:${turn.key}`
           }
         : null;
-    const leadPhaseId =
-      leadItem?.type === "assistant-message" ? leadItem.phaseId ?? null : null;
-    const shouldPlacePlanItemsBeforeLead =
-      leadItem?.type === "assistant-message" &&
-      leadItem.message.kind === "transition" &&
-      leadPhaseId !== null &&
-      chronoEntries.some((entry) => entry.presentation?.phaseId === leadPhaseId);
     const items: OutcomeFeedItem[] = [
       ...(turn.promptItem ? [turn.promptItem] : []),
       ...(turn.messageItem ? [turn.messageItem] : []),
-      ...(shouldPlacePlanItemsBeforeLead ? planItems : []),
       ...(leadItem ? [leadItem] : []),
-      ...(shouldPlacePlanItemsBeforeLead ? [] : planItems),
+      ...planItems,
       ...chronoEntries.map((entry) => entry.item),
       ...(loadingItem ? [loadingItem] : [])
     ];

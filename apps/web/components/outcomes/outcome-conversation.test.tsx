@@ -1799,6 +1799,10 @@ describe("OutcomeConversation", () => {
       within(phaseGroup).queryByText("2 steps ready to execute")
     ).not.toBeInTheDocument();
     expect(screen.getByText("2 steps ready to execute")).toBeInTheDocument();
+    expectTextOrder(
+      "I'll split this into research and packaging tracks first.",
+      "2 steps ready to execute"
+    );
   });
 
   it("continues step streaming from the current visible progress when new text appends", async () => {
