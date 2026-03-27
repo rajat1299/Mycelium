@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  ApprovalSchema,
   AssistantMessageCompletedDataSchema,
   AssistantMessageDeltaDataSchema,
   AssistantMessageStartedDataSchema,
@@ -14,6 +15,7 @@ import {
   type StepRoute
 } from "@computer-oss/protocol";
 import type { EventBus } from "./event-bus";
+import { emitOutcomePresentationHint } from "./outcome-presentation";
 import type { Repositories } from "./repositories";
 
 export type SimulatedExecutionTimeline = {
@@ -59,6 +61,12 @@ type PlanBlueprint = {
 type IntermediateLog = {
   at: number;
   message: string;
+};
+
+type PresentationPlacement = {
+  phaseId: string;
+  seq: number;
+  laneId?: string;
 };
 
 const DEFAULT_TIMELINE: SimulatedExecutionTimeline = {
@@ -407,11 +415,20 @@ async function executeSimulatedRun(input: {
   const turnPromptSummary = summarizeTurnPrompt(turnPrompt);
 
   try {
+    const contextPhaseId = buildPresentationPhaseId(run.id, "context");
+    const researchPhaseId = buildPresentationPhaseId(run.id, "research");
+    const synthesisPhaseId = buildPresentationPhaseId(run.id, "synthesis");
+    const deliveryPhaseId = buildPresentationPhaseId(run.id, "delivery");
+
     await input.wait(input.timeline.kickoffMs);
     await streamAssistantMessage(input, {
       outcomeId: outcome.id,
       runId: run.id,
       kind: "acknowledgment",
+      presentation: {
+        phaseId: contextPhaseId,
+        seq: 10
+      },
       content:
         `I'll start by loading relevant skills and checking context for ${turnPromptSummary}, then I'll run parallel research across all four topic areas.`
     });
@@ -452,13 +469,29 @@ async function executeSimulatedRun(input: {
       outcome,
       run: runningLifecycle.run,
       step: contextStep,
-      turnPrompt
+      turnPrompt,
+      presentation: {
+        step: {
+          phaseId: contextPhaseId,
+          seq: 20,
+          laneId: "lane_context"
+        },
+        artifact: {
+          phaseId: contextPhaseId,
+          seq: 21,
+          laneId: "lane_context"
+        }
+      }
     });
 
     await streamAssistantMessage(input, {
       outcomeId: outcome.id,
       runId: run.id,
       kind: "transition",
+      presentation: {
+        phaseId: researchPhaseId,
+        seq: 10
+      },
       content: "Let me run parallel research across all four topic areas."
     });
     await emitRunLog(input, {
@@ -473,14 +506,29 @@ async function executeSimulatedRun(input: {
       .filter((step) => step.kind === "task" && step.status === "ready");
 
     await Promise.all(
-      researchSteps.map((step) =>
-        runStepScenario(input, {
+      researchSteps.map((step, index) => {
+        const laneId = buildPresentationLaneId(step);
+        const baseSeq = 20 + index * 10;
+
+        return runStepScenario(input, {
           outcome,
           run: runningLifecycle.run,
           step,
-          turnPrompt
-        })
-      )
+          turnPrompt,
+          presentation: {
+            step: {
+              phaseId: researchPhaseId,
+              seq: baseSeq,
+              laneId
+            },
+            artifact: {
+              phaseId: researchPhaseId,
+              seq: baseSeq + 1,
+              laneId
+            }
+          }
+        });
+      })
     );
 
     const synthesisStep = [...(await input.repositories.runs.listSteps(run.id))]
@@ -495,6 +543,10 @@ async function executeSimulatedRun(input: {
       outcomeId: outcome.id,
       runId: run.id,
       kind: "transition",
+      presentation: {
+        phaseId: synthesisPhaseId,
+        seq: 10
+      },
       content:
         "All four research tracks are complete. Let me read through the findings and then compile the PDF report."
     });
@@ -509,7 +561,19 @@ async function executeSimulatedRun(input: {
       outcome,
       run: runningLifecycle.run,
       step: synthesisStep,
-      turnPrompt
+      turnPrompt,
+      presentation: {
+        step: {
+          phaseId: synthesisPhaseId,
+          seq: 20,
+          laneId: "lane_delivery"
+        },
+        artifact: {
+          phaseId: deliveryPhaseId,
+          seq: 20,
+          laneId: "lane_delivery"
+        }
+      }
     });
 
     if (finalArtifact) {
@@ -524,9 +588,27 @@ async function executeSimulatedRun(input: {
       outcomeId: outcome.id,
       runId: run.id,
       kind: "delivery",
+      presentation: {
+        phaseId: deliveryPhaseId,
+        seq: 10
+      },
       content:
         `Here's your report for ${turnPromptSummary} - a 16-page PDF covering the current state of AI in K-12 education.\n\n- Executive summary with adoption, time-saved, and market-size stats\n- Tools teachers are actually using in classrooms\n- Effectiveness research and where the evidence is still limited\n- Concerns, implementation risks, and policy responses\n- Emerging trends and where the market is heading next`
     });
+
+    if (finalArtifact) {
+      await createSimulatedApprovalGate(input, {
+        outcome,
+        run: runningLifecycle.run,
+        step: synthesisStep,
+        artifactId: finalArtifact.id,
+        presentation: {
+          phaseId: deliveryPhaseId,
+          seq: 30,
+          laneId: "lane_delivery"
+        }
+      });
+    }
 
     const completedLifecycle = await input.repositories.runs.updateLifecycleStatus({
       runId: run.id,
@@ -587,6 +669,10 @@ async function runStepScenario(
     run: StoredRun & {};
     step: StoredStep;
     turnPrompt: string;
+    presentation?: {
+      step: PresentationPlacement;
+      artifact?: PresentationPlacement;
+    };
   }
 ) {
   const runningStep = await options.repositories.runs.updateStepStatus({
@@ -600,6 +686,20 @@ async function runStepScenario(
   }
 
   await emitRunStepUpdated(options, input.outcome.id, runningStep);
+  if (input.presentation) {
+    await emitOutcomePresentationHint(options, {
+      runId: input.run.id,
+      outcomeId: input.outcome.id,
+      entityType: "step",
+      entityId: runningStep.id,
+      phaseId: input.presentation.step.phaseId,
+      seq: input.presentation.step.seq,
+      ...(input.presentation.step.laneId
+        ? { laneId: input.presentation.step.laneId }
+        : {}),
+      createdAt: runningStep.updatedAt
+    });
+  }
   await emitRunLog(options, {
     outcomeId: input.outcome.id,
     runId: input.run.id,
@@ -625,7 +725,8 @@ async function runStepScenario(
     outcome: input.outcome,
     run: input.run,
     step: runningStep,
-    turnPrompt: input.turnPrompt
+    turnPrompt: input.turnPrompt,
+    artifactPresentation: input.presentation?.artifact
   });
 }
 
@@ -640,13 +741,15 @@ async function completeStep(
     run: StoredRun & {};
     step: StoredStep;
     turnPrompt: string;
+    artifactPresentation?: PresentationPlacement;
   }
 ) {
   const artifact = await createArtifactForStep(options, {
     outcome: input.outcome,
     runId: input.run.id,
     step: input.step,
-    turnPrompt: input.turnPrompt
+    turnPrompt: input.turnPrompt,
+    presentation: input.artifactPresentation
   });
 
   const completedStep = await options.repositories.runs.updateStepStatus({
@@ -693,6 +796,7 @@ async function createArtifactForStep(
     runId: string;
     step: StoredStep;
     turnPrompt: string;
+    presentation?: PresentationPlacement;
   }
 ) {
   const descriptor = artifactDescriptorForStep(input.step, input.turnPrompt);
@@ -709,7 +813,70 @@ async function createArtifactForStep(
   });
 
   await emitArtifactCreated(options, input.outcome.id, artifact);
+  if (input.presentation) {
+    await emitOutcomePresentationHint(options, {
+      runId: input.runId,
+      outcomeId: input.outcome.id,
+      entityType: "artifact",
+      entityId: artifact.id,
+      phaseId: input.presentation.phaseId,
+      seq: input.presentation.seq,
+      ...(input.presentation.laneId ? { laneId: input.presentation.laneId } : {}),
+      createdAt: artifact.createdAt
+    });
+  }
   return artifact;
+}
+
+async function createSimulatedApprovalGate(
+  options: {
+    repositories: Repositories;
+    eventBus: EventBus;
+    now: () => Date;
+  },
+  input: {
+    outcome: StoredOutcome & {};
+    run: StoredRun & {};
+    step: StoredStep;
+    artifactId: string;
+    presentation: PresentationPlacement;
+  }
+) {
+  const approval = await options.repositories.approvals.createPending({
+    id: `approval_${randomUUID()}`,
+    workspaceId: input.outcome.workspaceId,
+    outcomeId: input.outcome.id,
+    runId: input.run.id,
+    stepId: input.step.id,
+    kind: "output_review_required",
+    title: "Review the final Mycelium report",
+    summary: "Check the compiled PDF before the delivery flow closes.",
+    instruction: "Approve once the report is ready for final delivery.",
+    artifactIds: [input.artifactId],
+    requestedAt: options.now().toISOString()
+  });
+
+  await emitApprovalRequested(options, input.outcome.id, approval);
+  await emitOutcomePresentationHint(options, {
+    runId: input.run.id,
+    outcomeId: input.outcome.id,
+    entityType: "approval",
+    entityId: approval.id,
+    phaseId: input.presentation.phaseId,
+    seq: input.presentation.seq,
+    ...(input.presentation.laneId ? { laneId: input.presentation.laneId } : {}),
+    createdAt: approval.requestedAt
+  });
+
+  const cancelledApproval = await options.repositories.approvals.cancel({
+    approvalId: approval.id,
+    resolvedAt: options.now().toISOString(),
+    resolutionNote: "Simulated approval gate cleared automatically."
+  });
+
+  if (cancelledApproval) {
+    await emitApprovalResolved(options, input.outcome.id, cancelledApproval);
+  }
 }
 
 function summarizeTurnPrompt(prompt: string) {
@@ -1075,6 +1242,14 @@ function chunkAssistantContent(content: string) {
   return chunks;
 }
 
+function buildPresentationPhaseId(runId: string, name: string) {
+  return `phase_${runId}_${name}`;
+}
+
+function buildPresentationLaneId(step: Pick<StoredStep, "position">) {
+  return `lane_${step.position}`;
+}
+
 async function streamAssistantMessage(
   options: {
     repositories: Repositories;
@@ -1088,6 +1263,7 @@ async function streamAssistantMessage(
     runId: string;
     kind: AssistantMessageKind;
     content: string;
+    presentation?: PresentationPlacement;
   }
 ) {
   const messageId = `assistant_${randomUUID()}`;
@@ -1099,6 +1275,18 @@ async function streamAssistantMessage(
     kind: input.kind,
     createdAt
   });
+  if (input.presentation) {
+    await emitOutcomePresentationHint(options, {
+      runId: input.runId,
+      outcomeId: input.outcomeId,
+      entityType: "assistant-message",
+      entityId: messageId,
+      phaseId: input.presentation.phaseId,
+      seq: input.presentation.seq,
+      ...(input.presentation.laneId ? { laneId: input.presentation.laneId } : {}),
+      createdAt
+    });
+  }
 
   let content = "";
   const chunks = chunkAssistantContent(input.content);
@@ -1255,6 +1443,56 @@ async function emitArtifactCreated(
   options.eventBus.publish({
     outcomeId,
     type: "artifact.created",
+    data
+  });
+}
+
+async function emitApprovalRequested(
+  options: {
+    repositories: Repositories;
+    eventBus: EventBus;
+  },
+  outcomeId: string,
+  approval: Awaited<ReturnType<Repositories["approvals"]["createPending"]>>
+) {
+  const data = ApprovalSchema.parse(approval);
+
+  await options.repositories.runs.appendEvent({
+    id: `event_${randomUUID()}`,
+    runId: data.runId,
+    eventType: "approval.requested",
+    payload: data,
+    createdAt: data.requestedAt
+  });
+
+  options.eventBus.publish({
+    outcomeId,
+    type: "approval.requested",
+    data
+  });
+}
+
+async function emitApprovalResolved(
+  options: {
+    repositories: Repositories;
+    eventBus: EventBus;
+  },
+  outcomeId: string,
+  approval: Awaited<ReturnType<Repositories["approvals"]["getById"]>> & {}
+) {
+  const data = ApprovalSchema.parse(approval);
+
+  await options.repositories.runs.appendEvent({
+    id: `event_${randomUUID()}`,
+    runId: data.runId,
+    eventType: "approval.resolved",
+    payload: data,
+    createdAt: data.resolvedAt ?? data.requestedAt
+  });
+
+  options.eventBus.publish({
+    outcomeId,
+    type: "approval.resolved",
     data
   });
 }

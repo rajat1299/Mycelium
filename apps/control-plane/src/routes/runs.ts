@@ -11,7 +11,8 @@ import {
   CreateRunRequestSchema,
   RunDetailSchema,
   RunLogDataSchema,
-  RunLogListResponseSchema
+  RunLogListResponseSchema,
+  type AssistantMessageSnapshot
 } from "@computer-oss/protocol";
 import type { EventBus } from "../lib/event-bus";
 import type { ExecutionService } from "../lib/execution-service";
@@ -46,7 +47,7 @@ async function buildRunResponse(
 
 export function buildAssistantMessageSnapshotsFromEvents(
   events: Awaited<ReturnType<Repositories["runs"]["listEvents"]>>
-) {
+): AssistantMessageSnapshot[] {
   const messages = new Map<string, ReturnType<typeof AssistantMessageSnapshotSchema.parse>>();
 
   for (const event of events) {

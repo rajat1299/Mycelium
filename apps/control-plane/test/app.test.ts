@@ -206,7 +206,12 @@ describe("control plane", () => {
       });
 
       expect(thread.statusCode).toBe(200);
-      expect(OutcomeThreadSnapshotSchema.parse(thread.json())).toEqual(
+      const rawThread = thread.json();
+
+      expect(rawThread).toHaveProperty("presentationHints");
+      expect(rawThread.presentationHints).toEqual([]);
+
+      expect(OutcomeThreadSnapshotSchema.parse(rawThread)).toEqual(
         expect.objectContaining({
           outcome: expect.objectContaining({
             id: started.outcome.id
@@ -215,7 +220,8 @@ describe("control plane", () => {
             expect.objectContaining({
               id: started.triggerMessage.id
             })
-          ]
+          ],
+          presentationHints: []
         })
       );
     } finally {

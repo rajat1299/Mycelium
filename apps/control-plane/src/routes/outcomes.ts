@@ -15,6 +15,7 @@ import {
   StartOutcomeRequestSchema
 } from "@computer-oss/protocol";
 import type { EventBus } from "../lib/event-bus";
+import { buildOutcomePresentationHintsFromEvents } from "../lib/outcome-presentation";
 import {
   OutcomeTurnConflictError,
   OutcomeTurnReplayConflictError,
@@ -119,7 +120,8 @@ async function buildThreadSnapshot(
     logs,
     pendingApprovals: workspaceApprovals.filter(
       (approval) => approval.outcomeId === outcomeId
-    )
+    ),
+    presentationHints: buildOutcomePresentationHintsFromEvents(events)
   });
 }
 

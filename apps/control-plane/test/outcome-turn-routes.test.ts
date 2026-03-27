@@ -121,6 +121,37 @@ describe("outcome turn routes", () => {
         createdAt: "2026-03-24T12:20:08.000Z"
       });
       await repositories.runs.appendEvent({
+        id: "evt_hint_started",
+        runId: started.run?.id ?? "",
+        eventType: "presentation.hint",
+        payload: {
+          id: "hint_started",
+          outcomeId: started.outcome.id,
+          entityType: "assistant-message",
+          entityId: "assistant_started",
+          phaseId: "phase_kickoff",
+          seq: 10,
+          createdAt: "2026-03-24T12:05:00.000Z"
+        },
+        createdAt: "2026-03-24T12:05:00.000Z"
+      });
+      await repositories.runs.appendEvent({
+        id: "evt_hint_continued_step",
+        runId: continued.run?.id ?? "",
+        eventType: "presentation.hint",
+        payload: {
+          id: "hint_continued_step",
+          outcomeId: started.outcome.id,
+          entityType: "step",
+          entityId: secondStep?.id,
+          phaseId: "phase_rollout",
+          seq: 20,
+          laneId: "lane_rollout",
+          createdAt: "2026-03-24T12:20:00.000Z"
+        },
+        createdAt: "2026-03-24T12:20:00.000Z"
+      });
+      await repositories.runs.appendEvent({
         id: "evt_log_started",
         runId: started.run?.id ?? "",
         eventType: "run.log",
@@ -272,6 +303,23 @@ describe("outcome turn routes", () => {
       ]);
       expect(snapshot.pendingApprovals.map((approval) => approval.id)).toEqual([
         "approval_thread"
+      ]);
+      expect(snapshot.presentationHints).toEqual([
+        expect.objectContaining({
+          id: "hint_started",
+          entityType: "assistant-message",
+          entityId: "assistant_started",
+          phaseId: "phase_kickoff",
+          seq: 10
+        }),
+        expect.objectContaining({
+          id: "hint_continued_step",
+          entityType: "step",
+          entityId: secondStep?.id,
+          phaseId: "phase_rollout",
+          seq: 20,
+          laneId: "lane_rollout"
+        })
       ]);
     } finally {
       await harness.cleanup();

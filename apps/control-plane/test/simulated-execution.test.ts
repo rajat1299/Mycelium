@@ -405,6 +405,56 @@ describe("development simulation mode", () => {
         })
       ]);
 
+      const presentationHintEvents = events.filter(
+        (event) => event.type === "presentation.hint"
+      );
+
+      expect(presentationHintEvents).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            data: expect.objectContaining({
+              outcomeId: outcome.id,
+              entityType: "assistant-message"
+            })
+          }),
+          expect.objectContaining({
+            data: expect.objectContaining({
+              outcomeId: outcome.id,
+              entityType: "step"
+            })
+          }),
+          expect.objectContaining({
+            data: expect.objectContaining({
+              outcomeId: outcome.id,
+              entityType: "artifact"
+            })
+          }),
+          expect.objectContaining({
+            data: expect.objectContaining({
+              outcomeId: outcome.id,
+              entityType: "approval"
+            })
+          })
+        ])
+      );
+
+      const readThread = await app.inject({
+        method: "GET",
+        url: `/api/outcomes/${outcome.id}/thread`
+      });
+      const threadSnapshot = OutcomeThreadSnapshotSchema.parse(readThread.json());
+      const liveHintIds = presentationHintEvents.map((event) =>
+        typeof event.data === "object" &&
+        event.data !== null &&
+        "id" in event.data
+          ? String(event.data.id)
+          : null
+      );
+
+      expect(threadSnapshot.presentationHints.map((hint) => hint.id)).toEqual(
+        expect.arrayContaining(liveHintIds.filter((hintId): hintId is string => Boolean(hintId)))
+      );
+
       expect(events.some((event) => event.type === "run.updated")).toBe(true);
       expect(events.some((event) => event.type === "assistant.message.started")).toBe(true);
       expect(events.some((event) => event.type === "assistant.message.delta")).toBe(true);
