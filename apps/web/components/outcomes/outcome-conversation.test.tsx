@@ -1790,6 +1790,17 @@ describe("OutcomeConversation", () => {
     ).toBeGreaterThan(0);
   });
 
+  it("keeps the plan block outside the transition phase group for queued authored steps", () => {
+    renderQueuedPhaseConversation();
+
+    const phaseGroup = screen.getByTestId("phase-group");
+
+    expect(
+      within(phaseGroup).queryByText("2 steps ready to execute")
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("2 steps ready to execute")).toBeInTheDocument();
+  });
+
   it("continues step streaming from the current visible progress when new text appends", async () => {
     vi.useFakeTimers();
 

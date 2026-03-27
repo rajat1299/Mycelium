@@ -483,7 +483,7 @@ function buildTurnRenderGroups(items: OutcomeFeedItem[]): TurnRenderGroup[] {
       const nextItem = items[nextIndex]!;
       const nextPhaseId = getFeedItemPhaseId(nextItem);
 
-      if (nextItem.type === "plan" || nextPhaseId === phaseId) {
+      if (nextPhaseId === phaseId) {
         phaseItems.push(nextItem);
         nextIndex += 1;
         continue;
