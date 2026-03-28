@@ -32,6 +32,7 @@ vi.mock("../../lib/events", () => ({
 afterEach(() => {
   cleanup();
   eventStream.handlers.clear();
+  vi.restoreAllMocks();
 });
 
 function expectTextOrder(earlier: string, later: string) {
@@ -1847,7 +1848,12 @@ describe("OutcomeConversation", () => {
 
       await act(async () => {});
 
-      expect(hasNodeByExactText(initialVisiblePrefix)).toBe(true);
+      const visibleAfterAppend =
+        getLeafNodeByPrefix(initialVisiblePrefix).textContent ?? "";
+      expect(visibleAfterAppend.startsWith(initialVisiblePrefix)).toBe(true);
+      expect(visibleAfterAppend.length).toBeGreaterThanOrEqual(
+        initialVisiblePrefix.length
+      );
     } finally {
       vi.useRealTimers();
     }

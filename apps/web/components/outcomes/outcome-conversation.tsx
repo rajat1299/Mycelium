@@ -583,6 +583,9 @@ function mergeRenderableOutcomeMessages(
 
 /* ── Main component ─────────────────────────────────────────────────── */
 
+const EMPTY_OPTIMISTIC_MESSAGES: OptimisticOutcomeMessage[] = [];
+const EMPTY_PRESENTATION_HINTS: OutcomePresentationHint[] = [];
+
 export function OutcomeConversation({
   outcomeId,
   outcomePrompt,
@@ -594,9 +597,9 @@ export function OutcomeConversation({
   initialLogs,
   initialAssistantMessages,
   initialMessages,
-  optimisticMessages = [],
+  optimisticMessages = EMPTY_OPTIMISTIC_MESSAGES,
   initialPendingApprovals,
-  initialPresentationHints = []
+  initialPresentationHints = EMPTY_PRESENTATION_HINTS
 }: OutcomeConversationProps) {
   const [viewState, setViewState] = useState<OutcomeConversationViewState>(() =>
     buildInitialViewState(

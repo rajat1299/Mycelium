@@ -47,6 +47,7 @@ afterEach(() => {
   cleanup();
   eventStream.handlers.clear();
   markdownRenderCounts.clear();
+  vi.restoreAllMocks();
 });
 
 function emitOutcomeEvent(event: any) {
