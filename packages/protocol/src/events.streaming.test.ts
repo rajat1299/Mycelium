@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   AssistantMessageListResponseSchema,
   OutcomePresentationHintSchema,
-  OutcomeStreamEventSchema
+  OutcomeStreamEventSchema,
+  sortOutcomePresentationHints
 } from "./index";
 
 describe("assistant streaming event contracts", () => {
@@ -97,5 +98,46 @@ describe("assistant streaming event contracts", () => {
 
     expect(snapshots.assistantMessages).toHaveLength(1);
     expect(snapshots.assistantMessages[0]?.status).toBe("completed");
+  });
+
+  it("sorts presentation hints using authored phase order instead of raw arrival order", () => {
+    const hints = [
+      OutcomePresentationHintSchema.parse({
+        id: "hint_alpha_seq30",
+        outcomeId: "outcome_123",
+        entityType: "artifact",
+        entityId: "artifact_alpha",
+        phaseId: "phase_alpha",
+        seq: 30,
+        laneId: "lane_a",
+        createdAt: "2026-03-22T00:00:00.000Z"
+      }),
+      OutcomePresentationHintSchema.parse({
+        id: "hint_beta_seq10",
+        outcomeId: "outcome_123",
+        entityType: "assistant-message",
+        entityId: "assistant_beta",
+        phaseId: "phase_beta",
+        seq: 10,
+        laneId: "lane_a",
+        createdAt: "2026-03-22T00:05:00.000Z"
+      }),
+      OutcomePresentationHintSchema.parse({
+        id: "hint_alpha_seq10",
+        outcomeId: "outcome_123",
+        entityType: "step",
+        entityId: "step_alpha",
+        phaseId: "phase_alpha",
+        seq: 10,
+        laneId: "lane_a",
+        createdAt: "2026-03-22T00:20:00.000Z"
+      })
+    ];
+
+    expect(sortOutcomePresentationHints(hints).map((hint) => hint.id)).toEqual([
+      "hint_alpha_seq10",
+      "hint_alpha_seq30",
+      "hint_beta_seq10"
+    ]);
   });
 });

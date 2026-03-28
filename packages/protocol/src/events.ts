@@ -117,6 +117,89 @@ export const OutcomePresentationHintSchema = z.object({
   createdAt: z.string().datetime()
 });
 
+const outcomePresentationHintEntityPriority: Record<
+  OutcomePresentationHintEntityType,
+  number
+> = {
+  "assistant-message": 0,
+  step: 1,
+  artifact: 2,
+  approval: 3
+};
+
+function compareOutcomePresentationHintEntityType(
+  left: OutcomePresentationHintEntityType,
+  right: OutcomePresentationHintEntityType
+) {
+  return (
+    outcomePresentationHintEntityPriority[left] -
+    outcomePresentationHintEntityPriority[right]
+  );
+}
+
+export function compareOutcomePresentationHints(
+  left: OutcomePresentationHint,
+  right: OutcomePresentationHint,
+  earliestCreatedAtByPhase: ReadonlyMap<string, string>
+) {
+  const leftPhaseCreatedAt =
+    earliestCreatedAtByPhase.get(left.phaseId) ?? left.createdAt;
+  const rightPhaseCreatedAt =
+    earliestCreatedAtByPhase.get(right.phaseId) ?? right.createdAt;
+  const phaseCreatedAtDelta = leftPhaseCreatedAt.localeCompare(rightPhaseCreatedAt);
+
+  if (phaseCreatedAtDelta !== 0) {
+    return phaseCreatedAtDelta;
+  }
+
+  const phaseDelta = left.phaseId.localeCompare(right.phaseId);
+
+  if (phaseDelta !== 0) {
+    return phaseDelta;
+  }
+
+  const seqDelta = left.seq - right.seq;
+
+  if (seqDelta !== 0) {
+    return seqDelta;
+  }
+
+  const laneDelta = (left.laneId ?? "").localeCompare(right.laneId ?? "");
+
+  if (laneDelta !== 0) {
+    return laneDelta;
+  }
+
+  const entityTypeDelta = compareOutcomePresentationHintEntityType(
+    left.entityType,
+    right.entityType
+  );
+
+  if (entityTypeDelta !== 0) {
+    return entityTypeDelta;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
+export function sortOutcomePresentationHints(
+  hints: readonly OutcomePresentationHint[]
+) {
+  const earliestCreatedAtByPhase = new Map<string, string>();
+
+  for (const hint of hints) {
+    const currentEarliest = earliestCreatedAtByPhase.get(hint.phaseId);
+
+    if (!currentEarliest || hint.createdAt.localeCompare(currentEarliest) < 0) {
+      earliestCreatedAtByPhase.set(hint.phaseId, hint.createdAt);
+    }
+  }
+
+  return [...hints].sort((left, right) =>
+    compareOutcomePresentationHints(left, right, earliestCreatedAtByPhase)
+  );
+}
+
 export const EventEnvelopeSchema = z.object({
   type: EventTypeSchema,
   data: z.unknown()

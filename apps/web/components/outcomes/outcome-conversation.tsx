@@ -24,6 +24,7 @@ import type {
   RunLogData,
   RunStep
 } from "@computer-oss/protocol";
+import { sortOutcomePresentationHints } from "@computer-oss/protocol";
 import { subscribeToOutcomeEvents } from "../../lib/events";
 import { cn } from "../ui/cn";
 import { motion, AnimatePresence } from "framer-motion";
@@ -244,15 +245,7 @@ function mergePresentationHints(
     next.push(hint);
   }
 
-  return [...next].sort((left, right) => {
-    const createdDelta = left.createdAt.localeCompare(right.createdAt);
-
-    if (createdDelta !== 0) {
-      return createdDelta;
-    }
-
-    return left.id.localeCompare(right.id);
-  });
+  return sortOutcomePresentationHints(next);
 }
 
 function toRunDetail(incoming: RunEventSnapshot, fallbackSteps: RunStep[] = []): RunDetail {

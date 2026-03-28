@@ -24,6 +24,9 @@ import {
 } from "@computer-oss/protocol";
 
 type EventHandler = (event: OutcomeStreamEvent) => void;
+type OutcomeEventDataByType = {
+  [K in OutcomeStreamEvent["type"]]: Extract<OutcomeStreamEvent, { type: K }>["data"];
+};
 
 type SharedOutcomeSource = {
   source: EventSource;
@@ -49,14 +52,27 @@ export function subscribeToOutcomeEvents(
 
     const registerListener = <T extends OutcomeStreamEvent["type"]>(
       type: T,
-      parser: (payload: unknown) => Extract<OutcomeStreamEvent, { type: T }>["data"]
+      parser: (payload: unknown) => OutcomeEventDataByType[T]
     ) => {
       const listener = ((event: Event) => {
         const message = event as MessageEvent<string>;
+        let data: OutcomeEventDataByType[T];
+
+        try {
+          data = parser(JSON.parse(message.data));
+        } catch (error) {
+          console.error(`Failed to parse outcome event "${type}"`, {
+            outcomeId,
+            rawData: message.data,
+            error
+          });
+          return;
+        }
+
         const parsed = {
           outcomeId,
           type,
-          data: parser(JSON.parse(message.data))
+          data
         } as OutcomeStreamEvent;
 
         for (const handler of handlers) {

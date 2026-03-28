@@ -36,11 +36,22 @@ class FakeEventSource {
       listener(message);
     }
   }
+
+  emitRaw(type: string, data: string) {
+    const message = {
+      data
+    } as MessageEvent<string>;
+
+    for (const listener of this.listeners.get(type) ?? []) {
+      listener(message);
+    }
+  }
 }
 
 afterEach(() => {
   FakeEventSource.instances = [];
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("subscribeToOutcomeEvents", () => {
@@ -171,6 +182,98 @@ describe("subscribeToOutcomeEvents", () => {
           phaseId: "phase_delivery",
           seq: 10,
           laneId: "lane_delivery"
+        })
+      })
+    );
+
+    unsubscribe();
+  });
+
+  it("ignores malformed presentation hint payloads without throwing or blocking later events", () => {
+    vi.stubGlobal("EventSource", FakeEventSource as unknown as typeof EventSource);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const handler = vi.fn();
+    const unsubscribe = subscribeToOutcomeEvents("outcome_presentation", handler);
+
+    expect(() => {
+      FakeEventSource.instances[0]?.emit("presentation.hint", {
+        id: "hint_123",
+        outcomeId: "outcome_123",
+        entityType: "assistant-message",
+        entityId: "assistant_123",
+        phaseId: "phase_delivery",
+        seq: "bad-seq",
+        createdAt: "2026-03-27T00:00:00.000Z"
+      });
+    }).not.toThrow();
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalledWith(
+      'Failed to parse outcome event "presentation.hint"',
+      expect.objectContaining({
+        outcomeId: "outcome_presentation",
+        rawData: expect.any(String),
+        error: expect.anything()
+      })
+    );
+
+    FakeEventSource.instances[0]?.emit("run.log", {
+      runId: "run_123",
+      stepTitle: "Analyze outcome",
+      level: "info",
+      message: "stream still alive",
+      createdAt: "2026-03-27T00:00:01.000Z"
+    });
+
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcomeId: "outcome_presentation",
+        type: "run.log"
+      })
+    );
+
+    unsubscribe();
+  });
+
+  it("ignores malformed JSON payloads without throwing or blocking later events", () => {
+    vi.stubGlobal("EventSource", FakeEventSource as unknown as typeof EventSource);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const handler = vi.fn();
+    const unsubscribe = subscribeToOutcomeEvents("outcome_json", handler);
+
+    expect(() => {
+      FakeEventSource.instances[0]?.emitRaw("presentation.hint", "{not-json");
+    }).not.toThrow();
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalledWith(
+      'Failed to parse outcome event "presentation.hint"',
+      expect.objectContaining({
+        outcomeId: "outcome_json",
+        rawData: "{not-json",
+        error: expect.anything()
+      })
+    );
+
+    FakeEventSource.instances[0]?.emit("presentation.hint", {
+      id: "hint_456",
+      outcomeId: "outcome_456",
+      entityType: "assistant-message",
+      entityId: "assistant_456",
+      phaseId: "phase_delivery",
+      seq: 10,
+      createdAt: "2026-03-27T00:00:02.000Z"
+    });
+
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcomeId: "outcome_json",
+        type: "presentation.hint",
+        data: expect.objectContaining({
+          id: "hint_456",
+          seq: 10
         })
       })
     );
